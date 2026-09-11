@@ -203,14 +203,6 @@
 
     // AI Diagnostics / Screening
     async submitSymptomScreening(data) {
-      if (!getToken()) {
-        try {
-          console.log("[PashuSakhiApi] Authenticating as demo farmer...");
-          await PashuSakhiApi.login("farmer@pashusakhi.in", "farmer123");
-        } catch (e) {
-          console.warn("[PashuSakhiApi] Auto-login fallback failed:", e);
-        }
-      }
       console.log("🐾 [PashuSakhiApi] Sending request to Live Gemini Backend (/diagnostics/symptoms)...", data);
       const res = await request("/diagnostics/symptoms", {
         method: "POST",
@@ -312,15 +304,7 @@
   } catch (e) {}
 
   // Seamless auto-authentication on initialization for seamless testing & UI sync
-  try {
-    if (!getToken()) {
-      PashuSakhiApi.login("farmer@pashusakhi.in", "farmer123").then(res => {
-        if (res?.success) console.log("[PashuSakhiApi] Auto-authenticated demo farmer session.");
-      }).catch(err => {
-        console.warn("[PashuSakhiApi] Auto-login check:", err);
-      });
-    }
-  } catch (e) {}
+  // Removed hardcoded credentials; UI should rely on proper login flow.
 })(window);
 
 
