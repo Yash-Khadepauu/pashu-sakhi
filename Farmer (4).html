@@ -3552,8 +3552,14 @@ const translations = {
   varhadi, malvani, ahirani, zadi_boli, zadiboli
 };
 
-function tt(lang, key) {
-  return (translations[lang] && translations[lang][key]) || (mr && mr[key]) || en[key] || key;
+function tt(lang, key, fallback) {
+  if (translations[lang] && translations[lang][key] !== undefined && translations[lang][key] !== "") {
+    return translations[lang][key];
+  }
+  if (en[key] !== undefined && en[key] !== "") {
+    return en[key];
+  }
+  return fallback !== undefined ? fallback : key;
 }
 
 function formatSpecies(species, t) {
@@ -4214,7 +4220,7 @@ function PashuSakhiDashboard() {
   }, []);
 
   const effectiveTheme = theme === "system" ? (systemPrefersDark ? "dark" : "light") : theme;
-  const t = (key) => tt(language, key);
+  const t = (key, fallback) => tt(language, key, fallback);
 
   // Maps a notification's category to its matching entry in notifPrefs / DEFAULT_NOTIF_PREFS.
   // Any category not explicitly listed here falls back to "general".
@@ -5651,7 +5657,7 @@ function PashuSakhiDashboard() {
             width: 100%;
           }
 
-          .topbar-bell { display: none; }
+          .topbar-bell, .topbar-ivr { display: none !important; }
 
           .header-emergency-btn {
             display: inline-flex;
@@ -5827,6 +5833,15 @@ function PashuSakhiDashboard() {
         <button className="bell-btn" onClick={() => navigate("notifications")} aria-label="Notifications">
           <Bell size={18} />
           {unreadCount > 0 && <span className="bell-badge">{unreadCount > 9 ? "9+" : unreadCount}</span>}
+        </button>
+        <button
+          type="button"
+          className="ivr-nav-btn"
+          onClick={() => setEmergencyOpen(true)}
+          style={{ display: "inline-flex", alignItems: "center", gap: "6px", background: "var(--urgent)", color: "white", border: "none", borderRadius: "99px", padding: "6px 12px", fontWeight: "700", fontSize: "14px", cursor: "pointer", marginLeft: "4px", flexShrink: 0, boxShadow: "0 2px 4px rgba(0,0,0,0.15)" }}
+          title={t ? t("ivr_tooltip", "IVR / Admin Assistance") : "IVR / Admin Assistance"}
+        >
+          <Phone size={15} /> IVR
         </button>
       </header>
 
@@ -6207,7 +6222,7 @@ function DashboardView({ profile, summary, upcomingVaccinations, activeTreatment
     { id: "animals", label: t ? t("nav_myAnimals") : "My Animals", Icon: PawPrint, bg: "var(--brand-soft)", color: "var(--brand-fg, var(--brand))", onClick: onQuickAccess.animals },
     { id: "screening", label: t ? t("nav_aiScreeningFull") : "AI Health Screening", Icon: Stethoscope, bg: "var(--healthy-soft)", color: "var(--healthy-fg, var(--healthy))", onClick: onQuickAccess.screening },
     { id: "chat", label: t ? t("nav_chatWithVet") : "Chat with Vet", Icon: MessageCircle, bg: "var(--brand-soft)", color: "var(--brand-ink, var(--brand-dark))", onClick: onQuickAccess.chat },
-    { id: "guidance", label: "Connect to Admin", Icon: AlertTriangle, bg: "var(--urgent-soft)", color: "var(--urgent-fg, var(--urgent))", onClick: onOpenEmergency },
+    { id: "guidance", label: t ? t("nav_emergencyGuide", "Connect to Admin") : "Connect to Admin", Icon: AlertTriangle, bg: "var(--urgent-soft)", color: "var(--urgent-fg, var(--urgent))", onClick: onOpenEmergency },
   ];
 
   return (
@@ -6221,6 +6236,15 @@ function DashboardView({ profile, summary, upcomingVaccinations, activeTreatment
           <button className="bell-btn topbar-bell" onClick={onOpenNotifications} aria-label={t ? t("nav_notifications") : "Notifications"}>
             <Bell size={18} />
             {unreadCount > 0 && <span className="bell-badge">{unreadCount > 9 ? "9+" : unreadCount}</span>}
+          </button>
+          <button
+            type="button"
+            className="ivr-nav-btn topbar-ivr"
+            onClick={onOpenEmergency}
+            style={{ display: "inline-flex", alignItems: "center", gap: "6px", background: "var(--urgent)", color: "white", border: "none", borderRadius: "99px", padding: "8px 14px", fontWeight: "700", fontSize: "14px", cursor: "pointer", marginLeft: "4px", flexShrink: 0, boxShadow: "0 2px 4px rgba(0,0,0,0.15)" }}
+            title={t ? t("ivr_tooltip", "IVR / Admin Assistance") : "IVR / Admin Assistance"}
+          >
+            <Phone size={16} /> IVR
           </button>
         </div>
       </div>
@@ -8677,6 +8701,7 @@ function PermissionsModal({ t, onClose }) {
 /* ------------------------------------------------------------------ */
 function EmergencyModal({ animals, onClose, onContactVet, onStartConsult, t }) {
   const [step, setStep] = useState(0);
+  const [selectedOpt, setSelectedOpt] = useState("");
   const modalCardRef = useRef(null);
   const closeBtnRef = useRef(null);
 
@@ -8699,12 +8724,19 @@ function EmergencyModal({ animals, onClose, onContactVet, onStartConsult, t }) {
     };
   }, [onClose]);
 
-  const handleOption = (opt) => {
-    setStep(1);
-    setTimeout(() => {
-       setStep(2);
-    }, 2000);
+  const handleOption = (optStr) => {
+    setSelectedOpt(optStr);
+    setStep(1); // Go to confirmation
   };
+
+  const handleConnect = () => {
+    setStep(2);
+    setTimeout(() => {
+       setStep(3);
+    }, 2500);
+  };
+
+  const getT = (key, fallback) => t ? t(key, fallback) : fallback;
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -8720,7 +8752,7 @@ function EmergencyModal({ animals, onClose, onContactVet, onStartConsult, t }) {
           <div style={{ display: "flex", alignItems: "center", gap: 9, flex: 1, minWidth: 0, paddingRight: 8 }}>
             <AlertTriangle size={22} color="var(--urgent-fg, var(--urgent))" style={{ flexShrink: 0 }} />
             <h2 id="emergency-modal-title" style={{ margin: 0, fontSize: "calc(19px * var(--text-scale, 1))", overflowWrap: "break-word", wordBreak: "break-word" }}>
-              {t ? t("nav_emergencyGuide", "Connect to Admin") : "Connect to Admin"}
+              {getT("nav_emergencyGuide", "Connect to Admin")}
             </h2>
           </div>
           <button
@@ -8728,7 +8760,7 @@ function EmergencyModal({ animals, onClose, onContactVet, onStartConsult, t }) {
             ref={closeBtnRef}
             className="modal-close-btn"
             onClick={onClose}
-            aria-label="Close"
+            aria-label={getT("auto_close", "Close")}
           >
             <X size={20} />
           </button>
@@ -8736,41 +8768,73 @@ function EmergencyModal({ animals, onClose, onContactVet, onStartConsult, t }) {
 
         {step === 0 && (
           <>
+            <p style={{ color: "var(--ink-soft)", fontSize: "calc(14.5px * var(--text-scale, 1))", margin: "10px 0 6px", fontWeight: "600" }}>
+              {getT("ivr_welcome", "Welcome to PashuSakhi Admin Assistance")}
+            </p>
             <p style={{ color: "var(--ink-soft)", fontSize: "calc(13.5px * var(--text-scale, 1))", margin: "0 0 18px" }}>
-              How can we help you?
+              {getT("ivr_how_can_we_help", "How can we help you today?")}
             </p>
             <div style={{ display: "grid", gap: 10 }}>
-              <button className="btn-secondary" style={{ justifyContent: "flex-start", textAlign: "left" }} onClick={() => handleOption(1)}>
-                1. Report Animal Health Issue
+              <button className="btn-secondary" style={{ justifyContent: "flex-start", textAlign: "left" }} onClick={() => handleOption(getT("ivr_opt_1", "1. Report Animal Health Issue"))}>
+                {getT("ivr_opt_1", "1. Report Animal Health Issue")}
               </button>
-              <button className="btn-secondary" style={{ justifyContent: "flex-start", textAlign: "left" }} onClick={() => handleOption(2)}>
-                2. Request Veterinary Assistance
+              <button className="btn-secondary" style={{ justifyContent: "flex-start", textAlign: "left" }} onClick={() => handleOption(getT("ivr_opt_2", "2. Request Veterinary Assistance"))}>
+                {getT("ivr_opt_2", "2. Request Veterinary Assistance")}
               </button>
-              <button className="btn-secondary" style={{ justifyContent: "flex-start", textAlign: "left" }} onClick={() => handleOption(3)}>
-                3. Report Animal Death
+              <button className="btn-secondary" style={{ justifyContent: "flex-start", textAlign: "left" }} onClick={() => handleOption(getT("ivr_opt_3", "3. Report Animal Mortality"))}>
+                {getT("ivr_opt_3", "3. Report Animal Mortality")}
               </button>
-              <button className="btn-secondary" style={{ justifyContent: "flex-start", textAlign: "left" }} onClick={() => handleOption(4)}>
-                4. Speak to an Administrator
+              <button className="btn-secondary" style={{ justifyContent: "flex-start", textAlign: "left" }} onClick={() => handleOption(getT("ivr_opt_4", "4. General Government Assistance"))}>
+                {getT("ivr_opt_4", "4. General Government Assistance")}
               </button>
             </div>
           </>
         )}
 
         {step === 1 && (
-          <div style={{ textAlign: "center", padding: "40px 0" }}>
-            <Loader size={32} className="spinning" style={{ color: "var(--brand)", marginBottom: 16 }} />
-            <p style={{ margin: 0, fontSize: "16px", fontWeight: "600" }}>Connecting to PashuSakhi Admin...</p>
-            <p style={{ color: "var(--ink-soft)", margin: "8px 0 0" }}>Please wait...</p>
+          <div style={{ padding: "10px 0" }}>
+            <div style={{ background: "var(--healthy-soft)", color: "var(--healthy)", padding: "12px", borderRadius: "8px", marginBottom: "16px", display: "flex", alignItems: "center", gap: "8px" }}>
+              <CheckCircle size={18} />
+              <span style={{ fontWeight: "600" }}>{getT("ivr_req_registered", "Your request has been registered.")}</span>
+            </div>
+            
+            <div style={{ background: "var(--paper-soft)", border: "1px solid var(--line)", padding: "16px", borderRadius: "8px", marginBottom: "20px" }}>
+              <div style={{ marginBottom: "10px" }}>
+                <span style={{ fontSize: "12px", color: "var(--ink-soft)", display: "block", textTransform: "uppercase", letterSpacing: "0.5px" }}>{getT("ivr_assist_type", "Assistance Type")}</span>
+                <span style={{ fontWeight: "500" }}>{selectedOpt}</span>
+              </div>
+              <div style={{ marginBottom: "10px" }}>
+                <span style={{ fontSize: "12px", color: "var(--ink-soft)", display: "block", textTransform: "uppercase", letterSpacing: "0.5px" }}>{getT("ivr_ref_id", "Reference ID")}</span>
+                <span style={{ fontWeight: "500", fontFamily: "monospace" }}>REQ-{Math.floor(1000 + Math.random() * 9000)}</span>
+              </div>
+              <div>
+                <span style={{ fontSize: "12px", color: "var(--ink-soft)", display: "block", textTransform: "uppercase", letterSpacing: "0.5px" }}>{getT("ivr_est_status", "Connection Status")}</span>
+                <span style={{ fontWeight: "500", color: "var(--attention)" }}>{getT("ivr_ready", "Ready to Connect")}</span>
+              </div>
+            </div>
+
+            <button className="btn-primary" style={{ width: "100%", justifyContent: "center", padding: "12px", fontSize: "15px" }} onClick={handleConnect}>
+              <Phone size={18} style={{ marginRight: "8px" }} />
+              {getT("nav_emergencyGuide", "Connect to Admin")}
+            </button>
           </div>
         )}
 
         {step === 2 && (
           <div style={{ textAlign: "center", padding: "40px 0" }}>
-            <CheckCircle size={40} color="var(--healthy)" style={{ marginBottom: 16 }} />
-            <p style={{ margin: 0, fontSize: "16px", fontWeight: "600", color: "var(--healthy)" }}>Admin support connected</p>
-            <p style={{ color: "var(--ink-soft)", margin: "8px 0 24px" }}>An administrator is now on the line.</p>
-            <button className="btn-primary" style={{ width: "100%", justifyContent: "center" }} onClick={onClose}>
-              End Session
+            <Loader size={36} className="spinning" style={{ color: "var(--brand)", marginBottom: 16 }} />
+            <p style={{ margin: 0, fontSize: "17px", fontWeight: "600" }}>{getT("ivr_connecting", "Connecting you to Admin...")}</p>
+            <p style={{ color: "var(--ink-soft)", margin: "8px 0 0" }}>{getT("ivr_please_wait", "Please wait...")}</p>
+          </div>
+        )}
+
+        {step === 3 && (
+          <div style={{ textAlign: "center", padding: "40px 0" }}>
+            <Phone size={44} color="var(--healthy)" style={{ marginBottom: 16 }} />
+            <p style={{ margin: 0, fontSize: "18px", fontWeight: "600", color: "var(--healthy)" }}>{getT("ivr_connected", "Connected to Admin")}</p>
+            <p style={{ color: "var(--ink-soft)", margin: "12px 0 28px", lineHeight: "1.5" }}>{getT("ivr_admin_rep", "An Admin representative is now available to assist you.")}</p>
+            <button className="btn-secondary" style={{ width: "100%", justifyContent: "center" }} onClick={onClose}>
+              {getT("auto_close", "Close / Done")}
             </button>
           </div>
         )}

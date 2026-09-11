@@ -1145,6 +1145,7 @@ function Avatar({ label, size = 46, tone = "brand" }) {
 /* ------------------------------------------------------------------ */
 
 function DiseaseHeatmapDashboard({ showToast }) {
+  const t = useT();
   // Filter States
   const [selectedDisease, setSelectedDisease] = useState("all");
   const [selectedDistrict, setSelectedDistrict] = useState("all");
@@ -1473,8 +1474,8 @@ function DiseaseHeatmapDashboard({ showToast }) {
             LIVE SURVEILLANCE FEED
           </div>
           <h1 className="hm-title">{t("auto_veterinary_dise", "Veterinary Disease Monitoring & Hotspot Map")}</h1>
-          <p className="hm-sub">{t("auto_real_time_geosp", "Real-time geospatial epidemiological surveillance across Western Maharashtra livestock basins.
-            Connected with veterinary stations, outbreak containment rings, and mobile dispatch units.")}</p>
+          <p className="hm-sub">{t("auto_real_time_geosp", `Real-time geospatial epidemiological surveillance across Western Maharashtra livestock basins.
+            Connected with veterinary stations, outbreak containment rings, and mobile dispatch units.`)}</p>
         </div>
 
         <div className="hm-header-actions">
@@ -1956,7 +1957,7 @@ function VetApp() {
   const [notifications, setNotifications] = useState(initialNotifications);
 
   const [profile, setProfile] = useState(VET_PROFILE);
-  const [appLanguage, setAppLanguage] = useState(localStorage.getItem('psk_language') || "English");
+  const [appLanguage, setAppLanguage] = useState(localStorage.getItem('psk_language') || "en");
   const [textSize, setTextSize] = useState("Medium");
   const [theme, setTheme] = useState("Light");
   const [highContrast, setHighContrast] = useState(false);
@@ -2779,7 +2780,7 @@ function VetApp() {
                 <div className="setting-row"><div><strong>{t("auto_availability", "Availability")}</strong><span>{t("auto_controls_whethe", "Controls whether new consultations can be assigned.")}</span></div><select value={availability} onChange={e=>setAvailability(e.target.value)}><option value="available">Available</option><option value="busy">Busy</option><option value="emergencyOnly">Emergency Only</option><option value="offline">Offline</option><option value="leave">On Leave</option></select></div>
               </Card>
               <Card><SectionTitle>Language & Accessibility</SectionTitle>
-                <div className="setting-row"><div><strong>{t("auto_app_language", "App Language")}</strong><span>Current: {appLanguage}</span></div><select value={appLanguage} onChange={e=>{setAppLanguage(e.target.value);showToast(`Language set to ${e.target.value}.`)}}><option>English</option><option>Hindi</option><option>Marathi</option><option>Gujarati</option><option>Punjabi</option></select></div>
+                <div className="setting-row"><div><strong>{t("auto_app_language", "App Language")}</strong><span>Current: {appLanguage}</span></div><select value={appLanguage} onChange={e=>{setAppLanguage(e.target.value);showToast(`Language updated.`)}}><option value="en">English</option><option value="hi">Hindi</option><option value="mr">Marathi</option><option value="gu">Gujarati</option><option value="pa">Punjabi</option></select></div>
                 <div className="setting-row"><div><strong>{t("auto_text_size", "Text Size")}</strong><span>{t("auto_adjust_the_dash", "Adjust the dashboard reading size.")}</span></div><select value={textSize} onChange={e=>setTextSize(e.target.value)}><option>Small</option><option>Medium</option><option>Large</option></select></div>
                 <div className="setting-row"><div><strong>{t("auto_theme", "Theme")}</strong><span>{t("auto_switch_between_", "Switch between light, dark and system-style presentation.")}</span></div><select value={theme} onChange={e=>{setTheme(e.target.value);showToast(`Theme changed to ${e.target.value}.`)}}><option>Light</option><option>Dark</option><option>System</option></select></div>
                 <div className="setting-row"><div><strong>{t("auto_high_contrast_m", "High Contrast Mode")}</strong><span>{t("auto_increase_border", "Increase border and text contrast.")}</span></div><button className={`toggle ${highContrast?"on":""}`} onClick={()=>setHighContrast(v=>!v)}>{highContrast?"ON":"OFF"}</button></div>
