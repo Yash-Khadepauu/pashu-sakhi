@@ -1,0 +1,3234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PashuSakhi Veterinarian Dashboard</title>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.3.1",
+    "react-dom/client": "https://esm.sh/react-dom@18.3.1/client",
+    "lucide-react": "https://esm.sh/lucide-react@0.468.0?external=react"
+  }
+}
+</script>
+<script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; width: 100%; max-width: 100vw; overflow-x: hidden; -webkit-text-size-adjust: 100%; }
+  #root { min-height: 100vh; width: 100%; max-width: 100vw; overflow-x: hidden; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<!-- PashuSakhi Shared API & Bridge -->
+<script src="pashusakhi_api.js"></script>
+<script>
+(function() {
+  const _tabId = 'tab_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now();
+  const _listeners = new Set();
+
+  function _get(key, defaultVal) {
+    try {
+      const v = localStorage.getItem(key);
+      return v ? JSON.parse(v) : defaultVal;
+    } catch (e) {
+      return defaultVal;
+    }
+  }
+
+  function _set(key, val) {
+    try {
+      localStorage.setItem(key, JSON.stringify(val));
+    } catch (e) {
+      console.warn('PashuSakhiBridge storage write failed:', e);
+    }
+  }
+
+  function broadcast(event, data) {
+    const payload = { event, data, timestamp: Date.now(), sourceId: _tabId };
+    try {
+      localStorage.setItem('psk_bridge_event', JSON.stringify(payload));
+    } catch (e) {}
+    _listeners.forEach(fn => {
+      try { fn(event, data); } catch (err) { console.error('PashuSakhiBridge listener error:', err); }
+    });
+  }
+
+  window.addEventListener('storage', function(e) {
+    if (e.key === 'psk_bridge_event' && e.newValue) {
+      try {
+        const payload = JSON.parse(e.newValue);
+        if (payload && payload.sourceId !== _tabId) {
+          _listeners.forEach(fn => {
+            try { fn(payload.event, payload.data); } catch (err) { console.error('PashuSakhiBridge cross-tab listener error:', err); }
+          });
+        }
+      } catch (err) {}
+    }
+  });
+
+  window.PashuSakhiBridge = {
+    tabId: _tabId,
+
+    setSession: function(sessionObj) {
+      _set('psk_session', sessionObj);
+      if (sessionObj && sessionObj.language) {
+        try {
+          localStorage.setItem('psk_language', sessionObj.language);
+          localStorage.setItem('lumen_selected_language', sessionObj.language);
+        } catch (e) {}
+      }
+      broadcast('psk:session:updated', sessionObj);
+    },
+
+    getSession: function() {
+      return _get('psk_session', null);
+    },
+
+    clearSession: function() {
+      try {
+        localStorage.removeItem('psk_session');
+        localStorage.removeItem('session:current');
+        localStorage.removeItem('pashusakhi_user');
+      } catch (e) {}
+      broadcast('psk:session:cleared', {});
+    },
+
+    getReports: function(filter) {
+      const all = _get('psk_shared_reports', []);
+      if (!filter || filter === 'All') return all;
+      return all.filter(r => (r.status || '').toLowerCase() === filter.toLowerCase());
+    },
+
+    addReport: function(report) {
+      const reports = _get('psk_shared_reports', []);
+      const newRep = {
+        id: report.id || ('rep_' + Date.now()),
+        type: report.type || 'screening',
+        animalId: report.animalId || 'a1',
+        animalName: report.animalName || 'Livestock',
+        farmerName: report.farmerName || 'Suresh Patil',
+        date: report.date || new Date().toISOString().split('T')[0],
+        condition: report.condition || 'Suspected condition',
+        severity: report.severity || 'attention',
+        confidence: report.confidence || 85,
+        status: report.status || 'New',
+        details: report.details || {}
+      };
+      reports.unshift(newRep);
+      _set('psk_shared_reports', reports);
+      broadcast('psk:report:added', newRep);
+      return newRep;
+    },
+
+    updateReportStatus: function(id, status) {
+      const reports = _get('psk_shared_reports', []);
+      let updated = null;
+      const next = reports.map(r => {
+        if (r.id === id) {
+          updated = { ...r, status };
+          return updated;
+        }
+        return r;
+      });
+      _set('psk_shared_reports', next);
+      if (updated) broadcast('psk:report:updated', updated);
+      return updated;
+    },
+
+    getEmergencies: function(filter) {
+      const all = _get('psk_shared_emergencies', []);
+      if (!filter || filter === 'All') return all;
+      return all.filter(e => (e.status || '').toLowerCase() === filter.toLowerCase());
+    },
+
+    addEmergency: function(emergency) {
+      const emergencies = _get('psk_shared_emergencies', []);
+      const newEmg = {
+        id: emergency.id || ('emg_' + Date.now()),
+        animalId: emergency.animalId || 'a1',
+        animalName: emergency.animalName || 'Livestock',
+        farmerName: emergency.farmerName || 'Suresh Patil',
+        village: emergency.village || 'Wagholi, Pune',
+        contact: emergency.contact || '+91 98765 43210',
+        severity: emergency.severity || 'critical',
+        status: emergency.status || 'new',
+        title: emergency.title || 'Emergency Case',
+        time: emergency.time || 'Just now',
+        assignedVet: emergency.assignedVet || null
+      };
+      emergencies.unshift(newEmg);
+      _set('psk_shared_emergencies', emergencies);
+      broadcast('psk:emergency:added', newEmg);
+      return newEmg;
+    },
+
+    updateEmergencyStatus: function(id, status, vetName) {
+      const emergencies = _get('psk_shared_emergencies', []);
+      let updated = null;
+      const next = emergencies.map(e => {
+        if (e.id === id) {
+          updated = {
+            ...e,
+            status,
+            assignedVet: vetName || e.assignedVet || 'Dr. Kavita Rao'
+          };
+          return updated;
+        }
+        return e;
+      });
+      _set('psk_shared_emergencies', next);
+      if (updated) broadcast('psk:emergency:updated', updated);
+      return updated;
+    },
+
+    getChats: function(animalId) {
+      const chats = _get('psk_shared_chats', {});
+      return animalId ? (chats[animalId] || []) : chats;
+    },
+
+    sendChat: function(animalId, msg) {
+      const chats = _get('psk_shared_chats', {});
+      if (!chats[animalId]) chats[animalId] = [];
+      const newMsg = {
+        id: msg.id || ('msg_' + Date.now()),
+        sender: msg.sender || 'farmer',
+        text: msg.text || '',
+        time: msg.time || 'Just now',
+        timestamp: Date.now(),
+        animalId: animalId
+      };
+      chats[animalId].push(newMsg);
+      _set('psk_shared_chats', chats);
+      broadcast('psk:chat:message', { animalId, message: newMsg });
+      return newMsg;
+    },
+
+    getAnimals: function() {
+      return _get('psk_shared_animals', null);
+    },
+
+    addTreatment: function(animalId, treatmentObj) {
+      const animalsData = _get('psk_shared_animals', {});
+      if (!animalsData[animalId]) animalsData[animalId] = { treatments: [] };
+      if (!animalsData[animalId].treatments) animalsData[animalId].treatments = [];
+      const entry = {
+        id: 'trt_' + Date.now(),
+        date: treatmentObj.date || new Date().toISOString().split('T')[0],
+        condition: treatmentObj.condition || 'Clinical Treatment',
+        medicine: treatmentObj.medicine || 'Prescribed Drug',
+        dosage: treatmentObj.dosage || 'Standard dose',
+        route: treatmentObj.route || 'Oral',
+        duration: treatmentObj.duration || '3 days',
+        notes: treatmentObj.notes || 'Recorded by veterinarian',
+        vetName: treatmentObj.vetName || 'Dr. Kavita Rao'
+      };
+      animalsData[animalId].treatments.unshift(entry);
+      _set('psk_shared_animals', animalsData);
+      broadcast('psk:treatment:added', { animalId, treatment: entry });
+      return entry;
+    },
+
+    updateUserStatus: function(userId, status) {
+      const users = _get('psk_shared_users', {});
+      users[userId] = { status, updatedAt: Date.now() };
+      _set('psk_shared_users', users);
+      broadcast('psk:user:updated', { userId, status });
+    },
+
+    updateCase: function(caseId, updates) {
+      const cases = _get('psk_shared_cases', {});
+      cases[caseId] = { ...(cases[caseId] || {}), ...updates, updatedAt: Date.now() };
+      _set('psk_shared_cases', cases);
+      broadcast('psk:case:updated', { caseId, updates });
+    },
+
+    updateComplaint: function(id, status) {
+      const complaints = _get('psk_shared_complaints', {});
+      complaints[id] = { status, updatedAt: Date.now() };
+      _set('psk_shared_complaints', complaints);
+      broadcast('psk:complaint:updated', { id, status });
+    },
+
+    onEvent: function(fn) {
+      if (typeof fn === 'function') _listeners.add(fn);
+    },
+
+    offEvent: function(fn) {
+      _listeners.delete(fn);
+    },
+
+    seedDefaultData: function() {
+      if (!localStorage.getItem('psk_shared_reports')) {
+        const defaultReports = [
+          { id: "rep_101", type: "detection", animalId: "a1", animalName: "Gauri (Cow)", farmerName: "Suresh Patil", date: new Date().toISOString().split('T')[0], condition: "Suspected Bovine Dermatitis", severity: "attention", confidence: 87, status: "Under Review", details: { title: "Suspected Bovine Dermatitis / Cutaneous Lesions" } },
+          { id: "rep_102", type: "detection", animalId: "a2", animalName: "Raju (Bullock)", farmerName: "Suresh Patil", date: new Date().toISOString().split('T')[0], condition: "Suspected Nodular Skin Lesions", severity: "urgent", confidence: 91, status: "New", details: { title: "Suspected Nodular Skin Lesions" } },
+          { id: "rep_103", type: "screening", animalId: "a3", animalName: "Lakshmi (Buffalo)", farmerName: "Suresh Patil", date: new Date().toISOString().split('T')[0], condition: "Mild Bloat & Lethargy", severity: "attention", confidence: 82, status: "Resolved", details: { title: "Mild Bloat" } }
+        ];
+        _set('psk_shared_reports', defaultReports);
+      }
+
+      if (!localStorage.getItem('psk_shared_emergencies')) {
+        const defaultEmergencies = [
+          { id: "emg_101", animalId: "a2", animalName: "Raju (Bullock)", farmerName: "Suresh Patil", village: "Wagholi, Pune", contact: "+91 98765 43210", severity: "critical", status: "new", title: "Severe colic & unable to stand", time: "14 min ago", assignedVet: null },
+          { id: "emg_102", animalId: "a1", animalName: "Gauri (Cow)", farmerName: "Suresh Patil", village: "Wagholi, Pune", contact: "+91 98765 43210", severity: "high", status: "accepted", title: "Sudden high fever & respiratory distress", time: "35 min ago", assignedVet: "Dr. Kavita Rao" }
+        ];
+        _set('psk_shared_emergencies', defaultEmergencies);
+      }
+    }
+  };
+})();
+</script>
+
+<script type="text/babel" data-type="module" data-presets="react">
+import React, { useState, useMemo, useRef, useEffect } from "react";
+import { createRoot } from "react-dom/client";
+import {
+  Home, MessageCircle, FileText, AlertTriangle, ClipboardList, HeartPulse,
+  Bell, User, Settings, PawPrint, Stethoscope, Phone, ChevronRight, ChevronDown,
+  ArrowLeft, Send, Check, X, Calendar, Clock, ShieldCheck, MapPin, Syringe,
+  Activity, CheckCircle2, AlertCircle, Info, Save, PlusCircle, Search,
+  Camera, Mic, LogOut, Menu, Image as ImageIcon, Edit3, Star, Lock, Trash2,
+  Sun, Moon, Monitor, Type, Eye, HelpCircle, MessageSquare, LifeBuoy,
+  Navigation, Globe, TimerReset, UserCheck, ClipboardCheck, XCircle,
+  CalendarClock, FlaskConical, Siren, MapPinned, NotebookPen, RefreshCcw,
+  Flame, TrendingUp, TrendingDown, Layers, Building2, ShieldAlert,
+  SlidersHorizontal, ArrowUpDown, Filter, ChevronUp, Radio, Crosshair,
+  Truck, Award, Users, AlertOctagon, Share2, Download, Zap
+} from "lucide-react";
+
+/* ------------------------------------------------------------------ */
+/* Mock data & Localizations                                          */
+/* ------------------------------------------------------------------ */
+
+const LANG_CODE_MAP = {
+  "English": "en", "Hindi": "hi", "Marathi": "mr", "Gujarati": "gu", "Punjabi": "pa",
+  "en": "en", "hi": "hi", "mr": "mr", "gu": "gu", "pa": "pa"
+};
+
+const base_en = {
+  about_body: "Pashu Sakhi (\"animal friend\") helps farmers track their livestock's health — vaccinations, treatments, AI-assisted symptom screening and easy access to veterinary support — all in one simple app.",
+  brand_tagline: "Livestock health companion",
+  chat_vetName: "Dr. Kavita Rao",
+  common_back: "Back",
+  common_cancel: "Cancel",
+  common_close: "Close",
+  common_confirm: "Confirm",
+  common_emergency: "Emergency",
+  common_save: "Save changes",
+  common_send: "Send",
+  settings_title: "Settings",
+  status_attention: "Needs attention",
+  status_healthy: "Healthy",
+  status_urgent: "Urgent",
+};
+
+const vet_en = {
+  nav_overview: "Overview",
+  nav_heatmap: "Heat Map",
+  nav_chatRequests: "Chat Requests",
+  nav_aiReports: "AI Reports",
+  nav_emergencyCases: "Emergency Cases",
+  nav_patientRecords: "Patient Records",
+  nav_treatmentHistory: "Treatment History",
+  nav_profile: "Profile",
+  nav_settings: "Settings",
+  nav_notifications: "Notifications",
+  brand_tagline: "Veterinarian workspace",
+
+  vet_availability: "Availability",
+  avail_available: "Available",
+  avail_busy: "Busy",
+  avail_emergencyOnly: "Emergency Only",
+  avail_offline: "Offline",
+  avail_onLeave: "On Leave",
+
+  overview_welcomeBack: "Welcome back",
+  overview_workloadUpdated: "Workload updated a few minutes ago",
+  stat_unreadRequests: "Unread Requests",
+  stat_followUpsToday: "Follow-ups Today",
+  stat_emergencyCases: "Emergency Cases",
+  stat_activeCases: "Active Cases",
+  stat_resolvedCases: "Resolved Cases",
+  overview_priorityCases: "Priority Cases",
+  btn_openCase: "Open Case",
+
+  common_back: "Back",
+  common_cancel: "Cancel",
+  common_close: "Close",
+  common_confirm: "Confirm",
+  common_save: "Save",
+  common_send: "Send",
+  common_done: "Done",
+  common_iUnderstand: "I Understand",
+  common_logout: "Logout",
+
+  settings_title: "Settings",
+  settings_account: "Account",
+  settings_manageProfile: "Manage Profile",
+  settings_changePassword: "Change Password",
+  settings_logout: "Logout",
+  settings_languageAccessibility: "Language & Accessibility",
+  settings_appLanguage: "App Language",
+  settings_textSize: "Text Size",
+  settings_theme: "Theme",
+  settings_highContrast: "High Contrast Mode",
+  settings_notifications: "Notifications",
+  settings_notificationPreferences: "Notification Preferences",
+  settings_reminderTiming: "Reminder Timing",
+  settings_privacySecurity: "Privacy & Security",
+  settings_appPermissions: "App Permissions",
+  settings_privacyPolicy: "Privacy Policy",
+  settings_termsConditions: "Terms & Conditions",
+  settings_helpSupport: "Help & Support",
+  settings_faqs: "FAQs",
+  settings_helpCenter: "Help Center",
+  settings_contactSupport: "Contact Support",
+  settings_reportProblem: "Report a Problem",
+  settings_about: "About",
+  settings_aboutApp: "About Pashu Sakhi",
+  settings_feedback: "Feedback",
+  settings_appVersion: "App Version",
+  settings_light: "Light",
+  settings_dark: "Dark",
+  settings_systemDefault: "System",
+  settings_small: "Small text size",
+  settings_medium: "Medium text size",
+  settings_large: "Large text size",
+
+  btn_accept: "Accept",
+  btn_reject: "Reject",
+  btn_startConsultation: "Start Consultation",
+  btn_openEmergencyChat: "Open Emergency Chat",
+  btn_viewConversation: "View Conversation",
+  btn_sendTreatmentAdvice: "Send Treatment Advice",
+  btn_scheduleFollowUp: "Schedule Follow-up",
+  btn_convertToEmergency: "Convert to Emergency",
+  btn_reviewReport: "Review Report",
+  btn_viewFullImage: "View Full Image",
+  btn_confirmAssessment: "Confirm Assessment",
+  btn_correctAiResult: "Correct AI Result",
+  btn_requestMoreInfo: "Request More Information",
+  btn_escalateEmergency: "Escalate Emergency",
+  btn_acceptCase: "Accept Case",
+  btn_callFarmer: "Call Farmer",
+  btn_sendUrgentInstructions: "Send Urgent Instructions",
+  btn_requestLocation: "Request Location",
+  btn_addNotes: "Add Notes",
+  btn_assignVisit: "Assign Visit",
+  btn_escalate: "Escalate",
+  btn_markUnderTreatment: "Mark Under Treatment",
+  btn_markResolved: "Mark Resolved",
+  btn_messageFarmer: "Message Farmer",
+  btn_newTreatment: "New Treatment",
+  btn_editProfile: "Edit Profile",
+  btn_sendFeedback: "Send Feedback",
+  btn_updatePassword: "Update Password",
+  btn_submitReport: "Submit Report",
+  btn_sendMessage: "Send Message",
+  btn_requestInfo: "Request Info",
+  btn_requestImage: "Request Image",
+  btn_setPriority: "Set Priority",
+  btn_markFollowUp: "Mark Follow-up",
+  btn_closeConsultation: "Close Consultation",
+
+  filter_all: "All",
+  filter_pending: "Pending",
+  filter_inConsultation: "In Consultation",
+  filter_resolved: "Resolved",
+  filter_highPriority: "High priority",
+  filter_allDistricts: "All Districts",
+  filter_allPatients: "All Patients",
+  filter_active: "Active",
+  filter_escalated: "Escalated",
+  filter_criticalOnly: "Critical Only",
+  filter_pendingReview: "Pending Review",
+  filter_completed: "Completed",
+  filter_highSeverity: "High Severity Only",
+
+  tab_overview: "Overview",
+  tab_treatments: "Treatments",
+  tab_vaccinations: "Vaccinations",
+  tab_consultations: "Consultations",
+  tab_screenings: "Screenings",
+  search_patientsPlaceholder: "Search by animal, ear-tag, farmer, species, breed, location...",
+  notif_empty: "No notifications right now.",
+
+  profile_clinic: "Clinic",
+  profile_serviceArea: "Service Area",
+  profile_experience: "Experience",
+  profile_contact: "Contact"
+};
+
+const translations = {
+  en: Object.assign({}, base_en, vet_en)
+};
+
+function tt(lang, key, fallback) {
+  const code = LANG_CODE_MAP[lang] || lang || "en";
+  if (translations[code] && translations[code][key] !== undefined && translations[code][key] !== "") {
+    return translations[code][key];
+  }
+  if (translations.en && translations.en[key] !== undefined && translations.en[key] !== "") {
+    return translations.en[key];
+  }
+  return fallback !== undefined ? fallback : key;
+}
+
+const LanguageContext = React.createContext({
+  t: (k, f) => (f !== undefined ? f : k),
+  appLanguage: 'English',
+  setAppLanguage: () => {}
+});
+
+function useT() {
+  const ctx = React.useContext(LanguageContext);
+  return ctx.t;
+}
+
+const VET_PROFILE = {
+  name: "Dr. Aditi Kulkarni",
+  qualification: "BVSc & AH",
+  registrationNumber: "MH-VET-20394",
+  specialization: "Large Animal Medicine & Reproduction",
+  clinic: "Pashu Sakhi Veterinary Support Center, Nashik",
+  serviceArea: "Nashik & Igatpuri Taluka",
+  experience: "9 years",
+  contact: "+91 98230 45192",
+  verified: true,
+};
+
+const AVAILABILITY_OPTIONS = [
+  { value: "available", label: "Available", color: "var(--healthy)" },
+  { value: "busy", label: "Busy", color: "var(--attention)" },
+  { value: "emergencyOnly", label: "Emergency Only", color: "var(--brand)" },
+  { value: "offline", label: "Offline", color: "var(--ink-soft)" },
+  { value: "leave", label: "On Leave", color: "var(--accent)" },
+];
+
+/* ------------------------------------------------------------------ */
+/* Veterinary Heat Map & Outbreak Monitoring Dataset                  */
+/* ------------------------------------------------------------------ */
+
+const INITIAL_HOTSPOTS = [
+  {
+    id: "HS-01",
+    district: "Nashik",
+    location: "Sinnar & Dodi Taluka",
+    disease: "Lumpy Skin Disease (LSD)",
+    shortName: "LSD",
+    risk: "High",
+    status: "Confirmed",
+    statusDetail: "Active Cluster",
+    x: 38,
+    y: 36,
+    radius: 42,
+    affectedAnimals: 64,
+    affectedFarms: 19,
+    species: "Cattle & Buffalo",
+    date: "07 Sep 2026",
+    daysAgo: 2,
+    recentIncrease: "+28%",
+    spreadSummary: "Rapid nodular contagion spreading east along river basin grazing pastures; 5km biosecurity ring deployed.",
+    advisory: "Deploy emergency goat-pox booster ring vaccination and prohibit animal trade in Sinnar livestock market.",
+    contained: false,
+    dailyHistory: [4, 6, 9, 12, 18, 22, 29]
+  },
+  {
+    id: "HS-02",
+    district: "Pune",
+    location: "Baramati & Daund",
+    disease: "Foot & Mouth Disease (FMD)",
+    shortName: "FMD",
+    risk: "High",
+    status: "Confirmed",
+    statusDetail: "Active Outbreak",
+    x: 62,
+    y: 74,
+    radius: 46,
+    affectedAnimals: 88,
+    affectedFarms: 27,
+    species: "Cows, Buffaloes & Goats",
+    date: "08 Sep 2026",
+    daysAgo: 1,
+    recentIncrease: "+34%",
+    spreadSummary: "Salivary & aerosol transmission observed across dairy clusters post weekly transit; milk collection sanitized.",
+    advisory: "Immediate isolation of drooling cattle, mandatory footbaths with 4% sodium carbonate at barn entrances.",
+    contained: false,
+    dailyHistory: [6, 11, 15, 24, 32, 45, 54]
+  },
+  {
+    id: "HS-03",
+    district: "Ahmednagar",
+    location: "Sangamner & Akole",
+    disease: "Haemorrhagic Septicaemia (HS)",
+    shortName: "HS",
+    risk: "High",
+    status: "Confirmed",
+    statusDetail: "Critical Severity",
+    x: 48,
+    y: 50,
+    radius: 38,
+    affectedAnimals: 39,
+    affectedFarms: 14,
+    species: "Crossbred Bovine & Draft Bullocks",
+    date: "06 Sep 2026",
+    daysAgo: 3,
+    recentIncrease: "+19%",
+    spreadSummary: "Acute respiratory distress and high fever observed in low-lying waterlogged fields. 4 sudden mortalities.",
+    advisory: "Rapid administration of oxytetracycline/sulfamethazine in prodromal stage; drain stagnant ponds.",
+    contained: false,
+    dailyHistory: [3, 5, 8, 14, 18, 22, 29]
+  },
+  {
+    id: "HS-04",
+    district: "Nashik",
+    location: "Malegaon Taluka",
+    disease: "PPR (Peste des Petits Ruminants)",
+    shortName: "PPR",
+    risk: "Medium",
+    status: "Suspected",
+    statusDetail: "Laboratory Verification",
+    x: 32,
+    y: 22,
+    radius: 32,
+    affectedAnimals: 42,
+    affectedFarms: 11,
+    species: "Goats & Sheep",
+    date: "05 Sep 2026",
+    daysAgo: 4,
+    recentIncrease: "+12%",
+    spreadSummary: "Pyrexia, nasal discharges and erosive oral stomatitis in semi-migratory sheep herds. Nasal swabs sent to CADRAD.",
+    advisory: "Quarantine affected herds, ring vaccination with PPR vaccine 3km around village boundaries.",
+    contained: false,
+    dailyHistory: [2, 4, 7, 10, 16, 19, 23]
+  },
+  {
+    id: "HS-05",
+    district: "Ahmednagar",
+    location: "Rahata & Shirdi Rural",
+    disease: "Black Quarter (BQ)",
+    shortName: "BQ",
+    risk: "Medium",
+    status: "Confirmed",
+    statusDetail: "Under Containment",
+    x: 52,
+    y: 40,
+    radius: 28,
+    affectedAnimals: 18,
+    affectedFarms: 8,
+    species: "Young Calves (6-24 months)",
+    date: "03 Sep 2026",
+    daysAgo: 6,
+    recentIncrease: "+5%",
+    spreadSummary: "Crepitant muscular swelling in thigh region; soil-borne spore activation post sudden rain showers.",
+    advisory: "Procaine penicillin high dose therapy; strictly prohibit opening of unburied carcasses to prevent spore dispersal.",
+    contained: true,
+    dailyHistory: [5, 7, 11, 13, 14, 16, 18]
+  },
+  {
+    id: "HS-06",
+    district: "Pune",
+    location: "Shirur & Junnar",
+    disease: "Brucellosis",
+    shortName: "Brucellosis",
+    risk: "Low",
+    status: "Suspected",
+    statusDetail: "Screening Alert",
+    x: 52,
+    y: 64,
+    radius: 24,
+    affectedAnimals: 11,
+    affectedFarms: 4,
+    species: "Milch Buffalo & Cows",
+    date: "01 Sep 2026",
+    daysAgo: 8,
+    recentIncrease: "+2%",
+    spreadSummary: "Late term abortions reported in 3 commercial sheds; milk-ring test positive, awaiting serum agglutination.",
+    advisory: "Pasteurization alert issued to local chilling plants; PPE protocol mandated for dairy workers.",
+    contained: true,
+    dailyHistory: [2, 3, 4, 6, 7, 9, 11]
+  },
+  {
+    id: "HS-07",
+    district: "Jalgaon",
+    location: "Chalisgaon Border",
+    disease: "Lumpy Skin Disease (LSD)",
+    shortName: "LSD",
+    risk: "Medium",
+    status: "Confirmed",
+    statusDetail: "Vector Surge",
+    x: 58,
+    y: 20,
+    radius: 30,
+    affectedAnimals: 26,
+    affectedFarms: 9,
+    species: "Indigenous Cattle (Gir/Khillar)",
+    date: "08 Sep 2026",
+    daysAgo: 1,
+    recentIncrease: "+15%",
+    spreadSummary: "Biting flies and Stomoxys vector density increased around sugarcane transport routes.",
+    advisory: "Mass fly-repellent spraying (cypermethrin/deltamethrin) across cattle sheds.",
+    contained: false,
+    dailyHistory: [3, 4, 7, 11, 15, 20, 26]
+  },
+  {
+    id: "HS-08",
+    district: "Satara",
+    location: "Karad & Phaltan",
+    disease: "Foot & Mouth Disease (FMD)",
+    shortName: "FMD",
+    risk: "Low",
+    status: "Suspected",
+    statusDetail: "Monitoring",
+    x: 64,
+    y: 86,
+    radius: 22,
+    affectedAnimals: 14,
+    affectedFarms: 5,
+    species: "Crossbred Dairy Cows",
+    date: "04 Sep 2026",
+    daysAgo: 5,
+    recentIncrease: "-3%",
+    spreadSummary: "Mild interdigital ulceration; prompt ring containment reduced transmission by 40%.",
+    advisory: "Maintain movement checkpoints at Phaltan border; booster doses for perimeter herds.",
+    contained: true,
+    dailyHistory: [5, 8, 12, 15, 16, 15, 14]
+  },
+  {
+    id: "HS-09",
+    district: "Nashik",
+    location: "Niphad & Chandwad",
+    disease: "Anthrax (Sporadic)",
+    shortName: "Anthrax",
+    risk: "High",
+    status: "Confirmed",
+    statusDetail: "Emergency Quarantined",
+    x: 42,
+    y: 28,
+    radius: 36,
+    affectedAnimals: 12,
+    affectedFarms: 4,
+    species: "Bullocks & Goats",
+    date: "09 Sep 2026",
+    daysAgo: 0,
+    recentIncrease: "+100%",
+    spreadSummary: "Peracute death with incomplete rigor mortis. Deep burial with quicklime carried out under vet supervision.",
+    advisory: "10 km radius ring vaccination with Anthrax Spore Vaccine. Forbid grazing in affected pasture for 6 months.",
+    contained: false,
+    dailyHistory: [0, 0, 1, 1, 3, 7, 12]
+  },
+  {
+    id: "HS-10",
+    district: "Chhatrapati Sambhaji Nagar",
+    location: "Vaijapur Rural",
+    disease: "PPR (Peste des Petits Ruminants)",
+    shortName: "PPR",
+    risk: "Medium",
+    status: "Confirmed",
+    statusDetail: "Active Cluster",
+    x: 74,
+    y: 38,
+    radius: 28,
+    affectedAnimals: 31,
+    affectedFarms: 10,
+    species: "Goats (Osmanabadi)",
+    date: "06 Sep 2026",
+    daysAgo: 3,
+    recentIncrease: "+18%",
+    spreadSummary: "Contagious spread in community grazing commons; temperature spikes up to 106°F.",
+    advisory: "Distribution of oral rehydration salts, broad spectrum supportive antibiotics to prevent secondary pneumonia.",
+    contained: false,
+    dailyHistory: [4, 7, 11, 16, 21, 26, 31]
+  }
+];
+
+const VETERINARY_SUPPORT_PROVIDERS = [
+  {
+    id: "vet-01",
+    name: "Dr. Nilesh Shinde, MVSc",
+    type: "State Veterinary Officer",
+    category: "Officer",
+    affiliation: "Govt. Mobile Animal Dispensary",
+    location: "Sinnar Sub-Divisional Hospital, Nashik",
+    district: "Nashik",
+    distanceKm: 4.8,
+    phone: "+91 98224 81034",
+    availability: "Available",
+    unitsAvailable: "1 Mobile Surgical Van",
+    specialization: "Epidemiology & Outbreak Containment",
+    rating: 4.9,
+    statusColor: "var(--healthy)"
+  },
+  {
+    id: "vet-02",
+    name: "Dr. Aditi Kulkarni, BVSc & AH",
+    type: "Senior Clinical Veterinarian",
+    category: "Veterinarian",
+    affiliation: "Pashu Sakhi Zonal Health Center",
+    location: "Nashik Central & Igatpuri Range",
+    district: "Nashik",
+    distanceKm: 9.2,
+    phone: "+91 98230 45192",
+    availability: "Available",
+    unitsAvailable: "Diagnostic Telemetry Unit",
+    specialization: "Large Ruminants & Reproduction",
+    rating: 4.9,
+    statusColor: "var(--healthy)"
+  },
+  {
+    id: "vet-03",
+    name: "District Veterinary Polyclinic & ER",
+    type: "24x7 Government Veterinary Hospital",
+    category: "Hospital",
+    affiliation: "Department of Animal Husbandry, GoM",
+    location: "Trimbak Road, Nashik",
+    district: "Nashik",
+    distanceKm: 12.4,
+    phone: "+91 253 257 8812",
+    availability: "Available",
+    unitsAvailable: "2 Dedicated Critical Care Ambulances",
+    specialization: "ICU, Cold-Chain Vaccine Depot, Lab Testing",
+    rating: 4.7,
+    statusColor: "var(--healthy)"
+  },
+  {
+    id: "vet-04",
+    name: "Dr. Pradeep Deshmukh, MVSc",
+    type: "Rapid Response Specialist",
+    category: "Veterinarian",
+    affiliation: "Sangamner Block Animal Care Center",
+    location: "Sangamner MIDC, Ahmednagar",
+    district: "Ahmednagar",
+    distanceKm: 18.6,
+    phone: "+91 94220 18451",
+    availability: "On-Field",
+    unitsAvailable: "Emergency Field Kit",
+    specialization: "Infectious Bovine Pathology",
+    rating: 4.8,
+    statusColor: "var(--attention)"
+  },
+  {
+    id: "vet-05",
+    name: "Baramati BAIF Livestock Support Center",
+    type: "Mobile Veterinary Clinic",
+    category: "Mobile Unit",
+    affiliation: "BAIF Development Research Foundation",
+    location: "Baramati Agro-Dairy Belt, Pune",
+    district: "Pune",
+    distanceKm: 24.1,
+    phone: "+91 2112 254 300",
+    availability: "Emergency Only",
+    unitsAvailable: "Mobile Ultrasound & Field Lab",
+    specialization: "Herd Immunity & Ring Vaccination",
+    rating: 4.8,
+    statusColor: "var(--brand)"
+  },
+  {
+    id: "vet-06",
+    name: "Western Regional Disease Diagnostic Lab (WRDDL)",
+    type: "Apex Reference Laboratory & Serum Bank",
+    category: "Hospital",
+    affiliation: "State Institute of Animal Health",
+    location: "Aundh, Pune",
+    district: "Pune",
+    distanceKm: 46.5,
+    phone: "+91 20 2565 0941",
+    availability: "Available",
+    unitsAvailable: "Bio-Safety Level 2+ Diagnostic Testing",
+    specialization: "Viral Strain Characterization & Serology",
+    rating: 5.0,
+    statusColor: "var(--healthy)"
+  },
+  {
+    id: "vet-07",
+    name: "Dr. Sunita Gaikwad, BVSc",
+    type: "Livestock Inspector & Clinician",
+    category: "Veterinarian",
+    affiliation: "Malegaon Veterinary Dispensary",
+    location: "Malegaon Rural, Nashik",
+    district: "Nashik",
+    distanceKm: 29.3,
+    phone: "+91 98811 74230",
+    availability: "Available",
+    unitsAvailable: "1 Field Inspection Vehicle",
+    specialization: "Small Ruminants (Goat/Sheep Health)",
+    rating: 4.6,
+    statusColor: "var(--healthy)"
+  }
+];
+
+/* ------------------------------------------------------------------ */
+/* Historical Patients & Records Data                                 */
+/* ------------------------------------------------------------------ */
+
+const initialPatients = [
+  {
+    id: "gauri", name: "Gauri", earTag: "MH-NSK-0417", species: "Cow", breed: "Gir",
+    age: 4, gender: "Female", owner: "Ramesh Yadav", location: "Sawantwadi, Nashik",
+    healthStatus: "attention",
+    vaccinations: [
+      { name: "FMD (Foot & Mouth Disease)", status: "Due 12 Sep 2026" },
+      { name: "HS (Haemorrhagic Septicaemia)", status: "Completed 20 Aug 2026" },
+    ],
+    aiReports: ["ar1"],
+    consultations: 2,
+    emergencyHistory: [],
+    images: 2,
+    followUps: [{ date: "07 Sep 2026", reason: "Mastitis recheck" }],
+  },
+  {
+    id: "sheru", name: "Sheru", earTag: "MH-PUN-1182", species: "Buffalo", breed: "Murrah",
+    age: 6, gender: "Male", owner: "Suresh Patil", location: "Wagholi, Pune",
+    healthStatus: "urgent",
+    vaccinations: [{ name: "FMD (Foot & Mouth Disease)", status: "Completed 02 Jul 2026" }],
+    aiReports: [],
+    consultations: 1,
+    emergencyHistory: [{ date: "04 Sep 2026", label: "Suspected bloat / tympany" }],
+    images: 1,
+    followUps: [],
+  },
+  {
+    id: "moti", name: "Moti", earTag: "MH-NSK-0928", species: "Goat", breed: "Sirohi",
+    age: 2, gender: "Female", owner: "Lakshmi Devi", location: "Deolali, Nashik",
+    healthStatus: "healthy",
+    vaccinations: [{ name: "PPR (Peste des Petits Ruminants)", status: "Completed 11 Jun 2026" }],
+    aiReports: [],
+    consultations: 1,
+    emergencyHistory: [],
+    images: 1,
+    followUps: [],
+  },
+  {
+    id: "kaalu", name: "Kaalu", earTag: "MH-NSK-0552", species: "Dog", breed: "Indie",
+    age: 3, gender: "Male", owner: "Anita Sharma", location: "Panchavati, Nashik",
+    healthStatus: "attention",
+    vaccinations: [{ name: "Anti-Rabies", status: "Completed 02 Feb 2026" }],
+    aiReports: ["ar2"],
+    consultations: 2,
+    emergencyHistory: [],
+    images: 3,
+    followUps: [{ date: "09 Sep 2026", reason: "Skin infection recheck" }],
+  },
+  {
+    id: "chandni", name: "Chandni", earTag: "MH-NSK-0301", species: "Cow", breed: "Sahiwal",
+    age: 5, gender: "Female", owner: "Vikram Singh", location: "Trimbak Road, Nashik",
+    healthStatus: "healthy",
+    vaccinations: [{ name: "FMD (Foot & Mouth Disease)", status: "Completed 15 Aug 2026" }],
+    aiReports: ["ar4"],
+    consultations: 3,
+    emergencyHistory: [],
+    images: 1,
+    followUps: [],
+  },
+  {
+    id: "raja", name: "Raja", earTag: "MH-NSK-0764", species: "Buffalo", breed: "Murrah",
+    age: 4, gender: "Male", owner: "Ramesh Yadav", location: "Sawantwadi, Nashik",
+    healthStatus: "attention",
+    vaccinations: [{ name: "FMD (Foot & Mouth Disease)", status: "Due 12 Sep 2026" }],
+    aiReports: ["ar3"],
+    consultations: 1,
+    emergencyHistory: [],
+    images: 2,
+    followUps: [{ date: "06 Sep 2026", reason: "Lameness recheck" }],
+  },
+];
+
+const initialRequests = [
+  { id: "REQ-2041", farmerId: "FARM-1001", farmer: "Ramesh Yadav", animalId: "gauri", animal: "Gauri", species: "Cow", breed: "Gir",
+    symptoms: "Swollen udder, warm to touch, milk yield dropped since yesterday.", image: true,
+    location: "Sawantwadi, Nashik", district: "Nashik", priority: "moderate", submitted: "20 min ago", status: "new" },
+  { id: "REQ-2040", farmerId: "FARM-1002", farmer: "Anita Sharma", animalId: "kaalu", animal: "Kaalu", species: "Dog", breed: "Indie",
+    symptoms: "Patchy hair loss and scratching around the neck for 4 days.", image: true,
+    location: "Panchavati, Nashik", district: "Nashik", priority: "moderate", submitted: "1 hr ago", status: "waiting" },
+  { id: "REQ-2042", farmerId: "FARM-1003", farmer: "Suresh Patil", animalId: "sheru", animal: "Sheru", species: "Buffalo", breed: "Murrah",
+    symptoms: "Bloated stomach, restless, not eating, laboured breathing.", image: true,
+    location: "Wagholi, Pune", district: "Pune", priority: "critical", submitted: "8 min ago", status: "emergency" },
+  { id: "REQ-2035", farmerId: "FARM-1004", farmer: "Lakshmi Devi", animalId: "moti", animal: "Moti", species: "Goat", breed: "Sirohi",
+    symptoms: "Slightly reduced appetite for two days, otherwise active.", image: false,
+    location: "Deolali, Nashik", district: "Nashik", priority: "low", submitted: "Yesterday", status: "inConsultation" },
+  { id: "REQ-2038", farmerId: "FARM-1001", farmer: "Ramesh Yadav", animalId: "raja", animal: "Raja", species: "Buffalo", breed: "Murrah",
+    symptoms: "Limping on the front-right leg since this morning.", image: true,
+    location: "Sawantwadi, Nashik", district: "Nashik", priority: "high", submitted: "35 min ago", status: "unread" },
+  { id: "REQ-2020", farmerId: "FARM-1005", farmer: "Vikram Singh", animalId: "chandni", animal: "Chandni", species: "Cow", breed: "Sahiwal",
+    symptoms: "Routine question about deworming schedule.", image: false,
+    location: "Trimbak Road, Nashik", district: "Nashik", priority: "low", submitted: "2 days ago", status: "resolved" },
+];
+
+const initialReports = [
+  { id: "AR-3311", animalId: "gauri", animal: "Gauri", farmer: "Ramesh Yadav", condition: "Mastitis (Early Stage)",
+    confidence: 78, severity: "moderate", symptoms: "Swollen, warm udder; drop in milk yield.", datetime: "04 Sep 2026, 8:10 AM", status: "New" },
+  { id: "AR-3298", animalId: "kaalu", animal: "Kaalu", farmer: "Anita Sharma", condition: "Skin Infection (Fungal)",
+    confidence: 86, severity: "moderate", symptoms: "Circular patchy hair loss, scratching, mild redness.", datetime: "03 Sep 2026, 6:40 PM", status: "Under Review" },
+  { id: "AR-3305", animalId: "raja", animal: "Raja", farmer: "Ramesh Yadav", condition: "Foot Rot",
+    confidence: 71, severity: "high", symptoms: "Limping, swelling between hooves, mild odour.", datetime: "04 Sep 2026, 7:55 AM", status: "New" },
+  { id: "AR-3260", animalId: "chandni", animal: "Chandni", farmer: "Vikram Singh", condition: "No Significant Concern",
+    confidence: 92, severity: "low", symptoms: "Routine screening, no abnormal symptoms reported.", datetime: "01 Sep 2026, 9:15 AM", status: "Resolved" },
+];
+
+function mapBackendEmergency(e) {
+  return {
+    id: e.id,
+    animalId: (e.animal && e.animal.id) || e.animalId || 'a1',
+    animal: (e.animal && e.animal.name) || 'Livestock',
+    farmer: (e.animal && e.animal.owner && e.animal.owner.name) || 'Farmer',
+    location: e.location || 'Maharashtra',
+    symptoms: e.description || e.title || 'Emergency reported',
+    aiResult: e.title || 'Acute Livestock Distress',
+    severity: (e.severity || 'HIGH').toLowerCase(),
+    timeReported: e.createdAt ? new Date(e.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'Just now',
+    assignedVet: e.assignedVet ? e.assignedVet.name : 'Unassigned',
+    status: (e.status || 'NEW').toLowerCase(),
+    timer: '09:00'
+  };
+}
+
+const initialEmergencies = [
+  { id: "EMG-0512", animalId: "sheru", animal: "Sheru", farmer: "Suresh Patil", location: "Wagholi, Pune",
+    symptoms: "Bloated stomach, restless, laboured breathing, not eating since morning.",
+    aiResult: "Possible ruminal tympany (bloat)", severity: "critical", timeReported: "8 min ago",
+    assignedVet: "Unassigned", status: "new", timer: "08:42" },
+  { id: "EMG-0498", animalId: "kaalu", animal: "Kaalu", farmer: "Anita Sharma", location: "Panchavati, Nashik",
+    symptoms: "Sudden limping and whimpering after a fall.", aiResult: "Possible soft-tissue injury",
+    severity: "moderate", timeReported: "Yesterday", assignedVet: "Dr. Aditi Kulkarni", status: "resolved", timer: "18:05" },
+];
+
+const treatmentHistoryData = {
+  gauri: [
+    { date: "20 Aug 2026", condition: "Vaccination — HS", medicine: "HS Vaccine", dosage: "2 ml", route: "SC", duration: "Single dose",
+      notes: "Routine annual vaccination, no adverse reaction observed.", followUp: "—", attachments: 0 },
+  ],
+  kaalu: [
+    { date: "28 Aug 2026", condition: "Skin infection identified", medicine: "—", dosage: "—", route: "—", duration: "—",
+      notes: "AI screening flagged fungal infection; awaiting clinical assessment.", followUp: "—", attachments: 1 },
+  ],
+  raja: [
+    { date: "04 Sep 2026", condition: "Foot rot suspected", medicine: "—", dosage: "—", route: "—", duration: "—",
+      notes: "AI report reviewed; scheduling clinical exam before treatment.", followUp: "06 Sep 2026", attachments: 1 },
+  ],
+  sheru: [],
+  moti: [],
+  chandni: [
+    { date: "15 Aug 2026", condition: "Vaccination — FMD", medicine: "FMD Vaccine", dosage: "2 ml", route: "SC", duration: "Single dose",
+      notes: "No concerns at routine screening.", followUp: "—", attachments: 0 },
+  ],
+};
+
+const initialNotifications = [
+  { id: "n1", type: "consultation", title: "New consultation request", message: "Ramesh Yadav submitted a request for Gauri.", time: "20 min ago", read: false, view: "conversation", refId: "REQ-2041" },
+  { id: "n2", type: "emergency", title: "Critical emergency reported", message: "Sheru (Suresh Patil) — suspected bloat.", time: "8 min ago", read: false, view: "emergency", refId: "EMG-0512" },
+  { id: "n3", type: "reply", title: "Farmer replied", message: "Anita Sharma sent a follow-up message about Kaalu.", time: "45 min ago", read: false, view: "conversation", refId: "REQ-2040" },
+  { id: "n4", type: "followup", title: "Follow-up reminder", message: "Chandni's routine follow-up is due today.", time: "Today", read: true, view: "patientDetail", refId: "chandni" },
+  { id: "n5", type: "admin", title: "Admin message", message: "Monthly case summary report is due on 10 Sep.", time: "Yesterday", read: true, view: "notifications", refId: null },
+  { id: "n6", type: "risk", title: "Disease-risk alert", message: "FMD risk rising across Nashik district — advise farmers on booster timing.", time: "2 days ago", read: true, view: "notifications", refId: null },
+  { id: "n7", type: "reassigned", title: "Case reassigned to you", message: "Raja's case has been reassigned to you.", time: "Today", read: false, view: "conversation", refId: "REQ-2038" },
+  { id: "n8", type: "verification", title: "Verification update", message: "Your registration renewal has been approved.", time: "3 days ago", read: true, view: "notifications", refId: null },
+];
+
+const SEVERITY_META = {
+  critical: { label: "Critical", badgeCls: "badge-critical", dot: "#B3402A" },
+  high: { label: "High", badgeCls: "badge-high", dot: "#D98B2B" },
+  moderate: { label: "Moderate", badgeCls: "badge-moderate", dot: "#B9791F" },
+  low: { label: "Low", badgeCls: "badge-low", dot: "#2F7A4F" },
+};
+
+function SeverityBadge({ level }) {
+  const s = SEVERITY_META[level] || SEVERITY_META.moderate;
+  return (
+    <span className={`badge ${s.badgeCls}`}>
+      <span className="sev-dot" style={{ background: s.dot }} />
+      {s.label}
+    </span>
+  );
+}
+
+const STATUS_META = {
+  new: { label: "New", tone: "info" },
+  unread: { label: "Unread", tone: "vaccination" },
+  emergency: { label: "Emergency", tone: "urgent" },
+  waiting: { label: "Waiting for response", tone: "attention" },
+  inConsultation: { label: "In Consultation", tone: "info" },
+  resolved: { label: "Resolved", tone: "healthy" },
+  underReview: { label: "Under Review", tone: "attention" },
+  moreInfo: { label: "More Information Required", tone: "vaccination" },
+  assessmentDone: { label: "Assessment Completed", tone: "info" },
+  treatmentStarted: { label: "Treatment Started", tone: "info" },
+  followUpScheduled: { label: "Follow-up Scheduled", tone: "vaccination" },
+  awaitingVet: { label: "Awaiting Veterinarian", tone: "attention" },
+  assigned: { label: "Assigned", tone: "info" },
+  inTreatment: { label: "In Treatment", tone: "info" },
+  escalated: { label: "Escalated", tone: "urgent" },
+};
+
+function StatusPill({ status }) {
+  const m = STATUS_META[status] || { label: status, tone: "info" };
+  return <span className={`badge badge-${m.tone}`}>{m.label}</span>;
+}
+
+function RiskPill({ risk }) {
+  if (risk === "High" || risk === "Critical") {
+    return <span className="badge badge-urgent"><Flame size={12} /> High Risk</span>;
+  }
+  if (risk === "Medium" || risk === "Moderate") {
+    return <span className="badge badge-attention"><AlertTriangle size={12} /> Medium Risk</span>;
+  }
+  return <span className="badge badge-healthy"><ShieldCheck size={12} /> Low Risk</span>;
+}
+
+function isToday(dateInput) {
+  if (!dateInput) return false;
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth();
+  const currentDate = now.getDate();
+
+  if (typeof dateInput === "string") {
+    const s = dateInput.trim().toLowerCase();
+    if (s === "today") return true;
+    const dmyMatch = s.match(/^(\d{1,2})\s+([a-z]{3,9})\s+(\d{4})$/i);
+    if (dmyMatch) {
+      const day = parseInt(dmyMatch[1], 10);
+      const monthStr = dmyMatch[2].slice(0, 3).toLowerCase();
+      const year = parseInt(dmyMatch[3], 10);
+      const months = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+      const monthIndex = months.indexOf(monthStr);
+      if (monthIndex !== -1) {
+        return year === currentYear && monthIndex === currentMonth && day === currentDate;
+      }
+    }
+  }
+  return false;
+}
+
+function Card({ children, className = "", onClick, style, role, tabIndex, ariaLabel }) {
+  return (
+    <div
+      className={`psk-card ${onClick ? "psk-card-clickable" : ""} ${className}`}
+      onClick={onClick}
+      role={role || (onClick ? "button" : undefined)}
+      tabIndex={tabIndex !== undefined ? tabIndex : (onClick ? 0 : undefined)}
+      aria-label={ariaLabel}
+      onKeyDown={onClick ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(e); } } : undefined}
+      style={style}
+    >
+      {children}
+    </div>
+  );
+}
+
+function SectionTitle({ children, action }) {
+  return (
+    <div className="section-title-row">
+      <h2 className="section-title">{children}</h2>
+      {action}
+    </div>
+  );
+}
+
+function Avatar({ label, size = 46, tone = "brand" }) {
+  const bg = tone === "urgent" ? "var(--urgent)" : tone === "attention" ? "var(--attention)" : "var(--brand)";
+  return (
+    <div className="animal-avatar" style={{ width: size, height: size, background: bg, fontSize: size * 0.4 }} aria-hidden="true">
+      {label ? label.slice(0, 1) : "P"}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Disease Monitoring Dashboard Component (Heat Map View)             */
+/* ------------------------------------------------------------------ */
+
+function DiseaseHeatmapDashboard({ showToast }) {
+  // Filter States
+  const [selectedDisease, setSelectedDisease] = useState("all");
+  const [selectedDistrict, setSelectedDistrict] = useState("all");
+  const [selectedRisk, setSelectedRisk] = useState("all");
+  const [dateRange, setDateRange] = useState("30d"); // "7d", "14d", "30d", "all"
+  const [trendWindow, setTrendWindow] = useState("30d"); // "7d" vs "30d"
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // Sorting is simplified to Risk (highest first) only
+
+  // Active Map & Selection State
+  const [selectedHotspotId, setSelectedHotspotId] = useState("HS-01");
+  const [showRiskZones, setShowRiskZones] = useState(true);
+  const [showVetMarkers, setShowVetMarkers] = useState(true);
+
+  // Quick Action State
+  const [dispatchedUnits, setDispatchedUnits] = useState({});
+
+  // Distinct options
+  const diseaseOptions = [
+    { value: "all", label: "All Diseases" },
+    { value: "Lumpy Skin Disease (LSD)", label: "Lumpy Skin Disease (LSD)" },
+    { value: "Foot & Mouth Disease (FMD)", label: "Foot & Mouth Disease (FMD)" },
+    { value: "Haemorrhagic Septicaemia (HS)", label: "Haemorrhagic Septicaemia (HS)" },
+    { value: "PPR (Peste des Petits Ruminants)", label: "PPR (Goat Plague)" },
+    { value: "Black Quarter (BQ)", label: "Black Quarter (BQ)" },
+    { value: "Brucellosis", label: "Brucellosis" },
+    { value: "Anthrax (Sporadic)", label: "Anthrax (Sporadic)" },
+  ];
+
+  const districtOptions = [
+    { value: "all", label: "All Districts" },
+    { value: "Nashik", label: "Nashik" },
+    { value: "Pune", label: "Pune" },
+    { value: "Ahmednagar", label: "Ahmednagar" },
+    { value: "Satara", label: "Satara" },
+    { value: "Jalgaon", label: "Jalgaon" },
+    { value: "Chhatrapati Sambhaji Nagar", label: "Chhatrapati Sambhaji Nagar" },
+  ];
+
+  // Filter Logic
+  const filteredHotspots = useMemo(() => {
+    return INITIAL_HOTSPOTS.filter((h) => {
+      if (selectedDisease !== "all" && h.disease !== selectedDisease) return false;
+      if (selectedDistrict !== "all" && h.district !== selectedDistrict) return false;
+      if (selectedRisk !== "all" && h.risk.toLowerCase() !== selectedRisk.toLowerCase()) return false;
+      if (dateRange === "7d" && h.daysAgo > 7) return false;
+      if (dateRange === "14d" && h.daysAgo > 14) return false;
+      if (dateRange === "30d" && h.daysAgo > 30) return false;
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const match =
+          h.disease.toLowerCase().includes(q) ||
+          h.district.toLowerCase().includes(q) ||
+          h.location.toLowerCase().includes(q) ||
+          h.species.toLowerCase().includes(q);
+        if (!match) return false;
+      }
+      return true;
+    }).sort((a, b) => {
+      const riskWeight = { High: 3, Medium: 2, Low: 1 };
+      return (riskWeight[b.risk] || 0) - (riskWeight[a.risk] || 0);
+    });
+  }, [selectedDisease, selectedDistrict, selectedRisk, dateRange, searchQuery]);
+
+  // Selected Hotspot Object
+  const selectedHotspot = useMemo(() => {
+    return (
+      filteredHotspots.find((h) => h.id === selectedHotspotId) ||
+      filteredHotspots[0] ||
+      INITIAL_HOTSPOTS[0]
+    );
+  }, [filteredHotspots, selectedHotspotId]);
+
+  // Priority response ranking: computed dynamically
+  const rankedAreas = useMemo(() => {
+    return [...filteredHotspots].sort((a, b) => {
+      const weightRisk = { High: 100, Medium: 50, Low: 20 };
+      const scoreA =
+        (weightRisk[a.risk] || 0) +
+        a.affectedAnimals * 1.5 +
+        a.affectedFarms * 3 +
+        parseInt(a.recentIncrease.replace(/[^0-9-]/g, "") || "0", 10) * 2 -
+        a.daysAgo * 5;
+      const scoreB =
+        (weightRisk[b.risk] || 0) +
+        b.affectedAnimals * 1.5 +
+        b.affectedFarms * 3 +
+        parseInt(b.recentIncrease.replace(/[^0-9-]/g, "") || "0", 10) * 2 -
+        b.daysAgo * 5;
+      return scoreB - scoreA;
+    });
+  }, [filteredHotspots]);
+
+  // Dynamic statistics based on filtered hotspots
+  const stats = useMemo(() => {
+    const totalCases = filteredHotspots.reduce((acc, h) => acc + h.affectedAnimals, 0);
+    const totalFarms = filteredHotspots.reduce((acc, h) => acc + h.affectedFarms, 0);
+    const confirmedCount = filteredHotspots.filter((h) => h.status === "Confirmed").reduce((acc, h) => acc + h.affectedAnimals, 0);
+    const suspectedCount = filteredHotspots.filter((h) => h.status === "Suspected").reduce((acc, h) => acc + h.affectedAnimals, 0);
+    const highRiskZones = filteredHotspots.filter((h) => h.risk === "High").length;
+    const mediumRiskZones = filteredHotspots.filter((h) => h.risk === "Medium").length;
+    const lowRiskZones = filteredHotspots.filter((h) => h.risk === "Low").length;
+
+    const newCasesPeriod = Math.round(totalCases * (trendWindow === "7d" ? 0.38 : 0.82));
+    const growthPercent = highRiskZones > 1 ? "+21.4%" : "+8.7%";
+
+    return {
+      totalCases,
+      totalFarms,
+      confirmedCount,
+      suspectedCount,
+      highRiskZones,
+      mediumRiskZones,
+      lowRiskZones,
+      newCasesPeriod,
+      growthPercent,
+      activeHotspotsCount: filteredHotspots.length
+    };
+  }, [filteredHotspots, trendWindow]);
+
+  // Outbreak alerts (derived from filtered hotspots with urgency)
+  const alertsList = useMemo(() => {
+    return filteredHotspots.map((h) => ({
+      ...h,
+      urgency: h.risk === "High" ? "Critical Immediate Action" : h.risk === "Medium" ? "Containment Advisory" : "Precautionary Monitoring",
+    }));
+  }, [filteredHotspots]);
+
+  // Support providers sorted by proximity to selected hotspot
+  const nearbySupport = useMemo(() => {
+    return VETERINARY_SUPPORT_PROVIDERS.map((v) => {
+      const distOffset = v.district === selectedHotspot?.district ? 0 : 25.5;
+      const computedDistance = (v.distanceKm + distOffset).toFixed(1);
+      return {
+        ...v,
+        computedDistance: parseFloat(computedDistance)
+      };
+    }).sort((a, b) => a.computedDistance - b.computedDistance);
+  }, [selectedHotspot]);
+
+  // Simple Disease Trend: total affected animals over the last 7 days
+  const trendChartData = useMemo(() => {
+    const labels = ["03 Sep", "04 Sep", "05 Sep", "06 Sep", "07 Sep", "08 Sep", "Today"];
+    const rawTotal = [0, 1, 2, 3, 4, 5, 6].map((idx) => {
+      const sum = filteredHotspots.reduce((acc, h) => acc + (h.dailyHistory ? (h.dailyHistory[idx] || 0) : 0), 0);
+      return sum > 0 ? sum : Math.round(stats.totalCases * [0.15, 0.22, 0.35, 0.5, 0.65, 0.85, 1.0][idx]);
+    });
+
+    const maxVal = Math.max(...rawTotal, 15);
+    const maxY = Math.ceil(maxVal / 20) * 20 || 40;
+    const ySteps = [maxY, Math.round(maxY * 0.66), Math.round(maxY * 0.33), 0];
+
+    const count = labels.length;
+    const getX = (i) => 50 + (i / (count - 1)) * (710 - 50);
+    const getY = (val) => 180 - (val / maxY) * 145;
+
+    const pts = rawTotal.map((v, i) => ({
+      x: Math.round(getX(i)),
+      y: Math.round(Math.min(180, Math.max(30, getY(v)))),
+      val: v
+    }));
+
+    const makeLine = (pts) => {
+      if (pts.length === 0) return "";
+      return pts.reduce((acc, pt, i, arr) => {
+        if (i === 0) return `M ${pt.x},${pt.y}`;
+        const prev = arr[i - 1];
+        const cp1x = Math.round(prev.x + (pt.x - prev.x) / 2);
+        return `${acc} C ${cp1x},${prev.y} ${cp1x},${pt.y} ${pt.x},${pt.y}`;
+      }, "");
+    };
+
+    const lineD = makeLine(pts);
+    const areaD = pts.length > 0
+      ? `${lineD} L ${pts[pts.length - 1].x},180 L ${pts[0].x},180 Z`
+      : "";
+
+    return {
+      labels,
+      pts,
+      lineD,
+      areaD,
+      ySteps,
+      maxY
+    };
+  }, [filteredHotspots, stats.totalCases]);
+
+  // Dispatch Support Handler
+  const handleDispatchSupport = (vetId, vetName) => {
+    setDispatchedUnits((prev) => ({
+      ...prev,
+      [vetId]: true
+    }));
+    if (window.PashuSakhiBridge) {
+      window.PashuSakhiBridge.addEmergency({
+        animalId: "hotspot_" + vetId,
+        animalName: selectedHotspot?.location || "Outbreak Zone",
+        farmerName: "Field Unit",
+        village: selectedHotspot?.location || "Regional Hotspot",
+        contact: "1962 Helpline",
+        severity: "critical",
+        status: "accepted",
+        title: `Outbreak Response Unit Dispatched: ${selectedHotspot?.disease || "Disease Hotspot"}`,
+        time: "Just now",
+        assignedVet: vetName
+      });
+    }
+    showToast(`Emergency alert dispatched to ${vetName} for ${selectedHotspot?.location}!`);
+  };
+
+  // Reset Filters Handler
+  const handleResetFilters = () => {
+    setSelectedDisease("all");
+    setSelectedDistrict("all");
+    setSelectedRisk("all");
+    setDateRange("30d");
+    setSearchQuery("");
+    showToast("Filters reset to default view.");
+  };
+
+  return (
+    <div className="heatmap-container">
+      {/* Top Header Banner for Monitoring */}
+      <div className="hm-header-banner">
+        <div className="hm-title-area">
+          <div className="hm-badge-live">
+            <span className="live-pulsing-dot" />
+            LIVE SURVEILLANCE FEED
+          </div>
+          <h1 className="hm-title">Veterinary Disease Monitoring & Hotspot Map</h1>
+          <p className="hm-sub">
+            Real-time geospatial epidemiological surveillance across Western Maharashtra livestock basins.
+            Connected with veterinary stations, outbreak containment rings, and mobile dispatch units.
+          </p>
+        </div>
+
+        <div className="hm-header-actions">
+          <button
+            className="btn-outline btn-sm"
+            style={{ color: "#fff", borderColor: "rgba(255,255,255,0.3)" }}
+            onClick={() => {
+              showToast("Epidemiological surveillance dataset exported.");
+            }}
+            title="Export Outbreak Report"
+          >
+            <Download size={15} />
+            Export Data
+          </button>
+        </div>
+      </div>
+
+      {/* Primary KPI Metrics Strip */}
+      <div className="hm-stat-row">
+        <div className="hm-stat-box">
+          <div className="hm-stat-top">
+            <span className="hm-stat-icon red"><Flame size={16} /></span>
+            <span className="hm-stat-tag red">{stats.highRiskZones} High Risk</span>
+          </div>
+          <div className="hm-stat-num">{stats.totalCases}</div>
+          <div className="hm-stat-lbl">Affected Animals</div>
+          <div className="hm-stat-foot red-text">{stats.growthPercent} vs prev period</div>
+        </div>
+
+        <div className="hm-stat-box">
+          <div className="hm-stat-top">
+            <span className="hm-stat-icon orange"><MapPinned size={16} /></span>
+            <span className="hm-stat-tag orange">{filteredHotspots.length} Zones</span>
+          </div>
+          <div className="hm-stat-num">{stats.activeHotspotsCount}</div>
+          <div className="hm-stat-lbl">Active Hotspots</div>
+          <div className="hm-stat-foot">{stats.mediumRiskZones} Medium · {stats.lowRiskZones} Low</div>
+        </div>
+
+        <div className="hm-stat-box">
+          <div className="hm-stat-top">
+            <span className="hm-stat-icon red"><ShieldAlert size={16} /></span>
+            <span className="hm-stat-tag red">Urgent</span>
+          </div>
+          <div className="hm-stat-num">{stats.highRiskZones}</div>
+          <div className="hm-stat-lbl">High-Risk Zones</div>
+          <div className="hm-stat-foot red-text">Require immediate containment</div>
+        </div>
+
+        <div className="hm-stat-box">
+          <div className="hm-stat-top">
+            <span className="hm-stat-icon teal"><Building2 size={16} /></span>
+            <span className="hm-stat-tag teal">Farms</span>
+          </div>
+          <div className="hm-stat-num">{stats.totalFarms}</div>
+          <div className="hm-stat-lbl">Affected Farms</div>
+          <div className="hm-stat-foot">Across {districtOptions.length - 1} districts monitored</div>
+        </div>
+      </div>
+
+      {/* Dynamic Filter & Control Toolbar */}
+      <Card className="hm-filter-card">
+        <div className="hm-filter-top">
+          <div className="hm-filter-title">
+            <SlidersHorizontal size={17} style={{ color: "var(--brand)" }} />
+            <span>Surveillance Filters & Sorting</span>
+            {filteredHotspots.length < INITIAL_HOTSPOTS.length && (
+              <span className="badge badge-info" style={{ marginLeft: 8 }}>
+                {filteredHotspots.length} of {INITIAL_HOTSPOTS.length} shown
+              </span>
+            )}
+          </div>
+          <button className="hm-reset-btn" onClick={handleResetFilters}>
+            <RefreshCcw size={13} />
+            Reset Filters
+          </button>
+        </div>
+
+        <div className="hm-filter-grid">
+          {/* Disease Filter */}
+          <div className="hm-control-group">
+            <label className="hm-control-label">Disease Type</label>
+            <select
+              className="hm-select"
+              value={selectedDisease}
+              onChange={(e) => setSelectedDisease(e.target.value)}
+            >
+              {diseaseOptions.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* District Filter */}
+          <div className="hm-control-group">
+            <label className="hm-control-label">District / Region</label>
+            <select
+              className="hm-select"
+              value={selectedDistrict}
+              onChange={(e) => setSelectedDistrict(e.target.value)}
+            >
+              {districtOptions.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Risk Level Filter */}
+          <div className="hm-control-group">
+            <label className="hm-control-label">Risk Level</label>
+            <select
+              className="hm-select"
+              value={selectedRisk}
+              onChange={(e) => setSelectedRisk(e.target.value)}
+            >
+              <option value="all">All Risk Levels</option>
+              <option value="High">High Risk Zones</option>
+              <option value="Medium">Medium Risk Zones</option>
+              <option value="Low">Low Risk Zones</option>
+            </select>
+          </div>
+
+          {/* Date Range Filter */}
+          <div className="hm-control-group">
+            <label className="hm-control-label">Date Window</label>
+            <select
+              className="hm-select"
+              value={dateRange}
+              onChange={(e) => setDateRange(e.target.value)}
+            >
+              <option value="7d">Last 7 Days</option>
+              <option value="14d">Last 14 Days</option>
+              <option value="30d">Last 30 Days</option>
+              <option value="all">All Recorded (90 Days)</option>
+            </select>
+          </div>
+
+          {/* Sorting (simplified to Risk only) */}
+          <div className="hm-control-group">
+            <label className="hm-control-label">Sort By</label>
+            <select className="hm-select" value="risk" disabled>
+              <option value="risk">Risk (High to Low)</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Secondary search controls */}
+        <div className="hm-filter-subrow">
+          <div className="hm-search-wrap">
+            <Search size={15} style={{ color: "var(--ink-soft)" }} />
+            <input
+              type="text"
+              placeholder="Search hotspots by disease, taluka, village, or livestock type..."
+              className="hm-search-input"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+            {searchQuery && (
+              <button className="hm-clear-search" onClick={() => setSearchQuery("")}><X size={14} /></button>
+            )}
+          </div>
+        </div>
+      </Card>
+
+      {/* Main Grid: Interactive Map + Hotspot Inspector */}
+      <div className="hm-main-layout">
+        {/* LEFT COLUMN: Map & Quick Layer Toggles */}
+        <div className="hm-map-column">
+          <Card className="hm-map-card">
+            {/* Map Header Controls */}
+            <div className="hm-map-header">
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <MapPinned size={18} style={{ color: "var(--brand)" }} />
+                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Interactive Hotspot Map</h3>
+                <span className="badge badge-info" style={{ fontSize: 11 }}>Maharashtra Livestock Belt</span>
+              </div>
+
+              <div className="hm-layer-switches">
+                <button
+                  className={`layer-chip ${showRiskZones ? "active" : ""}`}
+                  onClick={() => setShowRiskZones(!showRiskZones)}
+                  title="Toggle High/Medium/Low Heat Radii"
+                >
+                  <Layers size={13} />
+                  Risk Radii
+                </button>
+                <button
+                  className={`layer-chip ${showVetMarkers ? "active" : ""}`}
+                  onClick={() => setShowVetMarkers(!showVetMarkers)}
+                  title="Toggle Nearby Vet Support Facilities"
+                >
+                  <Stethoscope size={13} />
+                  Vet Clinics
+                </button>
+                <button
+                  className="layer-chip"
+                  onClick={() => {
+                    setSelectedHotspotId(filteredHotspots[0]?.id || "HS-01");
+                    showToast("Map view re-centered on highest priority cluster.");
+                  }}
+                  title="Reset Map Center"
+                >
+                  <Crosshair size={13} />
+                  Re-center
+                </button>
+              </div>
+            </div>
+
+            {/* Interactive Cartographic Canvas */}
+            <div className="hm-canvas-wrapper">
+              <svg className="hm-svg-map" viewBox="0 0 1000 650" preserveAspectRatio="xMidYMid meet">
+                <defs>
+                  {/* Radial Heat Gradients */}
+                  <radialGradient id="grad-high-risk" cx="50%" cy="50%" r="50%">
+                    <stop offset="0%" stopColor="#B3402A" stopOpacity="0.55" />
+                    <stop offset="55%" stopColor="#D98B2B" stopOpacity="0.25" />
+                    <stop offset="100%" stopColor="#B3402A" stopOpacity="0" />
+                  </radialGradient>
+                  <radialGradient id="grad-med-risk" cx="50%" cy="50%" r="50%">
+                    <stop offset="0%" stopColor="#D98B2B" stopOpacity="0.50" />
+                    <stop offset="65%" stopColor="#B9791F" stopOpacity="0.20" />
+                    <stop offset="100%" stopColor="#D98B2B" stopOpacity="0" />
+                  </radialGradient>
+                  <radialGradient id="grad-low-risk" cx="50%" cy="50%" r="50%">
+                    <stop offset="0%" stopColor="#2F7A4F" stopOpacity="0.45" />
+                    <stop offset="70%" stopColor="#2F7A4F" stopOpacity="0.15" />
+                    <stop offset="100%" stopColor="#2F7A4F" stopOpacity="0" />
+                  </radialGradient>
+
+                  <filter id="glow-drop" x="-20%" y="-20%" width="140%" height="140%">
+                    <feDropShadow dx="0" dy="2" stdDeviation="3" floodOpacity="0.25" />
+                  </filter>
+                </defs>
+
+                {/* Map Regional Background */}
+                <rect width="1000" height="650" fill="#EFE8D8" rx="14" />
+
+                {/* Regional Contour Polygons */}
+                <g className="map-districts" opacity="0.85">
+                  {/* Nashik District */}
+                  <path
+                    d="M 180,90 L 460,70 L 510,210 L 400,280 L 220,290 L 150,180 Z"
+                    fill="#F7F3E7"
+                    stroke="#D6CCA9"
+                    strokeWidth="2"
+                    strokeDasharray="4 2"
+                  />
+                  <text x="290" y="160" fill="#99917B" fontSize="15" fontWeight="700" letterSpacing="1.5">NASHIK DISTRICT</text>
+
+                  {/* Ahmednagar District */}
+                  <path
+                    d="M 400,280 L 510,210 L 760,220 L 720,440 L 480,450 L 370,350 Z"
+                    fill="#FAF6ED"
+                    stroke="#D6CCA9"
+                    strokeWidth="2"
+                    strokeDasharray="4 2"
+                  />
+                  <text x="530" y="330" fill="#99917B" fontSize="15" fontWeight="700" letterSpacing="1.5">AHMEDNAGAR</text>
+
+                  {/* Pune District */}
+                  <path
+                    d="M 370,350 L 480,450 L 720,440 L 790,560 L 550,620 L 380,550 Z"
+                    fill="#F7F3E7"
+                    stroke="#D6CCA9"
+                    strokeWidth="2"
+                    strokeDasharray="4 2"
+                  />
+                  <text x="520" y="520" fill="#99917B" fontSize="15" fontWeight="700" letterSpacing="1.5">PUNE DISTRICT</text>
+
+                  {/* Jalgaon Border Region */}
+                  <path
+                    d="M 510,70 L 780,50 L 850,190 L 760,220 L 510,210 Z"
+                    fill="#F4EFE0"
+                    stroke="#D6CCA9"
+                    strokeWidth="1.5"
+                  />
+                  <text x="630" y="130" fill="#99917B" fontSize="13" fontWeight="600">JALGAON BORDER</text>
+
+                  {/* Satara Region */}
+                  <path
+                    d="M 550,620 L 790,560 L 820,640 L 580,645 Z"
+                    fill="#F4EFE0"
+                    stroke="#D6CCA9"
+                    strokeWidth="1.5"
+                  />
+                  <text x="660" y="615" fill="#99917B" fontSize="13" fontWeight="600">SATARA NORTH</text>
+
+                  {/* Rivers */}
+                  <path
+                    d="M 190,140 Q 320,180 460,230 T 730,260"
+                    fill="none"
+                    stroke="#B4D0C5"
+                    strokeWidth="4.5"
+                    strokeLinecap="round"
+                    opacity="0.8"
+                  />
+                  <text x="350" y="195" fill="#1F5D50" opacity="0.6" fontSize="11" fontStyle="italic">Godavari River Grazing Basin</text>
+
+                  <path
+                    d="M 390,490 Q 520,480 680,530 T 820,570"
+                    fill="none"
+                    stroke="#B4D0C5"
+                    strokeWidth="4"
+                    strokeLinecap="round"
+                    opacity="0.8"
+                  />
+                  <text x="570" y="495" fill="#1F5D50" opacity="0.6" fontSize="11" fontStyle="italic">Bhima Valley Livestock Corridor</text>
+                </g>
+
+                {/* Heat Map Risk Radii Zones */}
+                {showRiskZones && filteredHotspots.map((h) => {
+                  const pxX = (h.x / 100) * 1000;
+                  const pxY = (h.y / 100) * 650;
+                  const gradId = h.risk === "High" ? "grad-high-risk" : h.risk === "Medium" ? "grad-med-risk" : "grad-low-risk";
+                  const scaleR = h.radius * 2.2;
+                  const isSelected = selectedHotspot?.id === h.id;
+
+                  return (
+                    <g key={`zone-${h.id}`} className="risk-zone-group">
+                      {h.risk === "High" && (
+                        <circle
+                          cx={pxX}
+                          cy={pxY}
+                          r={scaleR * 1.3}
+                          fill="none"
+                          stroke="#B3402A"
+                          strokeWidth="1.5"
+                          strokeDasharray="6 4"
+                          opacity="0.5"
+                          className="pulse-ring"
+                        />
+                      )}
+                      <circle
+                        cx={pxX}
+                        cy={pxY}
+                        r={scaleR}
+                        fill={`url(#${gradId})`}
+                        className="heat-zone-circle"
+                      />
+                      {isSelected && (
+                        <circle
+                          cx={pxX}
+                          cy={pxY}
+                          r={scaleR * 1.15}
+                          fill="none"
+                          stroke="var(--brand)"
+                          strokeWidth="2.5"
+                          strokeDasharray="5 3"
+                        />
+                      )}
+                    </g>
+                  );
+                })}
+
+                {/* Support Facility Markers */}
+                {showVetMarkers && nearbySupport.map((v, i) => {
+                  const coords = [
+                    { x: 390, y: 250 },
+                    { x: 260, y: 150 },
+                    { x: 280, y: 170 },
+                    { x: 490, y: 340 },
+                    { x: 670, y: 510 },
+                    { x: 580, y: 460 },
+                    { x: 330, y: 130 },
+                  ][i] || { x: 450, y: 300 };
+
+                  return (
+                    <g
+                      key={v.id}
+                      className="vet-facility-marker"
+                      transform={`translate(${coords.x}, ${coords.y})`}
+                      onClick={() => showToast(`${v.name} (${v.type}) is active. Proximity: ${v.computedDistance} km.`)}
+                      style={{ cursor: "pointer" }}
+                    >
+                      <circle r="12" fill="#1F5D50" stroke="#FFFFFF" strokeWidth="2.5" />
+                      <path d="M -4 0 L 4 0 M 0 -4 L 0 4" stroke="#FFFFFF" strokeWidth="2" strokeLinecap="round" />
+                      <title>{v.name} - {v.type}</title>
+                    </g>
+                  );
+                })}
+
+                {/* Disease Hotspot Interactive Pins */}
+                {filteredHotspots.map((h) => {
+                  const pxX = (h.x / 100) * 1000;
+                  const pxY = (h.y / 100) * 650;
+                  const isSelected = selectedHotspot?.id === h.id;
+                  const isHigh = h.risk === "High";
+                  const pinColor = isHigh ? "#B3402A" : h.risk === "Medium" ? "#D98B2B" : "#2F7A4F";
+
+                  return (
+                    <g
+                      key={h.id}
+                      className={`hotspot-pin-group ${isSelected ? "selected" : ""}`}
+                      transform={`translate(${pxX}, ${pxY})`}
+                      onClick={() => setSelectedHotspotId(h.id)}
+                      style={{ cursor: "pointer" }}
+                    >
+                      {isSelected && (
+                        <circle
+                          r="28"
+                          fill="none"
+                          stroke="#143F36"
+                          strokeWidth="3"
+                          strokeDasharray="4 2"
+                        />
+                      )}
+
+                      <path
+                        d="M 0,-32 C -13,-32 -20,-22 -20,-11 C -20,6 0,22 0,22 C 0,22 20,6 20,-11 C 20,-22 13,-32 0,-32 Z"
+                        fill={pinColor}
+                        stroke="#FFFFFF"
+                        strokeWidth="2.5"
+                        filter="url(#glow-drop)"
+                      />
+
+                      {h.status === "Confirmed" ? (
+                        <circle cx="0" cy="-14" r="6" fill="#FFFFFF" />
+                      ) : (
+                        <circle cx="0" cy="-14" r="5" fill="none" stroke="#FFFFFF" strokeWidth="2.5" />
+                      )}
+
+                      <g transform="translate(0, 32)">
+                        <rect
+                          x="-48"
+                          y="0"
+                          width="96"
+                          height="22"
+                          rx="6"
+                          fill={isSelected ? "#143F36" : "#23291F"}
+                          opacity={isSelected ? "0.95" : "0.85"}
+                        />
+                        <text
+                          x="0"
+                          y="15"
+                          textAnchor="middle"
+                          fill="#FFFFFF"
+                          fontSize="11"
+                          fontWeight="700"
+                        >
+                          {h.shortName} · {h.affectedAnimals}
+                        </text>
+                      </g>
+                    </g>
+                  );
+                })}
+              </svg>
+
+              {/* Floating Map Legend Overlay */}
+              <div className="hm-map-legend">
+                <div className="hm-legend-title">Surveillance Key</div>
+                <div className="hm-legend-item">
+                  <span className="hm-legend-dot red" />
+                  <span>High Risk Zone (&gt;35 cases)</span>
+                </div>
+                <div className="hm-legend-item">
+                  <span className="hm-legend-dot orange" />
+                  <span>Medium Risk (15-35 cases)</span>
+                </div>
+                <div className="hm-legend-item">
+                  <span className="hm-legend-dot green" />
+                  <span>Low / Controlled (&lt;15 cases)</span>
+                </div>
+                <div className="hm-legend-divider" />
+                <div className="hm-legend-item">
+                  <span className="hm-legend-shape solid" />
+                  <span>Confirmed Outbreak</span>
+                </div>
+                <div className="hm-legend-item">
+                  <span className="hm-legend-shape dashed" />
+                  <span>Suspected / Investigating</span>
+                </div>
+                <div className="hm-legend-item">
+                  <span className="hm-legend-icon-tag"><Stethoscope size={11} /></span>
+                  <span>Veterinary Support Depot</span>
+                </div>
+              </div>
+            </div>
+          </Card>
+        </div>
+
+        {/* RIGHT COLUMN: Active Hotspot Deep Inspector */}
+        <div className="hm-detail-column">
+          <Card className="hm-hotspot-panel">
+            <div className="hm-panel-header">
+              <div>
+                <span className="badge badge-info" style={{ marginBottom: 4 }}>
+                  Hotspot #{selectedHotspot.id} · {selectedHotspot.district}
+                </span>
+                <h2 className="hm-panel-title">{selectedHotspot.disease}</h2>
+                <div className="hm-panel-loc">
+                  <MapPin size={14} style={{ color: "var(--brand)", verticalAlign: -2 }} />
+                  {selectedHotspot.location}
+                </div>
+              </div>
+              <div style={{ textAlign: "right" }}>
+                <RiskPill risk={selectedHotspot.risk} />
+                <div style={{ marginTop: 6 }}>
+                  <StatusPill status={selectedHotspot.status === "Confirmed" ? "resolved" : "attention"} />
+                </div>
+              </div>
+            </div>
+
+            {/* Core Impact Figures */}
+            <div className="hm-impact-grid">
+              <div className="hm-impact-cell">
+                <span className="hm-impact-val red">{selectedHotspot.affectedAnimals}</span>
+                <span className="hm-impact-lbl">Animals Affected</span>
+                <span className="hm-impact-sub">{selectedHotspot.species}</span>
+              </div>
+              <div className="hm-impact-cell">
+                <span className="hm-impact-val">{selectedHotspot.affectedFarms}</span>
+                <span className="hm-impact-lbl">Farms Impacted</span>
+                <span className="hm-impact-sub">{selectedHotspot.recentIncrease} 7-day trend</span>
+              </div>
+              <div className="hm-impact-cell">
+                <span className="hm-impact-val">{selectedHotspot.date.split(" ")[0]} {selectedHotspot.date.split(" ")[1]}</span>
+                <span className="hm-impact-lbl">First Reported</span>
+                <span className="hm-impact-sub">{selectedHotspot.daysAgo === 0 ? "Today" : `${selectedHotspot.daysAgo}d ago`}</span>
+              </div>
+            </div>
+
+            {/* Spread Summary & Epidemiological Notes */}
+            <div className="hm-info-block">
+              <div className="hm-info-heading">
+                <Flame size={14} style={{ color: "var(--urgent)" }} />
+                <span>Spread Dynamics & Pattern</span>
+              </div>
+              <p className="hm-info-text">{selectedHotspot.spreadSummary}</p>
+            </div>
+
+            <div className="hm-info-block" style={{ borderLeftColor: "var(--brand)" }}>
+              <div className="hm-info-heading">
+                <ShieldCheck size={14} style={{ color: "var(--brand)" }} />
+                <span>Recommended Veterinary Protocol</span>
+              </div>
+              <p className="hm-info-text">{selectedHotspot.advisory}</p>
+            </div>
+
+            {/* Mini Outbreak Trend Sparkline */}
+            <div className="hm-spark-wrap">
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--ink-soft)" }}>7-Day Progression Sparkline</span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: "var(--urgent)" }}>{selectedHotspot.recentIncrease}</span>
+              </div>
+              <div className="hm-spark-bars">
+                {selectedHotspot.dailyHistory.map((val, idx) => {
+                  const maxVal = Math.max(...selectedHotspot.dailyHistory, 1);
+                  const heightPercent = Math.round((val / maxVal) * 100);
+                  return (
+                    <div key={idx} className="hm-spark-bar-col" title={`Day ${idx + 1}: ${val} cases`}>
+                      <div
+                        className="hm-spark-bar"
+                        style={{
+                          height: `${Math.max(heightPercent, 12)}%`,
+                          background: idx === 6 ? "var(--urgent)" : "var(--brand)"
+                        }}
+                      />
+                      <span className="hm-spark-day">D{idx + 1}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Interactive Actions for this Hotspot */}
+            <div className="hm-panel-actions">
+              <button
+                className="btn-primary"
+                style={{ flex: 1 }}
+                onClick={() => {
+                  const nearest = nearbySupport[0];
+                  if (nearest) {
+                    handleDispatchSupport(nearest.id, nearest.name);
+                  }
+                }}
+              >
+                <Truck size={16} />
+                Dispatch Nearest Vet
+              </button>
+            </div>
+          </Card>
+        </div>
+      </div>
+
+      {/* SECTION: DISEASE TREND */}
+      <div className="hm-section-block">
+        <SectionTitle>Disease Trend</SectionTitle>
+
+        <div className="hm-trends-grid">
+          {/* Main SVG Trend Chart Card */}
+          <Card className="hm-trend-chart-card">
+            <div className="hm-chart-header">
+              <div>
+                <h4 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>
+                  Affected Animals — Last 7 Days
+                </h4>
+                <p style={{ margin: "2px 0 0", fontSize: 12.5, color: "var(--ink-soft)" }}>
+                  Aggregated case reports across {filteredHotspots.length} monitoring clusters
+                </p>
+              </div>
+              <div className="hm-chart-legend">
+                <span className="legend-item"><span className="legend-line red" /> Affected Animals</span>
+              </div>
+            </div>
+
+            {/* SVG Trend Chart Visualization */}
+            <div className="hm-chart-canvas-wrap">
+              <svg className="hm-trend-svg" viewBox="0 0 750 240" preserveAspectRatio="none">
+                {/* Horizontal Grid lines */}
+                <line x1="40" y1="35" x2="730" y2="35" stroke="#E3DCC8" strokeDasharray="3 3" />
+                <line x1="40" y1="83" x2="730" y2="83" stroke="#E3DCC8" strokeDasharray="3 3" />
+                <line x1="40" y1="131" x2="730" y2="131" stroke="#E3DCC8" strokeDasharray="3 3" />
+                <line x1="40" y1="180" x2="730" y2="180" stroke="#E3DCC8" strokeDasharray="3 3" />
+                
+                {/* Y Axis Labels */}
+                <text x="15" y="39" fill="#99917B" fontSize="11">{trendChartData.ySteps[0]}</text>
+                <text x="20" y="87" fill="#99917B" fontSize="11">{trendChartData.ySteps[1]}</text>
+                <text x="20" y="135" fill="#99917B" fontSize="11">{trendChartData.ySteps[2]}</text>
+                <text x="25" y="184" fill="#99917B" fontSize="11">0</text>
+
+                {/* Trend Area & Line */}
+                <path
+                  d={trendChartData.areaD}
+                  fill="rgba(179, 64, 42, 0.12)"
+                />
+                <path
+                  d={trendChartData.lineD}
+                  fill="none"
+                  stroke="#B3402A"
+                  strokeWidth="3.2"
+                  strokeLinecap="round"
+                />
+
+                {/* Data Points */}
+                {trendChartData.pts.map((pt, i) => (
+                  <g key={i}>
+                    <circle cx={pt.x} cy={pt.y} r="5" fill="#B3402A" stroke="#FFFFFF" strokeWidth="2" />
+                    <text x={pt.x} y={pt.y - 10} textAnchor="middle" fontSize="11" fontWeight="700" fill="#B3402A">
+                      {pt.val}
+                    </text>
+                  </g>
+                ))}
+
+                {/* X Axis Timeline */}
+                <line x1="40" y1="180" x2="730" y2="180" stroke="#5B6154" strokeWidth="1.5" />
+                {trendChartData.labels.map((lbl, idx) => (
+                  <text
+                    key={idx}
+                    x={trendChartData.pts[idx]?.x || 50}
+                    y="202"
+                    fill="#5B6154"
+                    fontSize="11"
+                    textAnchor="middle"
+                  >
+                    {lbl}
+                  </text>
+                ))}
+              </svg>
+            </div>
+          </Card>
+
+          {/* Increasing Risk Hotspots Card */}
+          <Card className="hm-increasing-card">
+            <div className="hm-card-subheading">
+              <TrendingUp size={16} style={{ color: "var(--urgent)" }} />
+              <span>Fastest Escalating Areas</span>
+            </div>
+
+            <div className="hm-growth-list">
+              {filteredHotspots.slice(0, 4).map((h) => (
+                <div
+                  key={h.id}
+                  className="hm-growth-item"
+                  onClick={() => {
+                    setSelectedHotspotId(h.id);
+                    showToast(`Focused on ${h.location} (${h.disease}).`);
+                  }}
+                >
+                  <div className="hm-growth-info">
+                    <p className="hm-growth-title">{h.disease}</p>
+                    <p className="hm-growth-loc">{h.location}, {h.district}</p>
+                    <span className="hm-growth-cases">{h.affectedAnimals} animals · {h.affectedFarms} farms</span>
+                  </div>
+                  <div className="hm-growth-stat">
+                    <span className="hm-growth-pct">{h.recentIncrease}</span>
+                    <span className="hm-growth-period">last 7 days</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </div>
+      </div>
+
+      {/* SECTION: OUTBREAK ALERTS STREAM */}
+      <div className="hm-section-block">
+        <SectionTitle
+          action={
+            <span className="badge badge-urgent" style={{ fontSize: 12 }}>
+              <Siren size={13} />
+              {alertsList.length} Active Field Alerts
+            </span>
+          }
+        >
+          Outbreak Alerts & Early Warnings
+        </SectionTitle>
+
+        <div className="hm-alerts-grid">
+          {alertsList.slice(0, 4).map((al) => (
+            <div key={`alert-${al.id}`} className="hm-alert-card">
+              <div className="hm-alert-top">
+                <div className="hm-alert-icon-box">
+                  <AlertOctagon size={18} color="#B3402A" />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="hm-alert-badge-row">
+                    <RiskPill risk={al.risk} />
+                    <span className="hm-alert-time">{al.date} ({al.daysAgo === 0 ? "Today" : `${al.daysAgo}d ago`})</span>
+                  </div>
+                  <h4 className="hm-alert-disease">{al.disease}</h4>
+                  <p className="hm-alert-loc">{al.location} · {al.district}</p>
+                </div>
+              </div>
+
+              <div className="hm-alert-metrics">
+                <div className="hm-metric-pill">
+                  <strong>{al.affectedAnimals}</strong> Animals
+                </div>
+                <div className="hm-metric-pill">
+                  <strong>{al.affectedFarms}</strong> Farms
+                </div>
+                <div className="hm-metric-pill">
+                  Status: <strong>{al.status}</strong>
+                </div>
+              </div>
+
+              <p className="hm-alert-summary">{al.spreadSummary}</p>
+
+              <div className="hm-alert-actions">
+                <button
+                  className="btn-outline btn-sm"
+                  style={{ flex: 1 }}
+                  onClick={() => {
+                    setSelectedHotspotId(al.id);
+                    window.scrollTo({ top: 380, behavior: "smooth" });
+                    showToast(`Centered map on ${al.location} hotspot.`);
+                  }}
+                >
+                  <MapPin size={13} />
+                  Focus on Map
+                </button>
+                <button
+                  className="btn-primary btn-sm"
+                  onClick={() => showToast(`Quarantine advisory sent to dairy unions in ${al.district}!`)}
+                >
+                  <Send size={13} />
+                  Notify
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* SECTION: PRIORITY RESPONSE TABLE */}
+      <div className="hm-section-block">
+        <SectionTitle
+          action={
+            <span style={{ fontSize: 13, color: "var(--ink-soft)", fontWeight: 600 }}>
+              Ranked dynamically by severity, case density, and recent spread acceleration
+            </span>
+          }
+        >
+          Priority Response & Action Matrix
+        </SectionTitle>
+
+        <Card style={{ padding: 0, overflow: "hidden" }}>
+          <div className="hm-table-responsive">
+            <table className="hm-table">
+              <thead>
+                <tr>
+                  <th style={{ width: 60 }}>Rank</th>
+                  <th>District / Location</th>
+                  <th>Primary Disease</th>
+                  <th>Active Cases</th>
+                  <th>Impacted Farms</th>
+                  <th>7-Day Spread</th>
+                  <th>Risk Level</th>
+                  <th>Containment Status</th>
+                  <th style={{ textAlign: "right" }}>Intervention</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rankedAreas.map((area, idx) => (
+                  <tr
+                    key={area.id}
+                    className={`hm-table-row ${selectedHotspot?.id === area.id ? "row-selected" : ""}`}
+                    onClick={() => setSelectedHotspotId(area.id)}
+                  >
+                    <td>
+                      <span className={`rank-badge ${idx < 3 ? "rank-top" : ""}`}>
+                        #{idx + 1}
+                      </span>
+                    </td>
+                    <td>
+                      <div style={{ fontWeight: 700, color: "var(--ink)" }}>{area.location}</div>
+                      <div style={{ fontSize: 12, color: "var(--ink-soft)" }}>{area.district}</div>
+                    </td>
+                    <td>
+                      <div style={{ fontWeight: 600 }}>{area.disease}</div>
+                      <div style={{ fontSize: 11.5, color: "var(--ink-soft)" }}>{area.species}</div>
+                    </td>
+                    <td>
+                      <span style={{ fontWeight: 700, fontSize: 14 }}>{area.affectedAnimals}</span>
+                      <span style={{ fontSize: 12, color: "var(--ink-soft)", marginLeft: 4 }}>animals</span>
+                    </td>
+                    <td>
+                      <span style={{ fontWeight: 600 }}>{area.affectedFarms}</span>
+                      <span style={{ fontSize: 12, color: "var(--ink-soft)", marginLeft: 4 }}>farms</span>
+                    </td>
+                    <td>
+                      <span style={{ fontWeight: 700, color: area.recentIncrease.startsWith("+") ? "var(--urgent)" : "var(--healthy)" }}>
+                        {area.recentIncrease}
+                      </span>
+                    </td>
+                    <td>
+                      <RiskPill risk={area.risk} />
+                    </td>
+                    <td>
+                      <StatusPill status={area.status === "Confirmed" ? "resolved" : "attention"} />
+                    </td>
+                    <td style={{ textAlign: "right" }}>
+                      <button
+                        className="btn-outline btn-sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedHotspotId(area.id);
+                          const vet = nearbySupport[0];
+                          if (vet) handleDispatchSupport(vet.id, vet.name);
+                        }}
+                      >
+                        Deploy Mobile Vet
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      </div>
+
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Root Application Container with Navigation & State                */
+/* ------------------------------------------------------------------ */
+
+function VetApp() {
+  const [view, setView] = useState("overview");
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [toast, setToast] = useState(null);
+  const [availability, setAvailability] = useState("available");
+
+  const [requests, setRequests] = useState(initialRequests);
+  const [reports, setReports] = useState(initialReports);
+  const [emergencies, setEmergencies] = useState(initialEmergencies);
+  const [patients, setPatients] = useState(initialPatients);
+  const [treatmentHistory, setTreatmentHistory] = useState(treatmentHistoryData);
+  const [notifications, setNotifications] = useState(initialNotifications);
+
+  const [profile, setProfile] = useState(VET_PROFILE);
+  const [appLanguage, setAppLanguage] = useState("English");
+  const [textSize, setTextSize] = useState("Medium");
+  const [theme, setTheme] = useState("Light");
+  const [highContrast, setHighContrast] = useState(false);
+  const [notificationPreferences, setNotificationPreferences] = useState(true);
+  const [reminderTiming, setReminderTiming] = useState("30 minutes before");
+  const [selectedPatientId, setSelectedPatientId] = useState("gauri");
+  const [patientSearch, setPatientSearch] = useState("");
+  const [reportFilter, setReportFilter] = useState("All");
+  const [emergencyFilter, setEmergencyFilter] = useState("All");
+  const t = (key, fallback) => tt(appLanguage, key, fallback);
+
+  const showToast = (msg) => {
+    setToast(msg);
+    window.setTimeout(() => setToast(null), 3200);
+  };
+
+  // Bridge Integration: sync session, reports, emergencies, and live events
+  useEffect(() => {
+    if (!window.PashuSakhiBridge) return;
+
+    // Check active session from portal
+    const sess = window.PashuSakhiBridge.getSession();
+    if (sess && sess.name) {
+      setProfile((prev) => ({ ...prev, name: sess.name, email: sess.email || prev.email }));
+    }
+
+    // Load and merge persisted bridge reports
+    const bridgeReports = window.PashuSakhiBridge.getReports();
+    if (bridgeReports && bridgeReports.length > 0) {
+      setReports((prev) => {
+        const existingIds = new Set(prev.map((r) => r.id));
+        const toAdd = bridgeReports.filter((r) => !existingIds.has(r.id));
+        return [...toAdd, ...prev];
+      });
+    }
+
+    // Load and merge persisted bridge emergencies
+    const bridgeEmergencies = window.PashuSakhiBridge.getEmergencies();
+    if (bridgeEmergencies && bridgeEmergencies.length > 0) {
+      setEmergencies((prev) => {
+        const existingIds = new Set(prev.map((e) => e.id));
+        const toAdd = bridgeEmergencies.filter((e) => !existingIds.has(e.id));
+        return [...toAdd, ...prev];
+      });
+    }
+
+    // Load live backend emergencies
+    if (window.PashuSakhiApi) {
+      window.PashuSakhiApi.getEmergencies()
+        .then(res => {
+          if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
+            const mapped = res.data.map(mapBackendEmergency);
+            setEmergencies(prev => {
+              const ids = new Set(prev.map(p => p.id));
+              const fresh = mapped.filter(m => !ids.has(m.id));
+              return [...fresh, ...prev];
+            });
+          }
+        })
+        .catch(err => console.warn('Backend getEmergencies fallback:', err));
+    }
+
+    // Listen for live bridge updates across tabs
+    const handleBridgeEvent = (eventName, data) => {
+      if (eventName === "psk:report:added" && data) {
+        setReports((prev) => {
+          if (prev.some((r) => r.id === data.id)) return prev;
+          return [data, ...prev];
+        });
+        showToast(`New AI Report submitted for ${data.animalName || 'livestock'}.`);
+      } else if (eventName === "psk:emergency:added" && data) {
+        setEmergencies((prev) => {
+          if (prev.some((e) => e.id === data.id)) return prev;
+          return [data, ...prev];
+        });
+        showToast(`🚨 Emergency Alert: ${data.title || data.animalName}!`);
+      } else if (eventName === "psk:chat:message" && data && data.message) {
+        if (data.message.sender === "farmer") {
+          setRequests((prev) => {
+            const reqIdx = prev.findIndex((r) => r.animalId === data.animalId);
+            if (reqIdx >= 0) {
+              const updated = [...prev];
+              updated[reqIdx] = {
+                ...updated[reqIdx],
+                symptoms: data.message.text,
+                submitted: "Just now",
+                status: "new"
+              };
+              return updated;
+            }
+            return [
+              {
+                id: "req_" + Date.now(),
+                animalId: data.animalId,
+                animal: "Patient " + (data.animalId.toUpperCase()),
+                farmer: "Suresh Patil",
+                symptoms: data.message.text,
+                priority: "critical",
+                status: "new",
+                submitted: "Just now"
+              },
+              ...prev
+            ];
+          });
+          showToast(`New consultation message from farmer.`);
+        }
+      }
+    };
+
+    window.PashuSakhiBridge.onEvent(handleBridgeEvent);
+    return () => {
+      window.PashuSakhiBridge.offEvent(handleBridgeEvent);
+    };
+  }, []);
+
+  const unreadCount = notifications.filter((n) => !n.read).length;
+  const emergencyCount = emergencies.filter((e) => e.status !== "resolved").length;
+  const pendingReportsCount = reports.filter((r) => r.status === "New" || r.status === "Under Review").length;
+  const unreadRequestsCount = requests.filter((r) => r.status === "new" || r.status === "unread").length;
+  const followUpsToday = patients.reduce((sum, p) => {
+    if (!p.followUps) return sum;
+    return sum + p.followUps.filter((f) => isToday(f.date)).length;
+  }, 0);
+
+  // Navigation Items: Added "Heat Map" right after Overview
+  const NAV = [
+    { id: "overview", label: t("nav_overview", "Overview"), Icon: Home },
+    { id: "heatmap", label: t("nav_heatmap", "Heat Map"), Icon: MapPinned, badge: "Live" },
+    { id: "requests", label: t("nav_chatRequests", "Chat Requests"), Icon: MessageCircle, badge: unreadRequestsCount },
+    { id: "reports", label: t("nav_aiReports", "AI Reports"), Icon: FileText, badge: pendingReportsCount },
+    { id: "emergency", label: t("nav_emergencyCases", "Emergency Cases"), Icon: Siren, badge: emergencyCount },
+    { id: "patients", label: t("nav_patientRecords", "Patient Records"), Icon: PawPrint },
+    { id: "treatmentHistory", label: t("nav_treatmentHistory", "Treatment History"), Icon: HeartPulse },
+    { id: "settings", label: t("nav_settings", "Settings"), Icon: Settings },
+  ];
+
+  const rootStyle = {
+    fontSize: textSize === "Small" ? "14px" : textSize === "Large" ? "17px" : "15px",
+    ...(theme === "Dark" ? {
+      "--paper": "#1B211E", "--paper-soft": "#232A26", "--ink": "#F3F0E6",
+      "--ink-soft": "#B8C2BB", "--line": "#3C4741", "--brand-soft": "#29453D",
+      "--healthy-soft": "#294534", "--attention-soft": "#4A4028", "--urgent-soft": "#4A2B24"
+    } : {}),
+    ...(highContrast ? {"--line": theme === "Dark" ? "#E7E2D4" : "#20261F", "--ink-soft": theme === "Dark" ? "#F3F0E6" : "#30372F"} : {})
+  };
+
+  const updateReport = (id, status) => {
+    setReports(prev => prev.map(r => r.id === id ? { ...r, status } : r));
+    if (window.PashuSakhiBridge) {
+      window.PashuSakhiBridge.updateReportStatus(id, status);
+    }
+    showToast(`AI report ${id} marked ${status}.`);
+  };
+
+  const updateEmergency = (id, status) => {
+    setEmergencies(prev => prev.map(e => e.id === id ? {
+      ...e, status, assignedVet: status === "accepted" ? profile.name : e.assignedVet
+    } : e));
+    if (window.PashuSakhiApi) {
+      if (status === "accepted") {
+        window.PashuSakhiApi.acceptEmergency(id).catch(e => console.warn('Backend acceptEmergency error:', e));
+      } else {
+        window.PashuSakhiApi.updateEmergencyStatus(id, status.toUpperCase()).catch(e => console.warn('Backend updateEmergencyStatus error:', e));
+      }
+    }
+    if (window.PashuSakhiBridge) {
+      window.PashuSakhiBridge.updateEmergencyStatus(id, status, profile.name);
+    }
+    showToast(`Emergency ${id} updated.`);
+  };
+
+  const addTreatment = (animalId) => {
+    const entry = {
+      date: new Date().toLocaleDateString("en-GB", {day:"2-digit", month:"short", year:"numeric"}),
+      condition: "Clinical treatment added",
+      medicine: "Oxytetracycline / Topical Antiseptic",
+      dosage: "10ml I.M.",
+      route: "Intramuscular",
+      duration: "3 days",
+      notes: "New treatment entry created by veterinarian Dr. Kavita Rao.",
+      followUp: "In 3 days",
+      attachments: 0
+    };
+    if (window.PashuSakhiApi) {
+      window.PashuSakhiApi.createTreatment(animalId, {
+        diagnosis: entry.condition,
+        medication: entry.medicine,
+        dosage: entry.dosage,
+        instructions: entry.notes
+      }).catch(e => console.warn('Backend createTreatment error:', e));
+    }
+    setTreatmentHistory(prev => ({
+      ...prev,
+      [animalId]: [
+        ...(prev[animalId] || []),
+        entry
+      ]
+    }));
+    if (window.PashuSakhiBridge) {
+      window.PashuSakhiBridge.addTreatment(animalId, entry);
+    }
+    showToast("New treatment entry added to patient history.");
+  };
+
+  const handleLogout = () => {
+    if (window.PashuSakhiBridge) window.PashuSakhiBridge.clearSession();
+    window.location.href = "index.html?logout=true";
+  };
+
+  const filteredPatients = patients.filter(p => {
+    const q = patientSearch.trim().toLowerCase();
+    return !q || [p.name, p.earTag, p.owner, p.species, p.breed, p.location].some(v => String(v).toLowerCase().includes(q));
+  });
+
+  const filteredReports = reports.filter(r => reportFilter === "All" || r.status === reportFilter);
+  const filteredEmergencies = emergencies.filter(e => emergencyFilter === "All" || e.status === emergencyFilter.toLowerCase());
+
+  return (
+    <LanguageContext.Provider value={{ t, appLanguage, setAppLanguage }}>
+      <div className="psk-root" style={rootStyle}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&display=swap');
+
+        .psk-root {
+          --paper: #F5F1E6;
+          --paper-soft: #FBF9F3;
+          --ink: #23291F;
+          --ink-soft: #5B6154;
+          --line: #E3DCC8;
+          --brand: #1F5D50;
+          --brand-dark: #143F36;
+          --brand-soft: #DCEAE4;
+          --brand-dark-contrast: #143F36;
+          --accent: #D98B2B;
+          --accent-soft: #F6E3C2;
+          --healthy: #2F7A4F;
+          --healthy-soft: #DFEEE2;
+          --attention: #B9791F;
+          --attention-soft: #F6E7C9;
+          --urgent: #B3402A;
+          --urgent-soft: #F5DCD3;
+          font-family: 'Manrope', sans-serif;
+          font-size: 15px;
+          line-height: 1.5;
+          background: var(--paper);
+          color: var(--ink);
+          min-height: 100vh;
+          width: 100%;
+          display: flex;
+        }
+
+        .sidebar { width: 240px; flex-shrink: 0; background: var(--brand-dark); color: #F2EFE4; display: flex; flex-direction: column; padding: 24px 14px; position: sticky; top: 0; height: 100vh; }
+        .sidebar-brand { display: flex; align-items: center; gap: 10px; padding: 0 10px 22px; }
+        .sidebar-brand .mark { width: 38px; height: 38px; border-radius: 11px; background: var(--accent); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+        .sidebar-brand .name { font-family: 'Fraunces', serif; font-size: 19px; font-weight: 600; line-height: 1.1; color: #fff; }
+        .sidebar-brand .tag { font-size: 11.5px; color: #B9C8BE; }
+        .sidebar-scroll { flex: 1; overflow-y: auto; }
+        .nav-item { display: flex; align-items: center; gap: 12px; padding: 11px 12px; border-radius: 10px; border: none; background: transparent; color: #DCE6DE; font-size: 14px; font-weight: 600; text-align: left; width: 100%; margin-bottom: 3px; cursor: pointer; transition: background .15s ease, color .15s ease; }
+        .nav-item:hover { background: rgba(255,255,255,0.08); }
+        .nav-item.active { background: var(--accent); color: #2A1B04; font-weight: 700; }
+        .nav-badge { margin-left: auto; background: var(--urgent); color: #fff; font-size: 11px; font-weight: 700; border-radius: 999px; padding: 1px 7px; min-width: 18px; text-align: center; }
+        .nav-badge.live-pill { background: #2F7A4F; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
+
+        .sidebar-footer { margin-top: 10px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,0.12); }
+        .vet-mini-card { display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: 12px; background: rgba(255,255,255,0.06); margin-bottom: 8px; }
+        .vet-mini-name { font-weight: 700; font-size: 13.5px; color: #fff; margin: 0 0 2px; }
+        .vet-mini-sub { display: flex; align-items: center; gap: 5px; font-size: 11.5px; color: #B9C8BE; }
+        .avail-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+        .main { flex: 1; min-width: 0; padding: 28px 34px 100px; max-width: 1260px; }
+        .topbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 22px; flex-wrap: wrap; }
+        .greeting { font-family: 'Fraunces', serif; font-size: 26px; font-weight: 600; margin: 0 0 4px; }
+        .greeting-sub { color: var(--ink-soft); font-size: 14.5px; margin: 0; }
+        .topbar-actions { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+        .avail-select { display: inline-flex; align-items: center; gap: 8px; border: 1.5px solid var(--line); background: var(--paper-soft); border-radius: 11px; padding: 9px 12px; font-weight: 700; font-size: 13px; color: var(--ink); }
+
+        .summary-banner { background: var(--brand); color: #fff; border-radius: 18px; padding: 20px 24px; display: flex; align-items: center; gap: 18px; margin-bottom: 20px; }
+        .summary-banner .icon-wrap { width: 50px; height: 50px; border-radius: 14px; background: rgba(255,255,255,0.16); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+        .summary-banner p { margin: 0; font-size: 17px; font-weight: 600; line-height: 1.4; }
+        .summary-banner .sub { font-size: 13px; font-weight: 500; opacity: 0.85; margin-top: 3px; }
+
+        .stat-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; margin-bottom: 22px; }
+        .stat-card { background: var(--paper-soft); border: 1px solid var(--line); border-radius: 15px; padding: 15px 16px; cursor: pointer; transition: transform .15s ease, box-shadow .15s ease; }
+        .stat-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+        .stat-card-top { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+        .stat-icon { width: 30px; height: 30px; border-radius: 9px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+        .stat-value { font-family: 'Fraunces', serif; font-size: 25px; font-weight: 600; margin: 0; line-height: 1.1; }
+        .stat-label { font-size: 12.5px; color: var(--ink-soft); font-weight: 600; margin: 4px 0 0; }
+
+        .psk-card { background: var(--paper-soft); border: 1px solid var(--line); border-radius: 15px; padding: 16px 18px; box-shadow: 0 1px 3px rgba(0,0,0,0.03); }
+        .section-title-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; margin-top: 18px; }
+        .section-title { font-family: 'Fraunces', serif; font-size: 18px; font-weight: 600; margin: 0; }
+
+        .badge { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+        .badge-healthy { background: var(--healthy-soft); color: var(--healthy); }
+        .badge-attention { background: var(--attention-soft); color: var(--attention); }
+        .badge-urgent { background: var(--urgent-soft); color: var(--urgent); }
+        .badge-info { background: var(--brand-soft); color: var(--brand-dark-contrast); }
+        .badge-vaccination { background: var(--accent-soft); color: var(--accent); }
+        .badge-critical { background: var(--urgent-soft); color: var(--urgent); }
+        .badge-high { background: var(--accent-soft); color: var(--accent); }
+        .badge-moderate { background: var(--attention-soft); color: var(--attention); }
+        .badge-low { background: var(--healthy-soft); color: var(--healthy); }
+        .sev-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+        .animal-avatar { border-radius: 50%; color: #fff; font-family: 'Fraunces', serif; font-weight: 600; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+        .list-row { display: flex; align-items: flex-start; gap: 13px; padding: 15px 6px; border-bottom: 1px solid var(--line); }
+        .list-row:last-child { border-bottom: none; }
+        .list-row-info { flex: 1; min-width: 0; }
+        .list-row-title { font-weight: 700; font-size: 15px; margin: 0 0 2px; }
+        .list-row-meta { font-size: 12.5px; color: var(--ink-soft); margin: 0 0 6px; }
+        .list-row-symptoms { font-size: 13.5px; color: var(--ink); margin: 0 0 8px; line-height: 1.4; }
+        .list-row-badges { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+
+        .btn-primary { background: var(--brand); color: #fff; border: none; border-radius: 11px; padding: 10px 16px; font-weight: 700; font-size: 13.5px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; cursor: pointer; transition: background .15s ease; }
+        .btn-primary:hover { opacity: 0.95; }
+        .btn-outline { background: transparent; color: var(--ink); border: 1.5px solid var(--line); border-radius: 11px; padding: 9px 14px; font-weight: 700; font-size: 13px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px; transition: background .15s ease; }
+        .btn-outline:hover { background: var(--paper); }
+        .btn-sm { padding: 7px 12px; min-height: 34px; font-size: 12.5px; border-radius: 9px; }
+
+        .bell-btn { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; flex-shrink: 0; background: var(--paper-soft); border: 1.5px solid var(--line); border-radius: 12px; color: var(--ink); cursor: pointer; }
+        .bell-badge { position: absolute; top: -5px; right: -5px; background: var(--urgent); color: #fff; font-size: 10.5px; font-weight: 800; min-width: 18px; height: 18px; border-radius: 999px; padding: 0 4px; display: flex; align-items: center; justify-content: center; }
+
+        .segmented-control { display: inline-flex; background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 3px; gap: 3px; }
+        .segmented-option { border: none; background: transparent; color: var(--ink-soft); font-weight: 600; font-size: 12.5px; padding: 6px 12px; border-radius: 7px; cursor: pointer; transition: all .15s ease; }
+        .segmented-option.active { background: #fff; color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,0.06); font-weight: 700; }
+
+        .toast { position: fixed; bottom: 26px; left: 50%; transform: translateX(-50%); background: var(--ink); color: #fff; padding: 12px 22px; border-radius: 12px; font-size: 14px; font-weight: 600; z-index: 999; box-shadow: 0 6px 20px rgba(0,0,0,0.25); }
+
+        .heatmap-container { display: flex; flex-direction: column; gap: 20px; width: 100%; max-width: 100%; box-sizing: border-box; }
+        .hm-header-banner { background: #143F36; color: #fff; border-radius: 18px; padding: 22px 26px; display: flex; align-items: center; justify-content: space-between; gap: 20px; flex-wrap: wrap; box-shadow: 0 4px 16px rgba(20,63,54,0.18); width: 100%; max-width: 100%; box-sizing: border-box; }
+        .hm-title-area { max-width: 720px; }
+        .hm-badge-live { display: inline-flex; align-items: center; gap: 7px; font-size: 11px; font-weight: 800; letter-spacing: 0.8px; color: #8BE78B; background: rgba(255,255,255,0.12); padding: 4px 10px; border-radius: 999px; margin-bottom: 8px; }
+        .live-pulsing-dot { width: 8px; height: 8px; border-radius: 50%; background: #4ADE80; box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.7); animation: pulseLive 1.8s infinite; }
+        @keyframes pulseLive {
+          0% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.7); }
+          70% { box-shadow: 0 0 0 7px rgba(74, 222, 128, 0); }
+          100% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0); }
+        }
+        .hm-title { font-family: 'Fraunces', serif; font-size: 24px; font-weight: 600; margin: 0 0 6px; line-height: 1.2; color: #FBF9F3; }
+        .hm-sub { font-size: 13.5px; opacity: 0.88; margin: 0; line-height: 1.45; }
+        .hm-header-actions { display: flex; align-items: center; gap: 10px; }
+
+        .hm-stat-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; width: 100%; max-width: 100%; box-sizing: border-box; }
+        .hm-stat-box { background: var(--paper-soft); border: 1px solid var(--line); border-radius: 16px; padding: 16px 18px; display: flex; flex-direction: column; }
+        .hm-stat-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+        .hm-stat-icon { width: 30px; height: 30px; border-radius: 8px; display: flex; align-items: center; justify-content: center; }
+        .hm-stat-icon.red { background: var(--urgent-soft); color: var(--urgent); }
+        .hm-stat-icon.orange { background: var(--accent-soft); color: var(--accent); }
+        .hm-stat-icon.green { background: var(--healthy-soft); color: var(--healthy); }
+        .hm-stat-icon.teal { background: var(--brand-soft); color: var(--brand); }
+        .hm-stat-tag { font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 999px; }
+        .hm-stat-tag.red { background: var(--urgent-soft); color: var(--urgent); }
+        .hm-stat-tag.orange { background: var(--accent-soft); color: var(--accent); }
+        .hm-stat-tag.green { background: var(--healthy-soft); color: var(--healthy); }
+        .hm-stat-tag.teal { background: var(--brand-soft); color: var(--brand); }
+        .hm-stat-num { font-family: 'Fraunces', serif; font-size: 27px; font-weight: 700; line-height: 1.1; margin: 2px 0; color: var(--ink); }
+        .hm-stat-lbl { font-size: 13px; font-weight: 600; color: var(--ink-soft); }
+        .hm-stat-foot { font-size: 11.5px; margin-top: 6px; font-weight: 600; color: var(--ink-soft); }
+        .hm-stat-foot.red-text { color: var(--urgent); }
+        .hm-stat-foot.green-text { color: var(--healthy); }
+
+        .hm-filter-card { padding: 16px 20px; margin-bottom: 6px; width: 100%; max-width: 100%; box-sizing: border-box; overflow: hidden; }
+        .hm-filter-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+        .hm-filter-title { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 14.5px; }
+        .hm-reset-btn { border: none; background: transparent; color: var(--brand); font-size: 12.5px; font-weight: 700; display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
+        .hm-reset-btn:hover { text-decoration: underline; }
+
+        .hm-filter-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; width: 100%; max-width: 100%; box-sizing: border-box; }
+        .hm-control-group { display: flex; flex-direction: column; gap: 5px; min-width: 0; width: 100%; box-sizing: border-box; }
+        .hm-control-label { font-size: 11.5px; font-weight: 700; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .hm-select { height: 38px; width: 100%; min-width: 0; max-width: 100%; border: 1.5px solid var(--line); border-radius: 9px; padding: 0 8px; background: #fff; font-size: 13px; font-weight: 600; color: var(--ink); outline: none; text-overflow: ellipsis; box-sizing: border-box; }
+        .hm-select:focus { border-color: var(--brand); }
+
+        .hm-filter-subrow { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); flex-wrap: wrap; width: 100%; box-sizing: border-box; }
+        .hm-search-wrap { display: flex; align-items: center; gap: 8px; background: #fff; border: 1.5px solid var(--line); border-radius: 9px; padding: 0 12px; height: 38px; flex: 1; min-width: 220px; max-width: 580px; box-sizing: border-box; }
+        .hm-search-input { border: none; outline: none; font-size: 13px; width: 100%; min-width: 0; font-family: inherit; }
+        .hm-clear-search { border: none; background: transparent; color: var(--ink-soft); cursor: pointer; padding: 0; }
+        .hm-grouping-toggles { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+        .hm-grouping-label { font-size: 12px; font-weight: 700; color: var(--ink-soft); }
+
+        .hm-main-layout { display: grid; grid-template-columns: 1.55fr 1fr; gap: 18px; align-items: start; width: 100%; max-width: 100%; box-sizing: border-box; }
+        .hm-map-card { padding: 14px; display: flex; flex-direction: column; }
+        .hm-map-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; flex-wrap: wrap; gap: 8px; }
+        .hm-layer-switches { display: flex; align-items: center; gap: 6px; }
+        .layer-chip { border: 1.5px solid var(--line); background: var(--paper); border-radius: 8px; padding: 5px 9px; font-size: 11.5px; font-weight: 700; display: inline-flex; align-items: center; gap: 5px; cursor: pointer; transition: all .15s ease; }
+        .layer-chip.active { background: var(--brand-soft); border-color: var(--brand); color: var(--brand-dark-contrast); }
+
+        .hm-canvas-wrapper { position: relative; width: 100%; border-radius: 12px; overflow: hidden; border: 1px solid var(--line); background: #EFE8D8; }
+        .hm-svg-map { width: 100%; height: auto; display: block; }
+        
+        .pulse-ring { transform-origin: center; animation: ringExpand 2.2s infinite ease-out; }
+        @keyframes ringExpand {
+          0% { opacity: 0.8; transform: scale(0.92); }
+          50% { opacity: 0.4; }
+          100% { opacity: 0; transform: scale(1.15); }
+        }
+
+        .hotspot-pin-group:hover { filter: brightness(1.12); }
+        .hotspot-pin-group.selected path { stroke: #FFE699; stroke-width: 3.5; }
+
+        .hm-map-legend { position: absolute; bottom: 12px; left: 12px; background: rgba(251, 249, 243, 0.94); backdrop-filter: blur(4px); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font-size: 11px; display: flex; flex-direction: column; gap: 5px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+        .hm-legend-title { font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; color: var(--ink-soft); font-size: 9.5px; margin-bottom: 2px; }
+        .hm-legend-item { display: flex; align-items: center; gap: 7px; color: var(--ink); font-weight: 600; }
+        .hm-legend-dot { width: 9px; height: 9px; border-radius: 50%; }
+        .hm-legend-dot.red { background: var(--urgent); }
+        .hm-legend-dot.orange { background: var(--accent); }
+        .hm-legend-dot.green { background: var(--healthy); }
+        .hm-legend-divider { height: 1px; background: var(--line); margin: 3px 0; }
+        .hm-legend-shape { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+        .hm-legend-shape.solid { background: var(--ink); }
+        .hm-legend-shape.dashed { border: 2px dashed var(--ink); }
+        .hm-legend-icon-tag { width: 14px; height: 14px; border-radius: 3px; background: var(--brand); color: #fff; display: flex; align-items: center; justify-content: center; }
+
+        .hm-hotspot-panel { padding: 18px 20px; display: flex; flex-direction: column; gap: 14px; }
+        .hm-panel-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; border-bottom: 1px solid var(--line); padding-bottom: 12px; }
+        .hm-panel-title { font-family: 'Fraunces', serif; font-size: 19px; font-weight: 700; margin: 0 0 3px; line-height: 1.2; }
+        .hm-panel-loc { font-size: 13px; font-weight: 600; color: var(--ink-soft); }
+
+        .hm-impact-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; background: var(--paper); padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); }
+        .hm-impact-cell { display: flex; flex-direction: column; }
+        .hm-impact-val { font-family: 'Fraunces', serif; font-size: 21px; font-weight: 700; line-height: 1.1; }
+        .hm-impact-val.red { color: var(--urgent); }
+        .hm-impact-lbl { font-size: 11px; font-weight: 700; color: var(--ink-soft); margin-top: 2px; }
+        .hm-impact-sub { font-size: 10.5px; color: var(--ink-soft); margin-top: 1px; }
+
+        .hm-info-block { border-left: 3.5px solid var(--urgent); padding: 4px 0 4px 12px; }
+        .hm-info-heading { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.4px; color: var(--ink-soft); margin-bottom: 4px; }
+        .hm-info-text { font-size: 13px; margin: 0; line-height: 1.45; color: var(--ink); }
+
+        .hm-spark-wrap { background: var(--paper); border: 1px solid var(--line); border-radius: 11px; padding: 10px 12px; }
+        .hm-spark-bars { display: flex; align-items: flex-end; justify-content: space-between; height: 48px; gap: 6px; padding-top: 6px; }
+        .hm-spark-bar-col { flex: 1; display: flex; flex-direction: column; align-items: center; height: 100%; justify-content: flex-end; }
+        .hm-spark-bar { width: 100%; border-radius: 4px 4px 0 0; min-height: 4px; transition: height .2s ease; }
+        .hm-spark-day { font-size: 9.5px; font-weight: 700; color: var(--ink-soft); margin-top: 3px; }
+
+        .hm-panel-actions { display: flex; gap: 8px; margin-top: 4px; }
+
+        .hm-section-block { margin-top: 10px; }
+        .hm-trends-grid { display: grid; grid-template-columns: 1.65fr 1fr; gap: 16px; }
+        .hm-trend-chart-card { padding: 18px 20px; }
+        .hm-chart-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 10px; }
+        .hm-chart-legend { display: flex; gap: 14px; font-size: 12px; font-weight: 700; }
+        .legend-item { display: flex; align-items: center; gap: 6px; }
+        .legend-line { width: 16px; height: 3px; border-radius: 2px; }
+        .legend-line.red { background: var(--urgent); }
+        .legend-line.orange { background: var(--accent); }
+        .hm-chart-canvas-wrap { width: 100%; overflow-x: auto; }
+        .hm-trend-svg { width: 100%; height: 210px; }
+
+        .hm-increasing-card { padding: 16px 18px; display: flex; flex-direction: column; }
+        .hm-card-subheading { display: flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 700; margin-bottom: 12px; }
+        .hm-growth-list { display: flex; flex-direction: column; gap: 8px; }
+        .hm-growth-item { display: flex; align-items: center; justify-content: space-between; padding: 9px 11px; background: var(--paper); border: 1px solid var(--line); border-radius: 10px; cursor: pointer; transition: all .15s ease; }
+        .hm-growth-item:hover { border-color: var(--brand); transform: translateX(2px); }
+        .hm-growth-info { min-width: 0; }
+        .hm-growth-title { font-weight: 700; font-size: 13.5px; margin: 0 0 2px; }
+        .hm-growth-loc { font-size: 11.5px; color: var(--ink-soft); margin: 0 0 3px; }
+        .hm-growth-cases { font-size: 11px; font-weight: 600; color: var(--ink); }
+        .hm-growth-stat { text-align: right; }
+        .hm-growth-pct { font-family: 'Fraunces', serif; font-size: 17px; font-weight: 700; color: var(--urgent); display: block; line-height: 1; }
+        .hm-growth-period { font-size: 10px; color: var(--ink-soft); font-weight: 600; }
+
+        .hm-alerts-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+        .hm-alert-card { background: var(--paper-soft); border: 1px solid var(--line); border-radius: 14px; padding: 15px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.03); }
+        .hm-alert-top { display: flex; gap: 10px; align-items: flex-start; }
+        .hm-alert-icon-box { width: 34px; height: 34px; border-radius: 9px; background: var(--urgent-soft); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+        .hm-alert-badge-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+        .hm-alert-time { font-size: 10.5px; color: var(--ink-soft); font-weight: 600; }
+        .hm-alert-disease { font-weight: 700; font-size: 14px; margin: 0 0 2px; color: var(--ink); line-height: 1.2; }
+        .hm-alert-loc { font-size: 12px; color: var(--ink-soft); margin: 0; }
+        .hm-alert-metrics { display: flex; gap: 6px; flex-wrap: wrap; }
+        .hm-metric-pill { background: var(--paper); border: 1px solid var(--line); border-radius: 6px; padding: 3px 7px; font-size: 11px; color: var(--ink-soft); }
+        .hm-metric-pill strong { color: var(--ink); }
+        .hm-alert-summary { font-size: 12.5px; line-height: 1.4; color: var(--ink); margin: 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+        .hm-alert-actions { display: flex; gap: 6px; margin-top: auto; padding-top: 6px; }
+
+        .hm-table-responsive { width: 100%; overflow-x: auto; }
+        .hm-table { width: 100%; border-collapse: collapse; text-align: left; font-size: 13.5px; }
+        .hm-table th { background: #FAF7F0; padding: 12px 14px; font-size: 12px; font-weight: 700; color: var(--ink-soft); border-bottom: 1.5px solid var(--line); white-space: nowrap; }
+        .hm-table td { padding: 13px 14px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+        .hm-table-row { cursor: pointer; transition: background .12s ease; }
+        .hm-table-row:hover { background: rgba(31, 93, 80, 0.04); }
+        .hm-table-row.row-selected { background: var(--brand-soft); }
+        .rank-badge { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%; font-size: 12px; font-weight: 800; background: var(--paper); color: var(--ink-soft); }
+        .rank-badge.rank-top { background: var(--urgent); color: #fff; }
+
+        .hm-support-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+        .hm-support-card { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+        .hm-support-top { display: flex; gap: 11px; align-items: flex-start; }
+        .hm-support-avatar { width: 40px; height: 40px; border-radius: 11px; background: var(--brand-soft); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+        .hm-support-name { font-weight: 700; font-size: 14.5px; margin: 0 0 2px; }
+        .hm-support-type { font-size: 12px; color: var(--brand-dark-contrast); font-weight: 600; margin: 0 0 2px; }
+        .hm-support-loc { font-size: 11.5px; color: var(--ink-soft); margin: 0; }
+        .hm-support-details { display: flex; flex-direction: column; gap: 4px; background: var(--paper); border: 1px solid var(--line); border-radius: 9px; padding: 9px 11px; font-size: 12px; }
+        .hm-support-detail-item { display: flex; justify-content: space-between; }
+        .hm-sd-label { color: var(--ink-soft); font-weight: 600; }
+        .hm-sd-val { font-weight: 600; color: var(--ink); text-align: right; }
+        .hm-support-actions { display: flex; gap: 8px; margin-top: auto; }
+        .btn-dispatched { cursor: default; }
+
+        @media (max-width: 1250px) {
+          .hm-filter-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        }
+
+        @media (max-width: 1100px) {
+          .hm-main-layout { grid-template-columns: 1fr; }
+          .hm-stat-row { grid-template-columns: repeat(2, 1fr); }
+          .hm-trends-grid { grid-template-columns: 1fr; }
+          .hm-filter-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+          .hm-alerts-grid { grid-template-columns: repeat(2, 1fr); }
+          .hm-support-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+
+        @media (max-width: 768px) {
+          .sidebar { display: none; }
+          .main { padding: 16px 14px 60px; }
+          .stat-grid { grid-template-columns: repeat(2, 1fr); }
+          .hm-filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+          .hm-alerts-grid { grid-template-columns: 1fr; }
+          .hm-support-grid { grid-template-columns: 1fr; }
+          .hm-header-banner { flex-direction: column; align-items: flex-start; }
+        }
+
+        @media (max-width: 520px) {
+          .hm-filter-grid { grid-template-columns: 1fr; }
+          .hm-search-wrap { max-width: 100%; min-width: 100%; }
+        }
+        .workspace-page { display:flex; flex-direction:column; gap:18px; }
+        .page-head { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; flex-wrap:wrap; }
+        .page-head h2 { margin:0 0 4px; font-family:'Fraunces',serif; font-size:26px; }
+        .page-head p { margin:0; color:var(--ink-soft); font-size:13.5px; }
+        .filter-row { display:flex; gap:7px; flex-wrap:wrap; }
+        .filter-chip { border:1px solid var(--line); background:var(--paper-soft); color:var(--ink-soft); border-radius:999px; padding:7px 11px; cursor:pointer; font-weight:700; font-size:12px; }
+        .filter-chip.active { background:var(--brand); color:#fff; border-color:var(--brand); }
+        .record-row { display:flex; align-items:center; gap:14px; padding:15px 0; border-bottom:1px solid var(--line); }
+        .record-row:last-child { border-bottom:0; }
+        .record-main { flex:1; min-width:0; }
+        .record-title { font-weight:800; font-size:16px; margin-bottom:3px; }
+        .record-title span { color:var(--ink-soft); font-weight:500; }
+        .record-sub { color:var(--ink-soft); font-size:12.5px; margin-top:3px; }
+        .record-badges { display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-top:7px; }
+        .record-actions { display:flex; gap:7px; flex-wrap:wrap; justify-content:flex-end; }
+        .emergency-icon { width:42px; height:42px; border-radius:12px; background:var(--urgent-soft); color:var(--urgent); display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+        .search-box { display:flex; align-items:center; gap:8px; border:1px solid var(--line); background:var(--paper-soft); border-radius:10px; padding:9px 12px; min-width:300px; }
+        .search-box input { border:0; outline:0; background:transparent; color:var(--ink); width:100%; font:inherit; font-size:13px; }
+        .patient-layout { display:grid; grid-template-columns:310px 1fr; gap:16px; }
+        .patient-list { padding:8px; }
+        .patient-item { width:100%; display:flex; align-items:center; gap:10px; text-align:left; border:0; background:transparent; padding:10px; border-radius:10px; cursor:pointer; color:var(--ink); }
+        .patient-item:hover,.patient-item.selected { background:var(--brand-soft); }
+        .patient-item span { display:flex; flex-direction:column; min-width:0; }
+        .patient-item small { color:var(--ink-soft); margin-top:2px; }
+        .patient-detail { padding:20px; }
+        .detail-head { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; }
+        .detail-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin:18px 0; }
+        .detail-grid div { background:var(--paper); border:1px solid var(--line); border-radius:10px; padding:11px; display:flex; flex-direction:column; gap:2px; }
+        .detail-grid span,.history-card span { font-size:10.5px; text-transform:uppercase; letter-spacing:.35px; color:var(--ink-soft); font-weight:800; }
+        .mini-list { border:1px solid var(--line); border-radius:10px; overflow:hidden; margin-bottom:16px; }
+        .mini-list > div { display:flex; justify-content:space-between; align-items:center; gap:10px; padding:11px 13px; border-bottom:1px solid var(--line); }
+        .mini-list > div:last-child { border-bottom:0; }
+        .mini-list span { color:var(--ink-soft); font-size:12px; }
+        .detail-actions { display:flex; gap:8px; flex-wrap:wrap; }
+        .history-patient-tabs { display:flex; gap:7px; flex-wrap:wrap; padding-bottom:14px; border-bottom:1px solid var(--line); margin-bottom:16px; }
+        .history-patient-tabs button { border:1px solid var(--line); background:var(--paper); color:var(--ink); border-radius:9px; padding:7px 12px; cursor:pointer; font-weight:700; }
+        .history-patient-tabs button.active { background:var(--brand); border-color:var(--brand); color:#fff; }
+        .history-table { display:flex; flex-direction:column; gap:9px; }
+        .history-card { display:grid; grid-template-columns:105px 1.5fr 1fr 1fr 1fr 1fr; gap:12px; align-items:start; border:1px solid var(--line); background:var(--paper-soft); border-radius:11px; padding:13px; }
+        .history-date { font-weight:800; font-size:12px; }
+        .history-card div { display:flex; flex-direction:column; gap:2px; }
+        .settings-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+        .setting-row { display:flex; align-items:center; justify-content:space-between; gap:14px; padding:13px 0; border-bottom:1px solid var(--line); }
+        .setting-row:last-child { border-bottom:0; }
+        .setting-row > div { display:flex; flex-direction:column; gap:2px; min-width:0; }
+        .setting-row span { color:var(--ink-soft); font-size:12px; }
+        .setting-row select { border:1px solid var(--line); background:var(--paper); color:var(--ink); border-radius:8px; padding:8px 10px; }
+        .toggle { border:1px solid var(--line); background:var(--paper); color:var(--ink-soft); border-radius:999px; padding:6px 12px; font-weight:800; cursor:pointer; min-width:52px; }
+        .toggle.on { background:var(--brand); color:#fff; border-color:var(--brand); }
+        .empty-state { padding:32px; text-align:center; color:var(--ink-soft); }
+        @media(max-width:900px){ .patient-layout,.settings-grid{grid-template-columns:1fr;} .detail-grid{grid-template-columns:repeat(2,1fr);} .history-card{grid-template-columns:1fr 1fr;} .search-box{min-width:100%;} }
+      `}</style>
+
+      {/* Desktop Sidebar with Navigation */}
+      <aside className="sidebar">
+        <div className="sidebar-brand">
+          <div className="mark"><PawPrint size={20} color="#2A1B04" /></div>
+          <div>
+            <div className="name">Pashu Sakhi</div>
+            <div className="tag">{t("brand_tagline", "Veterinarian workspace")}</div>
+          </div>
+        </div>
+
+        <nav className="sidebar-scroll">
+          {NAV.map((n) => (
+            <button
+              key={n.id}
+              className={`nav-item ${view === n.id ? "active" : ""}`}
+              onClick={() => {
+                setView(n.id);
+                if (n.id === "heatmap") {
+                  showToast("Opened Veterinary Disease Monitoring Dashboard.");
+                }
+              }}
+            >
+              <n.Icon size={18} />
+              <span>{n.label}</span>
+              {n.badge && (
+                <span className={`nav-badge ${n.badge === "Live" ? "live-pill" : ""}`}>
+                  {n.badge}
+                </span>
+              )}
+            </button>
+          ))}
+        </nav>
+
+        <div className="sidebar-footer">
+          <div className="vet-mini-card">
+            <Avatar label={profile.name.replace("Dr. ", "")} size={38} />
+            <div style={{ minWidth: 0 }}>
+              <p className="vet-mini-name">{profile.name}</p>
+              <div className="vet-mini-sub">
+                <span className="avail-dot" style={{ background: "var(--healthy)" }} />
+                {availability}
+              </div>
+            </div>
+          </div>
+          <button
+            className="nav-item"
+            style={{ marginTop: 6, color: '#F6B4A6', width: '100%', cursor: 'pointer' }}
+            onClick={handleLogout}
+            title="Log out of Veterinarian workspace"
+          >
+            <LogOut size={16} />
+            <span>Log Out</span>
+          </button>
+        </div>
+      </aside>
+
+      {/* Main Workspace Area */}
+      <main className="main">
+        {/* Top Header Bar */}
+        <div className="topbar">
+          <div>
+            <h1 className="greeting">Namaste, {profile.name}</h1>
+            <p className="greeting-sub">
+              {view === "heatmap"
+                ? "Active Disease Surveillance & Spatial Monitoring Console"
+                : "Here's what needs your attention today."}
+            </p>
+          </div>
+          <div className="topbar-actions">
+            <div className="avail-select">
+              <span className="avail-dot" style={{ background: "var(--healthy)" }} />
+              <select
+                value={availability}
+                onChange={(e) => setAvailability(e.target.value)}
+                style={{ border: "none", background: "transparent", fontWeight: 700, fontSize: 13, color: "var(--ink)" }}
+              >
+                {AVAILABILITY_OPTIONS.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
+              </select>
+            </div>
+            <button className="bell-btn" onClick={() => showToast("All system notifications are up to date.")} title="Notifications">
+              <Bell size={18} />
+              {unreadCount > 0 && <span className="bell-badge">{unreadCount}</span>}
+            </button>
+          </div>
+        </div>
+
+        {/* MAIN VIEW ROUTER: every sidebar item now has its own linked workspace */}
+        {view === "heatmap" ? (
+          <DiseaseHeatmapDashboard showToast={showToast} />
+        ) : view === "reports" ? (
+          <div className="workspace-page">
+            <div className="page-head">
+              <div><h2>AI Reports</h2><p>Review AI-generated livestock screening reports before confirming the clinical assessment.</p></div>
+              <div className="filter-row">
+                {["All","New","Under Review","Resolved"].map(f => (
+                  <button key={f} className={`filter-chip ${reportFilter === f ? "active" : ""}`} onClick={() => setReportFilter(f)}>{f}</button>
+                ))}
+              </div>
+            </div>
+            <div className="stat-grid">
+              <div className="stat-card"><p className="stat-value">{reports.length}</p><p className="stat-label">Total Reports</p></div>
+              <div className="stat-card"><p className="stat-value">{reports.filter(r=>r.status==="New").length}</p><p className="stat-label">New</p></div>
+              <div className="stat-card"><p className="stat-value">{reports.filter(r=>r.status==="Under Review").length}</p><p className="stat-label">Under Review</p></div>
+              <div className="stat-card"><p className="stat-value">{reports.filter(r=>r.status==="Resolved").length}</p><p className="stat-label">Resolved</p></div>
+            </div>
+            <Card>
+              {filteredReports.map(r => (
+                <div className="record-row" key={r.id}>
+                  <Avatar label={r.animal} size={46} tone={r.severity === "high" ? "urgent" : "attention"} />
+                  <div className="record-main">
+                    <div className="record-title">{r.animal} <span>· {r.farmer}</span></div>
+                    <div className="record-sub">{r.condition} · {r.datetime}</div>
+                    <div className="record-sub">{r.symptoms}</div>
+                    <div className="record-badges"><SeverityBadge level={r.severity}/><span className="badge badge-info">{r.confidence}% AI confidence</span><StatusPill status={r.status === "Under Review" ? "underReview" : r.status === "New" ? "new" : "resolved"}/></div>
+                  </div>
+                  <div className="record-actions">
+                    <button className="btn-outline btn-sm" onClick={() => showToast(`Reviewing ${r.id} for ${r.animal}.`)}><Eye size={14}/> Review</button>
+                    {r.status !== "Resolved" && <button className="btn-primary btn-sm" onClick={() => updateReport(r.id, "Resolved")}><Check size={14}/> Confirm</button>}
+                    {r.status === "New" && <button className="btn-outline btn-sm" onClick={() => updateReport(r.id, "Under Review")}>Under Review</button>}
+                  </div>
+                </div>
+              ))}
+              {!filteredReports.length && <div className="empty-state">No AI reports match this filter.</div>}
+            </Card>
+          </div>
+        ) : view === "emergency" ? (
+          <div className="workspace-page">
+            <div className="page-head">
+              <div><h2>Emergency Cases</h2><p>Prioritise critical cases, assign a veterinarian and track resolution.</p></div>
+              <div className="filter-row">
+                {["All","New","Accepted","In Treatment","Resolved"].map(f => (
+                  <button key={f} className={`filter-chip ${emergencyFilter === f ? "active" : ""}`} onClick={() => setEmergencyFilter(f)}>{f}</button>
+                ))}
+              </div>
+            </div>
+            <Card>
+              {filteredEmergencies.map(e => (
+                <div className="record-row emergency-row" key={e.id}>
+                  <div className="emergency-icon"><Siren size={20}/></div>
+                  <div className="record-main">
+                    <div className="record-title">{e.animal} <span>· {e.farmer}</span></div>
+                    <div className="record-sub">{e.location} · {e.id} · Reported {e.timeReported}</div>
+                    <div className="record-sub">{e.symptoms}</div>
+                    <div className="record-badges"><SeverityBadge level={e.severity}/><span className="badge badge-info">{e.aiResult}</span><StatusPill status={e.status}/></div>
+                  </div>
+                  <div className="record-actions">
+                    {e.status === "new" && <button className="btn-primary btn-sm" onClick={() => updateEmergency(e.id, "accepted")}><UserCheck size={14}/> Accept Case</button>}
+                    {e.status === "accepted" && <button className="btn-primary btn-sm" onClick={() => updateEmergency(e.id, "inTreatment")}><Syringe size={14}/> Start Treatment</button>}
+                    {e.status === "inTreatment" && <button className="btn-primary btn-sm" onClick={() => updateEmergency(e.id, "resolved")}><CheckCircle2 size={14}/> Mark Resolved</button>}
+                    <button className="btn-outline btn-sm" onClick={() => showToast(`Opening emergency chat for ${e.animal}.`)}><MessageCircle size={14}/> Open Chat</button>
+                  </div>
+                </div>
+              ))}
+              {!filteredEmergencies.length && <div className="empty-state">No emergency cases match this filter.</div>}
+            </Card>
+          </div>
+        ) : view === "patients" ? (
+          <div className="workspace-page">
+            <div className="page-head">
+              <div><h2>Patient Records</h2><p>Search livestock records and open the complete clinical profile.</p></div>
+              <div className="search-box"><Search size={16}/><input value={patientSearch} onChange={e=>setPatientSearch(e.target.value)} placeholder="Search animal, ear-tag, farmer, breed..."/></div>
+            </div>
+            <div className="patient-layout">
+              <Card className="patient-list">
+                {filteredPatients.map(p => (
+                  <button key={p.id} className={`patient-item ${selectedPatientId === p.id ? "selected" : ""}`} onClick={()=>setSelectedPatientId(p.id)}>
+                    <Avatar label={p.name} size={42} tone={p.healthStatus === "urgent" ? "urgent" : p.healthStatus === "attention" ? "attention" : "brand"}/>
+                    <span><strong>{p.name}</strong><small>{p.earTag} · {p.species}</small><small>{p.owner}</small></span>
+                  </button>
+                ))}
+              </Card>
+              {(() => {
+                const p = patients.find(x=>x.id===selectedPatientId) || patients[0];
+                return <Card className="patient-detail">
+                  <div className="detail-head">
+                    <div><div className="record-title">{p.name} <span>· {p.breed}</span></div><div className="record-sub">{p.earTag} · {p.species} · {p.age} years · {p.gender}</div></div>
+                    <RiskPill risk={p.healthStatus === "urgent" ? "High" : p.healthStatus === "attention" ? "Medium" : "Low"}/>
+                  </div>
+                  <div className="detail-grid">
+                    <div><span>Owner</span><strong>{p.owner}</strong></div><div><span>Location</span><strong>{p.location}</strong></div>
+                    <div><span>Consultations</span><strong>{p.consultations}</strong></div><div><span>Images</span><strong>{p.images}</strong></div>
+                  </div>
+                  <SectionTitle>Vaccination & records</SectionTitle>
+                  <div className="mini-list">{p.vaccinations.map((v,i)=><div key={i}><strong>{v.name}</strong><span>{v.status}</span></div>)}</div>
+                  <SectionTitle>AI reports</SectionTitle>
+                  <div className="mini-list"><div><strong>{p.aiReports.length} linked report(s)</strong><button className="btn-outline btn-sm" onClick={()=>setView("reports")}>Open AI Reports</button></div></div>
+                  <div className="detail-actions">
+                    <button className="btn-primary btn-sm" onClick={()=>setView("treatmentHistory")}><HeartPulse size={14}/> Treatment History</button>
+                    <button className="btn-outline btn-sm" onClick={()=>showToast(`Opening consultation history for ${p.name}.`)}><MessageCircle size={14}/> Consultations</button>
+                  </div>
+                </Card>
+              })()}
+            </div>
+          </div>
+        ) : view === "treatmentHistory" ? (
+          <div className="workspace-page">
+            <div className="page-head">
+              <div><h2>Treatment History</h2><p>Complete treatment, medication, dosage, follow-up and attachment history by patient.</p></div>
+            </div>
+            <Card>
+              <div className="history-patient-tabs">
+                {patients.map(p=><button key={p.id} className={selectedPatientId===p.id?"active":""} onClick={()=>setSelectedPatientId(p.id)}>{p.name}</button>)}
+              </div>
+              {(() => {
+                const p = patients.find(x=>x.id===selectedPatientId) || patients[0];
+                const history = treatmentHistory[p.id] || [];
+                return <div>
+                  <div className="detail-head" style={{marginBottom:16}}><div><div className="record-title">{p.name} · Treatment History</div><div className="record-sub">{p.earTag} · {p.owner} · {p.location}</div></div><button className="btn-primary btn-sm" onClick={()=>addTreatment(p.id)}><PlusCircle size={14}/> New Treatment</button></div>
+                  {history.length ? <div className="history-table">
+                    {history.map((h,i)=><div className="history-card" key={i}><div className="history-date">{h.date}</div><div><strong>{h.condition}</strong><div className="record-sub">{h.notes}</div></div><div><span>Medicine</span><strong>{h.medicine}</strong></div><div><span>Dosage / Route</span><strong>{h.dosage} · {h.route}</strong></div><div><span>Duration</span><strong>{h.duration}</strong></div><div><span>Follow-up</span><strong>{h.followUp}</strong></div></div>)}
+                  </div> : <div className="empty-state">No treatment history recorded yet for {p.name}. Use “New Treatment” to add an entry.</div>}
+                </div>
+              })()}
+            </Card>
+          </div>
+        ) : view === "settings" ? (
+          <div className="workspace-page">
+            <div className="page-head"><div><h2>Settings</h2><p>Manage veterinarian account, accessibility, notifications and privacy preferences.</p></div><button className="btn-primary btn-sm" onClick={()=>showToast("Settings saved successfully.")}><Save size={14}/> Save changes</button></div>
+            <div className="settings-grid">
+              <Card><SectionTitle>Account</SectionTitle>
+                <div className="setting-row"><div><strong>Veterinarian</strong><span>{profile.name} · {profile.qualification}</span></div><button className="btn-outline btn-sm" onClick={()=>showToast("Profile editor opened.")}>Manage Profile</button></div>
+                <div className="setting-row"><div><strong>Availability</strong><span>Controls whether new consultations can be assigned.</span></div><select value={availability} onChange={e=>setAvailability(e.target.value)}><option value="available">Available</option><option value="busy">Busy</option><option value="emergencyOnly">Emergency Only</option><option value="offline">Offline</option><option value="leave">On Leave</option></select></div>
+              </Card>
+              <Card><SectionTitle>Language & Accessibility</SectionTitle>
+                <div className="setting-row"><div><strong>App Language</strong><span>Current: {appLanguage}</span></div><select value={appLanguage} onChange={e=>{setAppLanguage(e.target.value);showToast(`Language set to ${e.target.value}.`)}}><option>English</option><option>Hindi</option><option>Marathi</option><option>Gujarati</option><option>Punjabi</option></select></div>
+                <div className="setting-row"><div><strong>Text Size</strong><span>Adjust the dashboard reading size.</span></div><select value={textSize} onChange={e=>setTextSize(e.target.value)}><option>Small</option><option>Medium</option><option>Large</option></select></div>
+                <div className="setting-row"><div><strong>Theme</strong><span>Switch between light, dark and system-style presentation.</span></div><select value={theme} onChange={e=>{setTheme(e.target.value);showToast(`Theme changed to ${e.target.value}.`)}}><option>Light</option><option>Dark</option><option>System</option></select></div>
+                <div className="setting-row"><div><strong>High Contrast Mode</strong><span>Increase border and text contrast.</span></div><button className={`toggle ${highContrast?"on":""}`} onClick={()=>setHighContrast(v=>!v)}>{highContrast?"ON":"OFF"}</button></div>
+              </Card>
+              <Card><SectionTitle>Notifications</SectionTitle>
+                <div className="setting-row"><div><strong>Notification Preferences</strong><span>Emergency, consultation and system alerts.</span></div><button className={`toggle ${notificationPreferences?"on":""}`} onClick={()=>setNotificationPreferences(v=>!v)}>{notificationPreferences?"ON":"OFF"}</button></div>
+                <div className="setting-row"><div><strong>Reminder Timing</strong><span>When follow-up reminders should appear.</span></div><select value={reminderTiming} onChange={e=>setReminderTiming(e.target.value)}><option>At scheduled time</option><option>15 minutes before</option><option>30 minutes before</option><option>1 hour before</option></select></div>
+              </Card>
+              <Card><SectionTitle>Privacy & Support</SectionTitle>
+                <div className="setting-row"><div><strong>App Permissions</strong><span>Camera, notifications and location permissions.</span></div><button className="btn-outline btn-sm" onClick={()=>showToast("App permissions panel opened.")}>Manage</button></div>
+                <div className="setting-row"><div><strong>Help & Support</strong><span>FAQs, Help Center and report a problem.</span></div><button className="btn-outline btn-sm" onClick={()=>showToast("Support options opened.")}>Open Support</button></div>
+                <div className="setting-row"><div><strong>About Pashu Sakhi</strong><span>Veterinarian workspace · prototype build</span></div><button className="btn-outline btn-sm" onClick={()=>showToast("Pashu Sakhi veterinarian workspace.")}>About</button></div>
+              </Card>
+            </div>
+          </div>
+        ) : view === "requests" ? (
+          <div className="workspace-page">
+            <div className="page-head"><div><h2>Chat Requests</h2><p>Consultation requests from farmers, with status, priority, and direct reply advice.</p></div></div>
+            <Card>
+              {requests.map(r => (
+                <div className="record-row" key={r.id} style={{ flexDirection: "column", alignItems: "stretch", gap: 10 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <Avatar label={r.animal} size={44} tone={r.priority === "critical" ? "urgent" : "attention"} />
+                    <div className="record-main">
+                      <div className="record-title">{r.animal} <span>· {r.farmer}</span></div>
+                      <div className="record-sub">{r.symptoms}</div>
+                      <div className="record-badges">
+                        <SeverityBadge level={r.priority} />
+                        <StatusPill status={r.status} />
+                        <span className="record-sub">{r.submitted}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+                    <input
+                      type="text"
+                      id={`reply_input_${r.id}`}
+                      placeholder="Type veterinary advice or reply to farmer..."
+                      style={{
+                        flex: 1, padding: "8px 12px", borderRadius: 8, border: "1px solid var(--line)",
+                        background: "var(--paper)", color: "var(--ink)", fontSize: 13
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          const val = e.target.value.trim();
+                          if (val) {
+                            const animalId = r.animalId || "a1";
+                            if (window.PashuSakhiBridge) {
+                              window.PashuSakhiBridge.sendChat(animalId, {
+                                sender: "vet",
+                                text: val,
+                                time: "Just now"
+                              });
+                            }
+                            showToast(`Reply dispatched to ${r.farmer || "farmer"}.`);
+                            e.target.value = "";
+                            setRequests(prev => prev.map(item => item.id === r.id ? { ...item, status: "replied" } : item));
+                          }
+                        }
+                      }}
+                    />
+                    <button
+                      className="btn-primary btn-sm"
+                      style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
+                      onClick={() => {
+                        const el = document.getElementById(`reply_input_${r.id}`);
+                        const val = el ? el.value.trim() : "";
+                        if (val) {
+                          const animalId = r.animalId || "a1";
+                          if (window.PashuSakhiBridge) {
+                            window.PashuSakhiBridge.sendChat(animalId, {
+                              sender: "vet",
+                              text: val,
+                              time: "Just now"
+                            });
+                          }
+                          showToast(`Reply dispatched to ${r.farmer || "farmer"}.`);
+                          el.value = "";
+                          setRequests(prev => prev.map(item => item.id === r.id ? { ...item, status: "replied" } : item));
+                        } else {
+                          showToast("Please enter advice or a reply message first.");
+                        }
+                      }}
+                    >
+                      <Send size={14} /> Send Reply
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </Card>
+          </div>
+        ) : (
+          <>
+            {/* Standard Overview Content */}
+            <div className="summary-banner">
+              <div className="icon-wrap"><ClipboardList size={24} /></div>
+              <div>
+                <p>{emergencyCount} emergency cases and {unreadRequestsCount} new requests need your attention.</p>
+                <div className="sub">{t("overview_workloadUpdated", "Workload updated a few minutes ago")}</div>
+              </div>
+            </div>
+
+            <div className="stat-grid">
+              <div className="stat-card" onClick={() => setView("requests")}>
+                <div className="stat-card-top"><div className="stat-icon" style={{ background: "var(--brand-soft)", color: "var(--brand-dark-contrast)" }}><MessageCircle size={16} /></div></div>
+                <p className="stat-value">{unreadRequestsCount}</p>
+                <p className="stat-label">Unread Requests</p>
+              </div>
+              <div className="stat-card" onClick={() => setView("patients")}>
+                <div className="stat-card-top"><div className="stat-icon" style={{ background: "var(--healthy-soft)", color: "var(--healthy)" }}><CalendarClock size={16} /></div></div>
+                <p className="stat-value">{followUpsToday}</p>
+                <p className="stat-label">Follow-ups Today</p>
+              </div>
+              <div className="stat-card" onClick={() => setView("emergency")}>
+                <div className="stat-card-top"><div className="stat-icon" style={{ background: "var(--urgent-soft)", color: "var(--urgent)" }}><Siren size={16} /></div></div>
+                <p className="stat-value">{emergencyCount}</p>
+                <p className="stat-label">Emergency Cases</p>
+              </div>
+              <div className="stat-card" onClick={() => setView("requests")}>
+                <div className="stat-card-top"><div className="stat-icon" style={{ background: "var(--attention-soft)", color: "var(--attention)" }}><Activity size={16} /></div></div>
+                <p className="stat-value">{requests.filter((r) => r.status !== "resolved").length}</p>
+                <p className="stat-label">Active Cases</p>
+              </div>
+              <div className="stat-card" onClick={() => setView("heatmap")}>
+                <div className="stat-card-top"><div className="stat-icon" style={{ background: "var(--urgent-soft)", color: "var(--urgent)" }}><Flame size={16} /></div></div>
+                <p className="stat-value">{INITIAL_HOTSPOTS.length}</p>
+                <p className="stat-label">Disease Hotspots</p>
+              </div>
+            </div>
+
+            <Card style={{ marginBottom: 20, background: "linear-gradient(135deg, #143F36 0%, #1F5D50 100%)", color: "#fff" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 14 }}>
+                <div>
+                  <div style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, fontWeight: 800, background: "rgba(255,255,255,0.15)", padding: "3px 9px", borderRadius: 999, marginBottom: 6 }}>
+                    <Flame size={12} color="#D98B2B" />
+                    REGIONAL EPIDEMIOLOGY ALERT
+                  </div>
+                  <h3 style={{ margin: "0 0 4px", fontSize: 18, fontFamily: "Fraunces, serif" }}>Active Hotspots Detected in Nashik & Pune Districts</h3>
+                  <p style={{ margin: 0, fontSize: 13.5, opacity: 0.9 }}>Lumpy Skin Disease (LSD) and FMD containment rings currently active. View geographical risk mapping and mobile units.</p>
+                </div>
+                <button className="btn-primary" style={{ background: "var(--accent)", color: "#2A1B04" }} onClick={() => setView("heatmap")}><MapPinned size={16}/> Open Heat Map Dashboard</button>
+              </div>
+            </Card>
+
+            <SectionTitle>Priority Cases</SectionTitle>
+            <Card style={{ padding: "4px 18px", marginBottom: 22 }}>
+              {requests.slice(0, 4).map((r) => (
+                <div key={r.id} className="list-row">
+                  <Avatar label={r.animal} size={44} tone={r.priority === "critical" ? "urgent" : "attention" } />
+                  <div className="list-row-info">
+                    <p className="list-row-title">{r.animal} <span style={{ fontWeight: 500, color: "var(--ink-soft)" }}>· {r.farmer}</span></p>
+                    <p className="list-row-symptoms">{r.symptoms}</p>
+                    <div className="list-row-badges"><SeverityBadge level={r.priority} /><StatusPill status={r.status} /><span className="list-row-meta" style={{ margin: 0 }}>{r.submitted}</span></div>
+                  </div>
+                  <button className="btn-outline btn-sm" onClick={() => setView("requests")}>Open Case</button>
+                </div>
+              ))}
+            </Card>
+          </>
+        )}
+      </main>
+
+      {/* Toast Feedback */}
+      {toast && <div className="toast">{toast}</div>}
+      </div>
+    </LanguageContext.Provider>
+  );
+}
+
+const root = createRoot(document.getElementById("root"));
+root.render(<VetApp />);
+</script>
+</body>
+</html>

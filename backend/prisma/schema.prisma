@@ -1,0 +1,394 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum Role {
+  farmer
+  veterinarian
+  admin
+}
+
+enum UserStatus {
+  active
+  inactive
+  suspended
+  pending_approval
+}
+
+enum VetAvailability {
+  available
+  busy
+  emergencyOnly
+  offline
+  leave
+}
+
+enum AnimalGender {
+  Female
+  Male
+}
+
+enum HealthStatus {
+  healthy
+  attention
+  urgent
+}
+
+enum VaccinationStatus {
+  due
+  completed
+  overdue
+}
+
+enum TreatmentStatus {
+  active
+  completed
+  discontinued
+}
+
+enum PriorityLevel {
+  low
+  moderate
+  high
+  critical
+}
+
+enum ConsultationStatus {
+  new
+  unread
+  waiting
+  inConsultation
+  resolved
+}
+
+enum ScreeningType {
+  symptom_triage
+  image_detection
+}
+
+enum ScreeningStatus {
+  New
+  Under_Review
+  Resolved
+}
+
+enum EmergencySeverity {
+  moderate
+  critical
+}
+
+enum EmergencyStatus {
+  new
+  accepted
+  inTreatment
+  resolved
+}
+
+enum HotspotRiskLevel {
+  critical
+  high
+  medium
+  low
+}
+
+enum HotspotStatus {
+  Confirmed
+  Suspected
+  Active
+  Contained
+  Resolved
+}
+
+enum ComplaintStatus {
+  New
+  Under_Review
+  Resolved
+}
+
+// ---------------------------------------------------------------------------
+// Models
+// ---------------------------------------------------------------------------
+
+model User {
+  id                String     @id @default(uuid())
+  name              String
+  email             String     @unique
+  mobile            String?
+  passwordHash      String
+  role              Role       @default(farmer)
+  status            UserStatus @default(active)
+  villageLocation   String?
+  preferredLanguage String     @default("en")
+  theme             String     @default("system")
+  highContrast      Boolean    @default(false)
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  deletedAt         DateTime?
+
+  // Relationships
+  vetProfile             VetProfile?
+  animals                Animal[]
+  consultationsAsFarmer  Consultation[] @relation("FarmerConsultations")
+  consultationsAsVet     Consultation[] @relation("AssignedVetConsultations")
+  administeredVaccines   Vaccination[]  @relation("AdministeredVaccines")
+  prescribedTreatments   Treatment[]    @relation("PrescribedTreatments")
+  chatMessages           ChatMessage[]  @relation("UserChatMessages")
+  screeningsAsFarmer     ScreeningLog[] @relation("FarmerScreeningLogs")
+  screeningsReviewed     ScreeningLog[] @relation("VetScreeningReviews")
+  emergenciesAsFarmer    Emergency[]    @relation("FarmerEmergencies")
+  emergenciesAssigned    Emergency[]    @relation("VetEmergencies")
+  complaintsSubmitted    Complaint[]    @relation("SubmittedComplaints")
+  complaintsAssigned     Complaint[]    @relation("AssignedComplaints")
+  notifications          Notification[]
+
+  @@index([role])
+  @@index([status])
+}
+
+model VetProfile {
+  id                 String          @id @default(uuid())
+  userId             String          @unique
+  user               User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  registrationNumber String          @unique
+  qualification      String
+  specialization     String?
+  clinicAffiliation  String?
+  serviceArea        String?
+  experienceYears    Int             @default(0)
+  verifiedLicense    Boolean         @default(false)
+  availability       VetAvailability @default(available)
+  ratingAvg          Float           @default(5.00)
+  totalCasesHandled  Int             @default(0)
+  unitsAvailable     String?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+}
+
+model Animal {
+  id           String       @id @default(uuid())
+  ownerId      String
+  owner        User         @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  earTag       String?
+  name         String
+  species      String
+  breed        String
+  ageYears     Float
+  gender       AnimalGender
+  healthStatus HealthStatus @default(healthy)
+  avatarUrl    String?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  deletedAt    DateTime?
+
+  // Relationships
+  vaccinations  Vaccination[]
+  treatments    Treatment[]
+  consultations Consultation[]
+  screeningLogs ScreeningLog[]
+  emergencies   Emergency[]
+  notifications Notification[]
+
+  @@index([ownerId])
+  @@index([species])
+  @@index([healthStatus])
+}
+
+model Vaccination {
+  id               String            @id @default(uuid())
+  animalId         String
+  animal           Animal            @relation(fields: [animalId], references: [id], onDelete: Cascade)
+  vaccineName      String
+  dueDate          DateTime
+  completedDate    DateTime?
+  status           VaccinationStatus @default(due)
+  batchNumber      String?
+  administeredById String?
+  administeredBy   User?             @relation("AdministeredVaccines", fields: [administeredById], references: [id])
+  createdAt        DateTime          @default(now())
+
+  @@index([animalId])
+  @@index([status])
+  @@index([dueDate])
+}
+
+model Treatment {
+  id                 String          @id @default(uuid())
+  animalId           String
+  animal             Animal          @relation(fields: [animalId], references: [id], onDelete: Cascade)
+  prescribedById     String?
+  prescribedBy       User?           @relation("PrescribedTreatments", fields: [prescribedById], references: [id])
+  conditionDiagnosed String
+  medicinePrescribed String?
+  dosage             String?
+  route              String?
+  duration           String?
+  clinicalNotes      String?
+  startDate          DateTime        @default(now())
+  followUpDate       DateTime?
+  status             TreatmentStatus @default(active)
+  attachmentsCount   Int             @default(0)
+  createdAt          DateTime        @default(now())
+
+  @@index([animalId])
+  @@index([prescribedById])
+  @@index([status])
+}
+
+model Consultation {
+  id              String             @id
+  farmerId        String
+  farmer          User               @relation("FarmerConsultations", fields: [farmerId], references: [id])
+  animalId        String
+  animal          Animal             @relation(fields: [animalId], references: [id], onDelete: Cascade)
+  assignedVetId   String?
+  assignedVet     User?              @relation("AssignedVetConsultations", fields: [assignedVetId], references: [id])
+  symptomsSummary String
+  imageUrl        String?
+  priority        PriorityLevel      @default(moderate)
+  status          ConsultationStatus @default(new)
+  resolvedAt      DateTime?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  messages ChatMessage[]
+
+  @@index([farmerId])
+  @@index([assignedVetId])
+  @@index([status])
+}
+
+model ChatMessage {
+  id             String       @id @default(uuid())
+  consultationId String
+  consultation   Consultation @relation(fields: [consultationId], references: [id], onDelete: Cascade)
+  senderId       String
+  sender         User         @relation("UserChatMessages", fields: [senderId], references: [id])
+  senderRole     Role
+  messageText    String
+  category       String       @default("general")
+  createdAt      DateTime     @default(now())
+
+  @@index([consultationId])
+}
+
+model ScreeningLog {
+  id                   String          @id
+  animalId             String
+  animal               Animal          @relation(fields: [animalId], references: [id], onDelete: Cascade)
+  farmerId             String
+  farmer               User            @relation("FarmerScreeningLogs", fields: [farmerId], references: [id])
+  screeningType        ScreeningType
+  imageUrl             String?
+  reportedSymptoms     String? // JSON encoded string of selected symptom keys
+  temperatureSelected  String?
+  appetiteSelected     String?
+  activitySelected     String?
+  notes                String?
+  aiPredictedCondition String
+  confidenceScore      Int
+  riskLevel            HealthStatus
+  status               ScreeningStatus @default(New)
+  reviewedByVetId      String?
+  reviewedByVet        User?           @relation("VetScreeningReviews", fields: [reviewedByVetId], references: [id])
+  vetReviewNotes       String?
+  createdAt            DateTime        @default(now())
+
+  @@index([animalId])
+  @@index([farmerId])
+  @@index([status])
+}
+
+model Emergency {
+  id                   String            @id
+  animalId             String
+  animal               Animal            @relation(fields: [animalId], references: [id], onDelete: Cascade)
+  farmerId             String
+  farmer               User              @relation("FarmerEmergencies", fields: [farmerId], references: [id])
+  assignedVetId        String?
+  assignedVet          User?             @relation("VetEmergencies", fields: [assignedVetId], references: [id])
+  symptoms             String
+  aiTriageResult       String?
+  severity             EmergencySeverity @default(critical)
+  status               EmergencyStatus   @default(new)
+  responseTimeSeconds  Int?
+  is1962HelplineInbound Boolean          @default(false)
+  createdAt            DateTime          @default(now())
+  resolvedAt           DateTime?
+
+  @@index([farmerId])
+  @@index([assignedVetId])
+  @@index([status])
+}
+
+model OutbreakHotspot {
+  id                   String           @id
+  district             String
+  talukaLocation       String
+  diseaseName          String
+  diseaseCategory      String
+  riskLevel            HotspotRiskLevel
+  status               HotspotStatus
+  latitude             Float?
+  longitude            Float?
+  mapX                 Int
+  mapY                 Int
+  radiusKm             Float            @default(10.00)
+  affectedAnimalsCount Int              @default(0)
+  affectedFarmsCount   Int              @default(0)
+  speciesAffected      String?
+  recentIncreasePct    String           @default("+0%")
+  spreadSummary        String?
+  recommendedAdvisory  String?
+  isNewOutbreak        Boolean          @default(false)
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+
+  @@index([district])
+  @@index([riskLevel])
+  @@index([status])
+}
+
+model Complaint {
+  id              String          @id
+  submittedById   String
+  submittedBy     User            @relation("SubmittedComplaints", fields: [submittedById], references: [id])
+  assignedToId    String?
+  assignedTo      User?           @relation("AssignedComplaints", fields: [assignedToId], references: [id])
+  category        String
+  status          ComplaintStatus @default(New)
+  description     String
+  resolutionNotes String?
+  createdAt       DateTime        @default(now())
+  resolvedAt      DateTime?
+
+  @@index([submittedById])
+  @@index([assignedToId])
+  @@index([status])
+}
+
+model Notification {
+  id            String   @id @default(uuid())
+  recipientId   String
+  recipient     User     @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+  recipientRole Role
+  category      String
+  animalId      String?
+  animal        Animal?  @relation(fields: [animalId], references: [id])
+  title         String
+  message       String
+  read          Boolean  @default(false)
+  referenceId   String?
+  createdAt     DateTime @default(now())
+
+  @@index([recipientId])
+  @@index([read])
+}

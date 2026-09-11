@@ -1,0 +1,2709 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Pashu Sakhi — Admin Console</title>
+
+<!-- PashuSakhi Shared API & Bridge -->
+<script src="pashusakhi_api.js"></script>
+<script>
+(function() {
+  const _tabId = 'tab_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now();
+  const _listeners = new Set();
+
+  function _get(key, defaultVal) {
+    try {
+      const v = localStorage.getItem(key);
+      return v ? JSON.parse(v) : defaultVal;
+    } catch (e) {
+      return defaultVal;
+    }
+  }
+
+  function _set(key, val) {
+    try {
+      localStorage.setItem(key, JSON.stringify(val));
+    } catch (e) {
+      console.warn('PashuSakhiBridge storage write failed:', e);
+    }
+  }
+
+  function broadcast(event, data) {
+    const payload = { event, data, timestamp: Date.now(), sourceId: _tabId };
+    try {
+      localStorage.setItem('psk_bridge_event', JSON.stringify(payload));
+    } catch (e) {}
+    _listeners.forEach(fn => {
+      try { fn(event, data); } catch (err) { console.error('PashuSakhiBridge listener error:', err); }
+    });
+  }
+
+  window.addEventListener('storage', function(e) {
+    if (e.key === 'psk_bridge_event' && e.newValue) {
+      try {
+        const payload = JSON.parse(e.newValue);
+        if (payload && payload.sourceId !== _tabId) {
+          _listeners.forEach(fn => {
+            try { fn(payload.event, payload.data); } catch (err) { console.error('PashuSakhiBridge cross-tab listener error:', err); }
+          });
+        }
+      } catch (err) {}
+    }
+  });
+
+  window.PashuSakhiBridge = {
+    tabId: _tabId,
+
+    setSession: function(sessionObj) {
+      _set('psk_session', sessionObj);
+      if (sessionObj && sessionObj.language) {
+        try {
+          localStorage.setItem('psk_language', sessionObj.language);
+          localStorage.setItem('lumen_selected_language', sessionObj.language);
+        } catch (e) {}
+      }
+      broadcast('psk:session:updated', sessionObj);
+    },
+
+    getSession: function() {
+      return _get('psk_session', null);
+    },
+
+    clearSession: function() {
+      try {
+        localStorage.removeItem('psk_session');
+        localStorage.removeItem('session:current');
+        localStorage.removeItem('pashusakhi_user');
+      } catch (e) {}
+      broadcast('psk:session:cleared', {});
+    },
+
+    getReports: function(filter) {
+      const all = _get('psk_shared_reports', []);
+      if (!filter || filter === 'All') return all;
+      return all.filter(r => (r.status || '').toLowerCase() === filter.toLowerCase());
+    },
+
+    addReport: function(report) {
+      const reports = _get('psk_shared_reports', []);
+      const newRep = {
+        id: report.id || ('rep_' + Date.now()),
+        type: report.type || 'screening',
+        animalId: report.animalId || 'a1',
+        animalName: report.animalName || 'Livestock',
+        farmerName: report.farmerName || 'Suresh Patil',
+        date: report.date || new Date().toISOString().split('T')[0],
+        condition: report.condition || 'Suspected condition',
+        severity: report.severity || 'attention',
+        confidence: report.confidence || 85,
+        status: report.status || 'New',
+        details: report.details || {}
+      };
+      reports.unshift(newRep);
+      _set('psk_shared_reports', reports);
+      broadcast('psk:report:added', newRep);
+      return newRep;
+    },
+
+    updateReportStatus: function(id, status) {
+      const reports = _get('psk_shared_reports', []);
+      let updated = null;
+      const next = reports.map(r => {
+        if (r.id === id) {
+          updated = { ...r, status };
+          return updated;
+        }
+        return r;
+      });
+      _set('psk_shared_reports', next);
+      if (updated) broadcast('psk:report:updated', updated);
+      return updated;
+    },
+
+    getEmergencies: function(filter) {
+      const all = _get('psk_shared_emergencies', []);
+      if (!filter || filter === 'All') return all;
+      return all.filter(e => (e.status || '').toLowerCase() === filter.toLowerCase());
+    },
+
+    addEmergency: function(emergency) {
+      const emergencies = _get('psk_shared_emergencies', []);
+      const newEmg = {
+        id: emergency.id || ('emg_' + Date.now()),
+        animalId: emergency.animalId || 'a1',
+        animalName: emergency.animalName || 'Livestock',
+        farmerName: emergency.farmerName || 'Suresh Patil',
+        village: emergency.village || 'Wagholi, Pune',
+        contact: emergency.contact || '+91 98765 43210',
+        severity: emergency.severity || 'critical',
+        status: emergency.status || 'new',
+        title: emergency.title || 'Emergency Case',
+        time: emergency.time || 'Just now',
+        assignedVet: emergency.assignedVet || null
+      };
+      emergencies.unshift(newEmg);
+      _set('psk_shared_emergencies', emergencies);
+      broadcast('psk:emergency:added', newEmg);
+      return newEmg;
+    },
+
+    updateEmergencyStatus: function(id, status, vetName) {
+      const emergencies = _get('psk_shared_emergencies', []);
+      let updated = null;
+      const next = emergencies.map(e => {
+        if (e.id === id) {
+          updated = {
+            ...e,
+            status,
+            assignedVet: vetName || e.assignedVet || 'Dr. Kavita Rao'
+          };
+          return updated;
+        }
+        return e;
+      });
+      _set('psk_shared_emergencies', next);
+      if (updated) broadcast('psk:emergency:updated', updated);
+      return updated;
+    },
+
+    getChats: function(animalId) {
+      const chats = _get('psk_shared_chats', {});
+      return animalId ? (chats[animalId] || []) : chats;
+    },
+
+    sendChat: function(animalId, msg) {
+      const chats = _get('psk_shared_chats', {});
+      if (!chats[animalId]) chats[animalId] = [];
+      const newMsg = {
+        id: msg.id || ('msg_' + Date.now()),
+        sender: msg.sender || 'farmer',
+        text: msg.text || '',
+        time: msg.time || 'Just now',
+        timestamp: Date.now(),
+        animalId: animalId
+      };
+      chats[animalId].push(newMsg);
+      _set('psk_shared_chats', chats);
+      broadcast('psk:chat:message', { animalId, message: newMsg });
+      return newMsg;
+    },
+
+    getAnimals: function() {
+      return _get('psk_shared_animals', null);
+    },
+
+    addTreatment: function(animalId, treatmentObj) {
+      const animalsData = _get('psk_shared_animals', {});
+      if (!animalsData[animalId]) animalsData[animalId] = { treatments: [] };
+      if (!animalsData[animalId].treatments) animalsData[animalId].treatments = [];
+      const entry = {
+        id: 'trt_' + Date.now(),
+        date: treatmentObj.date || new Date().toISOString().split('T')[0],
+        condition: treatmentObj.condition || 'Clinical Treatment',
+        medicine: treatmentObj.medicine || 'Prescribed Drug',
+        dosage: treatmentObj.dosage || 'Standard dose',
+        route: treatmentObj.route || 'Oral',
+        duration: treatmentObj.duration || '3 days',
+        notes: treatmentObj.notes || 'Recorded by veterinarian',
+        vetName: treatmentObj.vetName || 'Dr. Kavita Rao'
+      };
+      animalsData[animalId].treatments.unshift(entry);
+      _set('psk_shared_animals', animalsData);
+      broadcast('psk:treatment:added', { animalId, treatment: entry });
+      return entry;
+    },
+
+    updateUserStatus: function(userId, status) {
+      const users = _get('psk_shared_users', {});
+      users[userId] = { status, updatedAt: Date.now() };
+      _set('psk_shared_users', users);
+      broadcast('psk:user:updated', { userId, status });
+    },
+
+    updateCase: function(caseId, updates) {
+      const cases = _get('psk_shared_cases', {});
+      cases[caseId] = { ...(cases[caseId] || {}), ...updates, updatedAt: Date.now() };
+      _set('psk_shared_cases', cases);
+      broadcast('psk:case:updated', { caseId, updates });
+    },
+
+    updateComplaint: function(id, status) {
+      const complaints = _get('psk_shared_complaints', {});
+      complaints[id] = { status, updatedAt: Date.now() };
+      _set('psk_shared_complaints', complaints);
+      broadcast('psk:complaint:updated', { id, status });
+    },
+
+    onEvent: function(fn) {
+      if (typeof fn === 'function') _listeners.add(fn);
+    },
+
+    offEvent: function(fn) {
+      _listeners.delete(fn);
+    },
+
+    seedDefaultData: function() {
+      if (!localStorage.getItem('psk_shared_reports')) {
+        const defaultReports = [
+          { id: "rep_101", type: "detection", animalId: "a1", animalName: "Gauri (Cow)", farmerName: "Suresh Patil", date: new Date().toISOString().split('T')[0], condition: "Suspected Bovine Dermatitis", severity: "attention", confidence: 87, status: "Under Review", details: { title: "Suspected Bovine Dermatitis / Cutaneous Lesions" } },
+          { id: "rep_102", type: "detection", animalId: "a2", animalName: "Raju (Bullock)", farmerName: "Suresh Patil", date: new Date().toISOString().split('T')[0], condition: "Suspected Nodular Skin Lesions", severity: "urgent", confidence: 91, status: "New", details: { title: "Suspected Nodular Skin Lesions" } },
+          { id: "rep_103", type: "screening", animalId: "a3", animalName: "Lakshmi (Buffalo)", farmerName: "Suresh Patil", date: new Date().toISOString().split('T')[0], condition: "Mild Bloat & Lethargy", severity: "attention", confidence: 82, status: "Resolved", details: { title: "Mild Bloat" } }
+        ];
+        _set('psk_shared_reports', defaultReports);
+      }
+
+      if (!localStorage.getItem('psk_shared_emergencies')) {
+        const defaultEmergencies = [
+          { id: "emg_101", animalId: "a2", animalName: "Raju (Bullock)", farmerName: "Suresh Patil", village: "Wagholi, Pune", contact: "+91 98765 43210", severity: "critical", status: "new", title: "Severe colic & unable to stand", time: "14 min ago", assignedVet: null },
+          { id: "emg_102", animalId: "a1", animalName: "Gauri (Cow)", farmerName: "Suresh Patil", village: "Wagholi, Pune", contact: "+91 98765 43210", severity: "high", status: "accepted", title: "Sudden high fever & respiratory distress", time: "35 min ago", assignedVet: "Dr. Kavita Rao" }
+        ];
+        _set('psk_shared_emergencies', defaultEmergencies);
+      }
+    }
+  };
+})();
+</script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --accent:#1F5D50;--accent-light:#DCEAE4;--accent-hover:#143F36;
+  --accent-solid:#1F5D50;--accent-solid-hover:#143F36;
+  --purple:#D98B2B;--purple-bg:#F6E3C2;--success:#2F7A4F;--success-bg:#DFEEE2;
+  --warn:#B9791F;--warn-bg:#F6E7C9;--danger:#B3402A;--danger-bg:#F5DCD3;
+  --sky:#2F6F63;--sky-bg:#DEEAE6;
+  --text-primary:#23291F;--text-secondary:#5B6154;--text-muted:#8B9184;
+  --border:#E3DCC8;--surface:#FBF9F3;--bg:#F5F1E6;
+  --sidebar-w:260px;--topbar-h:60px;
+  --shadow-sm:0 1px 3px rgba(35,41,31,.08),0 1px 2px rgba(35,41,31,.05);
+  --shadow-md:0 4px 12px rgba(35,41,31,.10),0 2px 4px rgba(35,41,31,.05);
+  --radius:12px;--radius-sm:8px;
+  /* Nav: fixed dark-brand surface shared with Farmer/Vet sidebars */
+  --nav-bg:#143F36;--nav-border:rgba(255,255,255,.08);
+  --nav-text:#DCE6DE;--nav-text-muted:#B9C8BE;
+  --nav-hover-bg:rgba(255,255,255,.08);--nav-hover-text:#FFFFFF;
+  --nav-active-bg:var(--purple);--nav-active-text:#2A1B04;
+  --nav-icon-bg:rgba(255,255,255,.08);--nav-icon-stroke:#DCE6DE;
+  --nav-danger-text:#F4927C;--nav-danger-bg:rgba(244,146,124,.15);
+}
+body.dark{
+  --accent:#61D6AF;--accent-hover:#2A7E6D;
+  --nav-bg:#0F2721;--nav-active-text:#1D1102;
+  --nav-text:#C5D1C7;--nav-text-muted:#8FA092;
+  --purple:#F3AF4D;--purple-bg:#38270E;--success:#66DB91;--success-bg:#16321F;
+  --warn:#EBB257;--warn-bg:#362509;--danger:#F4927C;--danger-bg:#381A14;
+  --sky:#7FD9C4;--sky-bg:#1B2E28;
+  --text-primary:#F2F5ED;--text-secondary:#B8C3AC;--text-muted:#8A9480;
+  --border:#3A4433;--surface:#1E241B;--bg:#161A14;
+  --accent-light:#183329;
+  --accent-solid:#226C5D;--accent-solid-hover:#2A7E6D;
+}
+html{scroll-behavior:smooth}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text-primary);min-height:100vh;line-height:1.5;overflow-x:hidden;transition:background .2s,color .2s}
+
+/* TOPBAR */
+.topbar{position:fixed;top:0;left:0;right:0;height:var(--topbar-h);background:var(--surface);border-bottom:1px solid var(--border);box-shadow:0 1px 6px rgba(0,0,0,.06);z-index:200;display:flex;align-items:center;padding:0 20px;gap:14px;transition:background .2s,border-color .2s}
+.menu-btn{width:36px;height:36px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--bg);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4.5px;flex-shrink:0;transition:background .15s,border-color .15s}
+.menu-btn:hover{background:var(--accent-light);border-color:var(--accent)}
+.menu-btn span{display:block;width:18px;height:2px;background:var(--text-secondary);border-radius:2px;transition:transform .25s,opacity .25s;transform-origin:center}
+.menu-btn:hover span{background:var(--accent)}
+body.sidebar-open .menu-btn span:nth-child(1){transform:translateY(6.5px) rotate(45deg)}
+body.sidebar-open .menu-btn span:nth-child(2){opacity:0;transform:scaleX(0)}
+body.sidebar-open .menu-btn span:nth-child(3){transform:translateY(-6.5px) rotate(-45deg)}
+.topbar-brand{display:flex;align-items:center;gap:10px;flex:1}
+.topbar-logo{width:34px;height:34px;background:linear-gradient(135deg,#1F5D50,#143F36);border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.topbar-logo svg{width:18px;height:18px;fill:none;stroke:#fff;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.topbar-title{font-size:.9375rem;font-weight:700;color:var(--text-primary);letter-spacing:-.01em}
+.topbar-sub{font-size:.75rem;color:var(--text-muted);margin-top:1px}
+.topbar-right{display:flex;align-items:center;gap:10px;flex-shrink:0}
+.topbar-badge{font-size:.7rem;font-weight:600;padding:3px 9px;border-radius:20px;background:var(--accent-light);color:var(--accent);letter-spacing:.03em}
+.topbar-time{font-size:.78rem;color:var(--text-muted);font-variant-numeric:tabular-nums}
+.icon-btn{width:34px;height:34px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--bg);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s,border-color .15s;flex-shrink:0}
+.icon-btn:hover{background:var(--accent-light);border-color:var(--accent)}
+.icon-btn svg{width:16px;height:16px;fill:none;stroke:var(--text-secondary);stroke-width:2;stroke-linecap:round;stroke-linejoin:round;transition:stroke .15s}
+.icon-btn:hover svg{stroke:var(--accent)}
+
+/* SIDEBAR */
+.sidebar-overlay{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:299;opacity:0;pointer-events:none;transition:opacity .28s;backdrop-filter:blur(2px)}
+body.sidebar-open .sidebar-overlay{opacity:1;pointer-events:all}
+.sidebar{position:fixed;top:var(--topbar-h);left:0;bottom:0;width:var(--sidebar-w);background:var(--nav-bg);border-right:1px solid var(--nav-border);box-shadow:4px 0 24px rgba(0,0,0,.10);z-index:300;transform:translateX(calc(-1 * var(--sidebar-w)));transition:transform .28s cubic-bezier(.4,0,.2,1),background .2s;display:flex;flex-direction:column;overflow:hidden}
+body.sidebar-open .sidebar{transform:translateX(0)}
+.sidebar-header{padding:20px 20px 12px;border-bottom:1px solid var(--nav-border)}
+.sidebar-header p{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--nav-text-muted)}
+.sidebar-nav{flex:1;padding:12px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--nav-border) transparent}
+.nav-item{display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:10px;cursor:pointer;font-size:.9rem;font-weight:600;color:var(--nav-text);border:none;background:none;width:100%;text-align:left;transition:background .15s,color .15s;position:relative;margin-bottom:2px}
+.nav-item:hover{background:var(--nav-hover-bg);color:var(--nav-hover-text)}
+.nav-item.active{background:var(--nav-active-bg);color:var(--nav-active-text);font-weight:700}
+.nav-item.active .nav-icon{background:rgba(0,0,0,.12)}
+.nav-item.active .nav-icon svg{stroke:var(--nav-active-text)}
+.nav-icon{width:34px;height:34px;border-radius:8px;background:var(--nav-icon-bg);display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:background .15s}
+.nav-icon svg{width:16px;height:16px;fill:none;stroke:var(--nav-icon-stroke);stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;transition:stroke .15s}
+.nav-item:hover .nav-icon{background:rgba(255,255,255,.14)}
+.nav-item:hover .nav-icon svg{stroke:var(--nav-hover-text)}
+.nav-label{flex:1}
+.nav-badge-count{font-size:.65rem;font-weight:700;padding:1px 6px;border-radius:10px;background:var(--danger);color:#fff;line-height:1.5;flex-shrink:0}
+.nav-divider{height:1px;background:var(--nav-border);margin:8px 0}
+.sidebar-footer{padding:14px 20px;border-top:1px solid var(--nav-border)}
+.admin-avatar{width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,#1F5D50,#143F36);display:flex;align-items:center;justify-content:center;font-size:.75rem;font-weight:700;color:#fff;flex-shrink:0}
+.admin-info p:first-child{font-size:.8125rem;font-weight:600;color:var(--nav-text)}
+.admin-info p:last-child{font-size:.7rem;color:var(--nav-text-muted)}
+
+/* MAIN */
+.main{margin-top:var(--topbar-h);padding:32px 24px 64px;max-width:1200px;margin-left:auto;margin-right:auto}
+.page{display:none}.page.active{display:block}
+.page-header{margin-bottom:28px}
+.page-header h1{font-size:1.25rem;font-weight:700;color:var(--text-primary);letter-spacing:-.02em}
+.page-header p{font-size:.875rem;color:var(--text-secondary);margin-top:3px}
+.section-header{margin-bottom:16px}
+.section-header h2{font-size:1.0625rem;font-weight:700;color:var(--text-primary)}
+.section-header p{font-size:.8125rem;color:var(--text-muted);margin-top:2px}
+
+/* KPI GRID */
+.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:28px}
+.kpi-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:22px 20px;box-shadow:var(--shadow-sm);display:flex;flex-direction:column;gap:10px;position:relative;overflow:hidden;transition:box-shadow .2s,transform .2s}
+.kpi-card:hover{box-shadow:var(--shadow-md);transform:translateY(-1px)}
+.kpi-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;border-radius:var(--radius) var(--radius) 0 0}
+.kpi-card.blue::before{background:linear-gradient(90deg,#1F5D50,#3D8B77)}
+.kpi-card.purple::before{background:linear-gradient(90deg,#D98B2B,#E8A94C)}
+.kpi-card.green::before{background:linear-gradient(90deg,#2F7A4F,#4C9868)}
+.kpi-card.red::before{background:linear-gradient(90deg,#B3402A,#C75940)}
+.kpi-card.sky::before{background:linear-gradient(90deg,#2F6F63,#4F9C8C)}
+.kpi-card.amber::before{background:linear-gradient(90deg,#B9791F,#CF9A44)}
+.kpi-icon{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.kpi-card.blue .kpi-icon{background:var(--accent-light)}
+.kpi-card.purple .kpi-icon{background:var(--purple-bg)}
+.kpi-card.green .kpi-icon{background:var(--success-bg)}
+.kpi-card.red .kpi-icon{background:var(--danger-bg)}
+.kpi-card.sky .kpi-icon{background:var(--sky-bg)}
+.kpi-card.amber .kpi-icon{background:var(--warn-bg)}
+.kpi-icon svg{width:20px;height:20px;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.kpi-card.blue .kpi-icon svg{stroke:var(--accent)}
+.kpi-card.purple .kpi-icon svg{stroke:var(--purple)}
+.kpi-card.green .kpi-icon svg{stroke:var(--success)}
+.kpi-card.red .kpi-icon svg{stroke:var(--danger)}
+.kpi-card.sky .kpi-icon svg{stroke:var(--sky)}
+.kpi-card.amber .kpi-icon svg{stroke:var(--warn)}
+.kpi-body{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+.kpi-info{flex:1}
+.kpi-value{font-size:2rem;font-weight:800;color:var(--text-primary);letter-spacing:-.04em;line-height:1}
+.kpi-title{font-size:.8125rem;color:var(--text-secondary);font-weight:500;margin-top:4px}
+
+/* CHART (SVG Overview) */
+.chart-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:24px;box-shadow:var(--shadow-sm);margin-bottom:28px}
+.chart-card .section-header{margin-bottom:24px}
+.bar-chart-wrap{width:100%;overflow:hidden}
+.bar-chart-wrap svg{display:block;width:100%;height:auto}
+
+/* ALERT CARDS */
+.alert-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-sm);overflow:hidden}
+.alert-list{list-style:none}
+.alert-item{display:flex;align-items:center;gap:14px;padding:14px 24px;border-bottom:1px solid var(--border);transition:background .15s}
+.alert-item:last-child{border-bottom:none}
+.alert-item:hover{background:var(--bg)}
+.alert-badge{font-size:.6875rem;font-weight:700;padding:2px 8px;border-radius:20px;text-transform:uppercase;letter-spacing:.05em;flex-shrink:0}
+.alert-badge.critical{background:var(--danger-bg);color:var(--danger)}
+.alert-badge.warning{background:var(--warn-bg);color:var(--warn)}
+.alert-badge.info{background:var(--accent-light);color:var(--accent)}
+.alert-text{flex:1;font-size:.875rem;color:var(--text-primary);font-weight:500}
+.alert-icon{width:32px;height:32px;border-radius:var(--radius-sm);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.alert-icon.critical{background:var(--danger-bg)}.alert-icon.warning{background:var(--warn-bg)}.alert-icon.info{background:var(--accent-light)}
+.alert-icon svg{width:15px;height:15px;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.alert-icon.critical svg{stroke:var(--danger)}.alert-icon.warning svg{stroke:var(--warn)}.alert-icon.info svg{stroke:var(--accent)}
+
+/* TABLES */
+.table-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-sm);overflow:hidden}
+.table-toolbar{display:flex;align-items:center;justify-content:space-between;padding:18px 20px;border-bottom:1px solid var(--border);gap:12px;flex-wrap:wrap}
+.table-toolbar h3{font-size:.9375rem;font-weight:700;color:var(--text-primary)}
+.search-input{padding:7px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:.8125rem;color:var(--text-primary);background:var(--bg);outline:none;width:220px;transition:border-color .15s,box-shadow .15s}
+.search-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(31,93,80,.15)}
+table{width:100%;border-collapse:collapse}
+thead{background:var(--bg)}
+thead th{padding:11px 16px;text-align:left;font-size:.75rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);border-bottom:1px solid var(--border);white-space:nowrap}
+tbody tr{border-bottom:1px solid var(--border);transition:background .12s}
+tbody tr:last-child{border-bottom:none}
+tbody tr:hover{background:var(--bg)}
+tbody td{padding:12px 16px;font-size:.875rem;color:var(--text-primary)}
+.pill{display:inline-block;padding:2px 10px;border-radius:20px;font-size:.7rem;font-weight:600;letter-spacing:.03em;white-space:nowrap}
+.pill.active,.pill.resolved{background:var(--success-bg);color:var(--success)}
+.pill.inactive{background:var(--border);color:var(--text-secondary)}
+.pill.pending{background:var(--warn-bg);color:var(--warn)}
+.pill.open{background:var(--danger-bg);color:var(--danger)}
+.pill.high{background:var(--danger-bg);color:var(--danger)}
+.pill.medium{background:var(--warn-bg);color:var(--warn)}
+.pill.low{background:var(--success-bg);color:var(--success)}
+.pill.critical{background:var(--danger-bg);color:var(--danger)}
+.pill.verified{background:var(--success-bg);color:var(--success)}
+.pill.available{background:var(--success-bg);color:var(--success)}
+.pill.offline{background:var(--border);color:var(--text-secondary)}
+.pill.review{background:var(--sky-bg);color:var(--sky)}
+.avatar{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:50%;font-size:.7rem;font-weight:700;color:#fff;flex-shrink:0}
+.cell-flex{display:flex;align-items:center;gap:9px}
+.table-footer{padding:10px 20px;border-top:1px solid var(--border);font-size:.8rem;color:var(--text-muted)}
+
+/* ACTION BUTTONS */
+.btn-xs{font-size:.7rem;font-weight:600;padding:3px 9px;border-radius:6px;border:1px solid;cursor:pointer;transition:background .15s;white-space:nowrap}
+.btn-xs.success{background:var(--success-bg);color:var(--success);border-color:var(--success)}
+.btn-xs.danger{background:var(--danger-bg);color:var(--danger);border-color:var(--danger)}
+.btn-xs.primary{background:var(--accent-light);color:var(--accent);border-color:var(--accent)}
+.btn-xs.warn{background:var(--warn-bg);color:var(--warn);border-color:var(--warn)}
+.btn-xs:hover{opacity:.8}
+.btn-sm{font-size:.75rem;font-weight:600;padding:5px 12px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--bg);color:var(--accent);cursor:pointer;transition:background .15s,border-color .15s}
+.btn-sm:hover{background:var(--accent-light);border-color:var(--accent)}
+.btn-primary{padding:8px 20px;border-radius:var(--radius-sm);border:none;background:var(--accent-solid);color:#fff;font-size:.875rem;font-weight:600;cursor:pointer;transition:background .15s}
+.btn-primary:hover{background:var(--accent-solid-hover)}
+
+/* REPORT CARDS */
+.report-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:28px}
+.report-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow-sm);display:flex;flex-direction:column;gap:12px;transition:box-shadow .2s,transform .2s}
+.report-card:hover{box-shadow:var(--shadow-md);transform:translateY(-1px)}
+.report-icon{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center}
+.report-icon svg{width:20px;height:20px;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.report-card h3{font-size:.9rem;font-weight:700;color:var(--text-primary)}
+.report-card p{font-size:.8rem;color:var(--text-secondary);line-height:1.5}
+.report-meta{display:flex;align-items:center;justify-content:space-between}
+.report-date{font-size:.75rem;color:var(--text-muted)}
+
+/* ═══ MANAGEMENT PAGE ═══ */
+.mgmt-tabs{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;margin-bottom:20px;scrollbar-width:none}
+.mgmt-tabs::-webkit-scrollbar{display:none}
+.mgmt-tab{padding:8px 16px;border-radius:20px;border:1px solid var(--border);background:var(--surface);color:var(--text-secondary);font-size:.8125rem;font-weight:600;cursor:pointer;white-space:nowrap;transition:background .15s,color .15s,border-color .15s;flex-shrink:0}
+.mgmt-tab:hover{background:var(--bg);color:var(--text-primary)}
+.mgmt-tab.active{background:var(--accent-solid);color:#fff;border-color:var(--accent-solid)}
+.mgmt-panel{display:none}.mgmt-panel.active{display:block}
+.mgmt-kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}
+.mini-kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:16px;box-shadow:var(--shadow-sm)}
+.mini-kpi .val{font-size:1.5rem;font-weight:800;color:var(--text-primary);letter-spacing:-.04em}
+.mini-kpi .lbl{font-size:.75rem;color:var(--text-secondary);margin-top:2px}
+.mini-kpi.c-blue .val{color:var(--accent)}.mini-kpi.c-green .val{color:var(--success)}.mini-kpi.c-red .val{color:var(--danger)}.mini-kpi.c-warn .val{color:var(--warn)}
+.sys-alert-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px}
+.sys-alert-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:16px;box-shadow:var(--shadow-sm);display:flex;flex-direction:column;gap:8px}
+.sys-alert-card .sa-title{font-size:.875rem;font-weight:700;color:var(--text-primary)}
+.sys-alert-card .sa-desc{font-size:.8rem;color:var(--text-secondary);line-height:1.4}
+.sys-alert-card.sa-critical{border-left:3px solid var(--danger)}
+.sys-alert-card.sa-warning{border-left:3px solid var(--warn)}
+.sys-alert-card.sa-ok{border-left:3px solid var(--success)}
+.sys-alert-card.sa-info{border-left:3px solid var(--accent)}
+.dis-cluster-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px}
+.cluster-card{background:var(--danger-bg);border:1px solid rgba(179,64,42,.25);border-radius:var(--radius-sm);padding:16px}
+.cluster-card.warn{background:var(--warn-bg);border-color:rgba(185,121,31,.25)}
+.cluster-card.ok{background:var(--success-bg);border-color:rgba(47,122,79,.25)}
+.cluster-card .cc-val{font-size:1.75rem;font-weight:800;margin-bottom:2px}
+.cluster-card.warn .cc-val{color:var(--warn)}
+.cluster-card .cc-val{color:var(--danger)}
+.cluster-card.ok .cc-val{color:var(--success)}
+.cluster-card .cc-lbl{font-size:.75rem;color:var(--text-secondary);font-weight:600}
+
+/* ═══ ANALYTICS PAGE ═══ */
+.date-filter-bar{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;gap:12px;flex-wrap:wrap}
+.date-filter-btns{display:flex;gap:4px;align-items:center}
+.dfc-btn{padding:6px 14px;border-radius:20px;border:1px solid var(--border);background:var(--surface);color:var(--text-secondary);font-size:.8rem;font-weight:600;cursor:pointer;transition:background .15s,color .15s,border-color .15s}
+.dfc-btn:hover{background:var(--bg)}
+.dfc-btn.active{background:var(--accent-solid);color:#fff;border-color:var(--accent-solid)}
+.live-stream-badge{display:inline-flex;align-items:center;gap:6px;font-size:.75rem;font-weight:600;color:var(--success);background:var(--success-bg);padding:4px 10px;border-radius:20px}
+.pulse-dot{width:7px;height:7px;background:var(--success);border-radius:50%;box-shadow:0 0 0 0 rgba(47,122,79,.7);animation:pulse-anim 1.8s infinite}
+@keyframes pulse-anim{0%{transform:scale(.95);box-shadow:0 0 0 0 rgba(47,122,79,.7)}70%{transform:scale(1);box-shadow:0 0 0 6px rgba(47,122,79,0)}100%{transform:scale(.95);box-shadow:0 0 0 0 rgba(47,122,79,0)}}
+
+.a-kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:28px}
+.a-kpi-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px;box-shadow:var(--shadow-sm);display:flex;flex-direction:column;gap:6px;transition:transform .2s,box-shadow .2s}
+.a-kpi-card:hover{transform:translateY(-2px);box-shadow:var(--shadow-md)}
+.a-kpi-title{font-size:.78rem;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.04em}
+.a-kpi-val{font-size:1.85rem;font-weight:800;color:var(--text-primary);letter-spacing:-.04em;line-height:1.1}
+.a-kpi-sub{display:flex;align-items:center;gap:6px;font-size:.75rem;color:var(--text-muted);margin-top:2px}
+.a-kpi-trend{font-size:.72rem;font-weight:700;padding:2px 6px;border-radius:12px}
+.a-kpi-trend.up{background:var(--success-bg);color:var(--success)}
+.a-kpi-trend.down{background:var(--danger-bg);color:var(--danger)}
+.a-kpi-trend.info{background:var(--accent-light);color:var(--accent)}
+
+.spin-icon{display:inline-block;transition:transform .5s cubic-bezier(.4,0,.2,1)}
+.spinning{animation:rotate-anim .7s cubic-bezier(.4,0,.2,1)}
+@keyframes rotate-anim{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+
+.a-section{margin-bottom:40px}
+.a-section-header{display:flex;align-items:center;gap:12px;margin-bottom:20px;padding-bottom:14px;border-bottom:1px solid var(--border)}
+.a-section-icon{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.a-section-icon svg{width:18px;height:18px;fill:none;stroke:#fff;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.a-section-title h2{font-size:1rem;font-weight:700;color:var(--text-primary)}
+.a-section-title p{font-size:.8rem;color:var(--text-muted);margin-top:2px}
+.a-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+.a-grid-1{display:grid;grid-template-columns:1fr;gap:16px;margin-bottom:16px}
+.a-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow-sm)}
+.a-card-header{margin-bottom:14px}
+.a-card-header h3{font-size:.875rem;font-weight:700;color:var(--text-primary)}
+.a-card-header p{font-size:.75rem;color:var(--text-muted);margin-top:2px}
+.a-chart{position:relative}
+.a-empty{display:none;align-items:center;justify-content:center;height:100%;min-height:120px;color:var(--text-muted);font-size:.85rem;text-align:center;padding:16px;line-height:1.5}
+#any-month-select{padding:6px 12px;border-radius:20px;border:1px solid var(--border);background:var(--surface);color:var(--text-primary);font-size:.8rem;font-weight:600;cursor:pointer}
+
+/* Toast Notifications */
+.toast-container{position:fixed;bottom:24px;right:24px;z-index:9999;display:flex;flex-direction:column;gap:10px;pointer-events:none}
+.toast{padding:12px 18px;border-radius:10px;background:var(--surface);color:var(--text-primary);box-shadow:0 8px 24px rgba(0,0,0,.15);border:1px solid var(--border);display:flex;align-items:center;gap:10px;font-size:.85rem;font-weight:500;pointer-events:auto;animation:toast-in .25s ease-out forwards;max-width:380px}
+.toast.toast-out{animation:toast-out .25s ease-in forwards}
+.toast-icon{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:.75rem;font-weight:700}
+.toast-icon.success{background:var(--success-bg);color:var(--success)}
+.toast-icon.info{background:var(--accent-light);color:var(--accent)}
+.toast-icon.warn{background:var(--warn-bg);color:var(--warn)}
+@keyframes toast-in{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+@keyframes toast-out{from{opacity:1;transform:translateY(0)}to{opacity:0;transform:translateY(16px)}}
+
+/* ═══ SETTINGS PAGE ═══ */
+.settings-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.settings-group{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:24px;box-shadow:var(--shadow-sm)}
+.settings-group h3{font-size:.9375rem;font-weight:700;color:var(--text-primary);margin-bottom:4px}
+.settings-group .sg-sub{font-size:.8rem;color:var(--text-muted);margin-bottom:20px;padding-bottom:14px;border-bottom:1px solid var(--border)}
+.form-row{display:flex;flex-direction:column;gap:5px;margin-bottom:16px}
+.form-row:last-child{margin-bottom:0}
+.form-label{font-size:.8125rem;font-weight:600;color:var(--text-secondary)}
+.form-input,.form-select{padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:.875rem;color:var(--text-primary);background:var(--bg);outline:none;transition:border-color .15s,box-shadow .15s}
+.form-input:focus,.form-select:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(31,93,80,.15)}
+.toggle-row{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)}
+.toggle-row:last-of-type{border-bottom:none}
+.toggle-row .tl{font-size:.875rem;color:var(--text-primary);font-weight:500}
+.toggle-row .ts{font-size:.75rem;color:var(--text-muted);margin-top:1px}
+.switch{position:relative;width:40px;height:22px;flex-shrink:0}
+.switch input{opacity:0;width:0;height:0;position:absolute}
+.slider{position:absolute;inset:0;background:var(--border);border-radius:22px;cursor:pointer;transition:.2s}
+.slider::before{content:'';position:absolute;height:16px;width:16px;left:3px;top:3px;background:white;border-radius:50%;transition:.2s}
+input:checked + .slider{background:var(--accent-solid)}
+input:checked + .slider::before{transform:translateX(18px)}
+.settings-save{margin-top:20px}
+
+/* ═══ SETTINGS: NEW SECTIONS ═══ */
+html{font-size:calc(100% * var(--font-scale,1))}
+.settings-group.danger-zone{border-color:var(--danger-bg)}
+.account-id{display:flex;align-items:center;gap:12px;padding-bottom:18px;margin-bottom:18px;border-bottom:1px solid var(--border)}
+.account-id .admin-avatar{width:44px;height:44px;font-size:.9rem}
+.account-id .ai-name{font-size:.9375rem;font-weight:700;color:var(--text-primary)}
+.account-id .ai-role{font-size:.75rem;color:var(--text-muted);margin-top:1px}
+.settings-row-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:4px}
+.btn-outline{padding:8px 16px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--bg);color:var(--text-primary);font-size:.8125rem;font-weight:600;cursor:pointer;transition:background .15s,border-color .15s;min-height:40px}
+.btn-outline:hover{border-color:var(--accent);color:var(--accent)}
+.btn-danger-outline{padding:8px 16px;border-radius:var(--radius-sm);border:1px solid var(--danger-bg);background:var(--danger-bg);color:var(--danger);font-size:.8125rem;font-weight:600;cursor:pointer;transition:filter .15s;min-height:40px}
+.btn-danger-outline:hover{filter:brightness(.95)}
+.btn-danger-solid{padding:8px 18px;border-radius:var(--radius-sm);border:none;background:var(--danger);color:#fff;font-size:.8125rem;font-weight:700;cursor:pointer;min-height:40px}
+.seg-control{display:flex;gap:6px;flex-wrap:wrap}
+.seg-btn{flex:1;min-width:80px;min-height:40px;padding:8px 10px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--bg);color:var(--text-secondary);font-size:.8125rem;font-weight:600;cursor:pointer;transition:background .15s,color .15s,border-color .15s;text-align:center}
+.seg-btn.active{background:var(--accent-solid);color:#fff;border-color:var(--accent-solid)}
+.settings-link-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 2px;min-height:44px;border-bottom:1px solid var(--border);cursor:pointer;background:none;border-left:none;border-right:none;border-top:none;width:100%;text-align:left}
+.settings-link-row:last-of-type{border-bottom:none}
+.settings-link-row .slr-text .tl{font-size:.875rem;color:var(--text-primary);font-weight:500}
+.settings-link-row .slr-text .ts{font-size:.75rem;color:var(--text-muted);margin-top:1px}
+.settings-link-row .chev{color:var(--text-muted);flex-shrink:0}
+.settings-link-row:hover{background:var(--bg)}
+.perm-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);min-height:44px}
+.perm-row:last-of-type{border-bottom:none}
+.perm-status{font-size:.7rem;font-weight:700;padding:3px 10px;border-radius:20px;letter-spacing:.02em}
+.perm-status.granted{background:var(--success-bg);color:var(--success)}
+.perm-status.denied{background:var(--danger-bg);color:var(--danger)}
+.perm-status.prompt{background:var(--warn-bg);color:var(--warn)}
+.perm-status.unknown{background:var(--border);color:var(--text-secondary)}
+.app-version-box{font-size:.8125rem;color:var(--text-secondary);background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px 14px}
+.settings-textarea{padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:.875rem;color:var(--text-primary);background:var(--bg);outline:none;resize:vertical;min-height:90px;font-family:inherit}
+.settings-textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(31,93,80,.15)}
+
+/* Modal */
+.pc-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:999;display:none;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(2px)}
+.pc-modal-overlay.open{display:flex}
+.pc-modal{background:var(--surface);border-radius:var(--radius);max-width:440px;width:100%;max-height:88vh;overflow-y:auto;box-shadow:var(--shadow-md);border:1px solid var(--border)}
+.pc-modal-header{display:flex;align-items:center;justify-content:space-between;padding:18px 20px;border-bottom:1px solid var(--border)}
+.pc-modal-header h3{font-size:1rem;font-weight:700;color:var(--text-primary)}
+.pc-modal-close{width:32px;height:32px;border-radius:8px;border:none;background:var(--bg);color:var(--text-secondary);cursor:pointer;font-size:1.1rem;line-height:1;flex-shrink:0}
+.pc-modal-close:hover{background:var(--accent-light);color:var(--accent)}
+.pc-modal-body{padding:20px}
+.pc-modal-body p{font-size:.875rem;color:var(--text-secondary);line-height:1.6;margin-bottom:10px}
+.pc-modal-body h4{font-size:.85rem;font-weight:700;color:var(--text-primary);margin:14px 0 6px}
+.pc-modal-footer{display:flex;justify-content:flex-end;gap:10px;padding:16px 20px;border-top:1px solid var(--border)}
+.field-error{font-size:.75rem;color:var(--danger);margin-top:2px;min-height:14px}
+.confirm-warning-box{background:var(--danger-bg);border:1px solid var(--danger);border-radius:var(--radius-sm);padding:12px 14px;font-size:.8125rem;color:var(--danger);margin-bottom:14px;line-height:1.5}
+
+/* High contrast mode */
+body.high-contrast{--border:#000000;--text-secondary:#23291F;--text-muted:#143F36}
+body.high-contrast.dark{--border:#ffffff;--text-secondary:#F2F5ED;--text-muted:#DCE6DE}
+body.high-contrast .nav-item.active{outline:2px solid var(--accent)}
+body.high-contrast .btn-primary,body.high-contrast .btn-outline,body.high-contrast .btn-danger-outline,body.high-contrast .settings-group{border-width:2px}
+body.high-contrast .form-input,body.high-contrast .form-select{border-width:2px}
+
+/* FOOTER */
+.footer{margin-top:48px;text-align:center;font-size:.75rem;color:var(--text-muted)}
+
+/* ══════════════════════════════════════════
+   HEAT MAP / DISEASE MONITORING DASHBOARD
+══════════════════════════════════════════ */
+.hm-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:20px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;box-shadow:var(--shadow-sm)}
+.hm-toolbar .form-select{min-width:150px;padding:7px 10px;font-size:.8125rem}
+.hm-toolbar-label{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted);margin-right:2px}
+.hm-toolbar .dfc-btn{padding:6px 12px;font-size:.75rem}
+.hm-toolbar-reset{margin-left:auto;font-size:.75rem;font-weight:600;color:var(--accent);background:none;border:none;cursor:pointer;padding:6px 4px}
+.hm-toolbar-reset:hover{text-decoration:underline}
+
+.hm-alert-strip{display:flex;flex-direction:column;gap:10px;margin-bottom:20px}
+.hm-alert-strip .sys-alert-card{flex-direction:row;align-items:center;justify-content:space-between;gap:14px}
+.hm-alert-strip .sa-text{display:flex;flex-direction:column;gap:2px}
+.hm-alert-strip .sa-actions{display:flex;align-items:center;gap:10px;flex-shrink:0}
+
+.hm-map-card{position:relative}
+.hm-map-wrap{position:relative;width:100%;border-radius:var(--radius-sm);overflow:hidden;background:linear-gradient(160deg,var(--accent-light),var(--bg));border:1px solid var(--border)}
+.hm-map-wrap svg{width:100%;height:auto;display:block}
+.hm-marker{cursor:pointer;transition:opacity .2s,transform .2s;transform-origin:center;transform-box:fill-box}
+.hm-marker:hover{transform:scale(1.12)}
+.hm-marker.dim{opacity:.15;pointer-events:none}
+.hm-marker-pulse{animation:hmPulse 2.2s ease-out infinite}
+@keyframes hmPulse{0%{opacity:.55}70%{opacity:0}100%{opacity:0}}
+.hm-legend{display:flex;flex-wrap:wrap;gap:16px;margin-top:14px;font-size:.75rem;color:var(--text-secondary)}
+.hm-legend-item{display:flex;align-items:center;gap:6px}
+.hm-legend-dot{width:10px;height:10px;border-radius:50%;display:inline-block;flex-shrink:0}
+
+.hm-zone-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:20px}
+.hm-zone-card{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--border);border-radius:var(--radius-sm);padding:14px 16px;box-shadow:var(--shadow-sm)}
+.hm-zone-card.critical{border-left-color:#8B2A1C}
+.hm-zone-card.high{border-left-color:var(--danger)}
+.hm-zone-card.medium{border-left-color:var(--warn)}
+.hm-zone-card.low{border-left-color:var(--success)}
+.hm-zone-card .hz-count{font-size:1.5rem;font-weight:800;color:var(--text-primary);letter-spacing:-.03em}
+.hm-zone-card .hz-lbl{font-size:.75rem;font-weight:700;color:var(--text-secondary);margin-top:2px}
+.hm-zone-card .hz-sub{font-size:.7rem;color:var(--text-muted);margin-top:6px;line-height:1.4}
+
+.priority-rank-badge{width:26px;height:26px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:.75rem;background:var(--accent-light);color:var(--accent);flex-shrink:0}
+.priority-rank-badge.rank-1{background:var(--danger-bg);color:var(--danger)}
+.priority-rank-badge.rank-2{background:var(--warn-bg);color:var(--warn)}
+.priority-row-name{display:flex;align-items:center;gap:10px}
+
+.vet-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+.vet-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:13px 16px;box-shadow:var(--shadow-sm);display:flex;justify-content:space-between;align-items:center;gap:10px}
+.vet-info .vet-name{font-weight:700;font-size:.85rem;color:var(--text-primary)}
+.vet-info .vet-meta{font-size:.7rem;color:var(--text-secondary);margin-top:2px;line-height:1.4}
+.vet-side{display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0}
+.vet-distance{font-size:.75rem;font-weight:700;color:var(--accent);white-space:nowrap}
+
+.hm-empty-state{padding:30px 16px;text-align:center;font-size:.8rem;color:var(--text-muted)}
+
+.hm-detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 16px;margin-bottom:14px}
+.hm-detail-item .hdi-lbl{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text-muted)}
+.hm-detail-item .hdi-val{font-size:.875rem;font-weight:600;color:var(--text-primary);margin-top:2px}
+
+@media(max-width:900px){
+  .kpi-grid{grid-template-columns:repeat(2,1fr)}
+  .report-grid{grid-template-columns:repeat(2,1fr)}
+  .a-grid{grid-template-columns:1fr}
+  .settings-grid{grid-template-columns:1fr}
+  .mgmt-kpi-grid{grid-template-columns:repeat(2,1fr)}
+  .sys-alert-grid{grid-template-columns:repeat(2,1fr)}
+  .dis-cluster-grid{grid-template-columns:repeat(2,1fr)}
+  .hm-zone-grid{grid-template-columns:1fr}
+  .vet-grid{grid-template-columns:1fr}
+  .hm-detail-grid{grid-template-columns:1fr}
+}
+@media(max-width:600px){
+  .main{padding:20px 14px 48px}
+  .kpi-grid{grid-template-columns:1fr 1fr;gap:12px}
+  .kpi-value{font-size:1.6rem}
+  .chart-card{padding:16px}
+  .alert-item{padding:12px 14px}
+  .report-grid{grid-template-columns:1fr}
+  .sys-alert-grid{grid-template-columns:1fr}
+  .dis-cluster-grid{grid-template-columns:1fr}
+  .mgmt-kpi-grid{grid-template-columns:1fr 1fr}
+  .topbar-sub,.topbar-time{display:none}
+  .date-filter-btns{overflow-x:auto}
+  .hm-toolbar{flex-direction:column;align-items:stretch}
+  .hm-toolbar .form-select{width:100%}
+  .hm-toolbar-reset{margin-left:0;align-self:flex-end}
+  .hm-alert-strip .sys-alert-card{flex-direction:column;align-items:stretch}
+}
+</style>
+</head>
+<body>
+
+<!-- TOPBAR -->
+<header class="topbar">
+  <button class="menu-btn" id="menu-btn" onclick="toggleSidebar()"><span></span><span></span><span></span></button>
+  <div class="topbar-brand">
+    <div class="topbar-logo">
+      <svg viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 2.38 1.19 4.47 3 5.74V17c0 .55.45 1 1 1h6c.55 0 1-.45 1-1v-2.26C17.81 13.47 19 11.38 19 9c0-3.87-3.13-7-7-7z"/><line x1="12" y1="9" x2="12" y2="15"/><line x1="9" y1="12" x2="15" y2="12"/></svg>
+    </div>
+    <div>
+      <div class="topbar-title">Pashu Sakhi — Admin Console</div>
+      <div class="topbar-sub">Overview, platform monitoring & 1962 emergency dispatch</div>
+    </div>
+  </div>
+  <div class="topbar-right">
+    <a href="tel:1962" class="topbar-badge" style="background:#B3402A;color:#fff;text-decoration:none;display:inline-flex;align-items:center;gap:4px">
+      📞 1962 Helpline
+    </a>
+    <button class="icon-btn" id="dark-toggle" onclick="toggleDark()" title="Toggle dark mode">
+      <svg id="dark-icon" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+    </button>
+    <span class="topbar-badge">Admin</span>
+    <span class="topbar-time" id="live-time"></span>
+  </div>
+</header>
+
+<div class="sidebar-overlay" onclick="closeSidebar()"></div>
+
+<!-- SIDEBAR -->
+<aside class="sidebar" style="top: 0;">
+  <div class="sidebar-header"><p>Navigation</p></div>
+  <nav class="sidebar-nav">
+    <button class="nav-item active" data-page="overview" onclick="navigate('overview')">
+      <div class="nav-icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg></div>
+      <span class="nav-label" data-t="nav_overview">Overview</span>
+    </button>
+    <div class="nav-divider"></div>
+    <button class="nav-item" data-page="management" onclick="navigate('management')">
+      <div class="nav-icon"><svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg></div>
+      <span class="nav-label" data-t="nav_management">Management</span>
+    </button>
+    <button class="nav-item" data-page="analytics" onclick="navigate('analytics')">
+      <div class="nav-icon"><svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></div>
+      <span class="nav-label" data-t="nav_analytics">Analytics</span>
+    </button>
+    <div class="nav-divider"></div>
+    <button class="nav-item" data-page="farmers" onclick="navigate('farmers')">
+      <div class="nav-icon"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
+      <span class="nav-label" data-t="nav_farmers">Farmers</span>
+    </button>
+    <button class="nav-item" data-page="vets" onclick="navigate('vets')">
+      <div class="nav-icon"><svg viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div>
+      <span class="nav-label" data-t="nav_vets">Veterinarians</span>
+    </button>
+    <button class="nav-item" data-page="heatmap" onclick="navigate('heatmap')">
+      <div class="nav-icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="5" height="5" rx="1"/><rect x="9.5" y="3" width="5" height="5" rx="1"/><rect x="16" y="3" width="5" height="5" rx="1"/><rect x="3" y="9.5" width="5" height="5" rx="1"/><rect x="9.5" y="9.5" width="5" height="5" rx="1"/><rect x="16" y="9.5" width="5" height="5" rx="1"/><rect x="3" y="16" width="5" height="5" rx="1"/><rect x="9.5" y="16" width="5" height="5" rx="1"/><rect x="16" y="16" width="5" height="5" rx="1"/></svg></div>
+      <span class="nav-label">Heat Map</span>
+    </button>
+    <button class="nav-item" data-page="cases" onclick="navigate('cases')">
+      <div class="nav-icon"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
+      <span class="nav-label" data-t="nav_cases">Cases</span>
+      <span class="nav-badge-count">2</span>
+    </button>
+    <button class="nav-item" data-page="reports" onclick="navigate('reports')">
+      <div class="nav-icon"><svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></div>
+      <span class="nav-label" data-t="nav_reports">Reports</span>
+    </button>
+    <div class="nav-divider"></div>
+    <button class="nav-item" data-page="settings" onclick="navigate('settings')">
+      <div class="nav-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></div>
+      <span class="nav-label" data-t="nav_settings">Settings</span>
+    </button>
+    <button class="nav-item" style="color:var(--nav-danger-text)" onclick="logout()">
+      <div class="nav-icon" style="background:var(--nav-danger-bg)"><svg viewBox="0 0 24 24" style="stroke:var(--nav-danger-text)"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg></div>
+      <span class="nav-label" data-t="btn_logout">Logout</span>
+    </button>
+  </nav>
+  <div class="sidebar-footer">
+    <div style="display:flex;align-items:center;gap:10px">
+      <div class="admin-avatar">SA</div>
+      <div class="admin-info"><p>Super Admin</p><p>admin@pashucare.in</p></div>
+    </div>
+  </div>
+</aside>
+
+<!-- MAIN CONTENT -->
+<main class="main">
+
+<!-- ═══════════════ OVERVIEW ═══════════════ -->
+<div class="page active" id="page-overview">
+  <div class="page-header"><h1>Dashboard Overview</h1><p>Platform summary, disease monitoring & 1962 dispatch network</p></div>
+  <div class="kpi-grid">
+    <div class="kpi-card blue"><div class="kpi-body"><div class="kpi-info"><div class="kpi-value" data-target="2847">0</div><div class="kpi-title">Total Farmers</div></div><div class="kpi-icon"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div></div></div>
+    <div class="kpi-card purple"><div class="kpi-body"><div class="kpi-info"><div class="kpi-value" data-target="164">0</div><div class="kpi-title">Total Veterinarians</div></div><div class="kpi-icon"><svg viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div></div></div>
+    <div class="kpi-card green"><div class="kpi-body"><div class="kpi-info"><div class="kpi-value" data-target="4206">0</div><div class="kpi-title">Resolved Cases</div></div><div class="kpi-icon"><svg viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div></div></div>
+    <div class="kpi-card red"><div class="kpi-body"><div class="kpi-info"><div class="kpi-value" data-target="2">0</div><div class="kpi-title">Unresolved Complaints</div></div><div class="kpi-icon"><svg viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div></div></div>
+  </div>
+  <div class="chart-card">
+    <div class="section-header"><h2>New Users by Month</h2><p>Last 6 months — farmers and veterinarians</p></div>
+    <div class="bar-chart-wrap" id="chart-container"></div>
+  </div>
+  <div class="section-header"><h2>Attention Required</h2><p>Items that need immediate review</p></div>
+  <div class="alert-card">
+    <ul class="alert-list">
+      <li class="alert-item"><div class="alert-icon critical"><svg viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div><span class="alert-text">Pashu Sanjivini (1962) Inbound Dispatch — Critical Emergency in Nashik</span><span class="alert-badge critical">1962 SOS</span></li>
+      <li class="alert-item"><div class="alert-icon warning"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div><span class="alert-text">3 veterinarian applications pending verification</span><span class="alert-badge warning">Pending</span></li>
+      <li class="alert-item"><div class="alert-icon critical"><svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></div><span class="alert-text">Disease Cluster Alert — Lumpy Skin Disease Surge in Sinnar, Nashik</span><span class="alert-badge critical">Alert</span></li>
+      <li class="alert-item"><div class="alert-icon warning"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div><span class="alert-text">2 unresolved platform complaints</span><span class="alert-badge warning">Warning</span></li>
+    </ul>
+  </div>
+</div>
+
+<!-- ═══════════════ MANAGEMENT ═══════════════ -->
+<div class="page" id="page-management">
+  <div class="page-header"><h1>Management</h1><p>Manage users, monitor cases, veterinarians, diseases, complaints, and platform health</p></div>
+  <div class="mgmt-tabs">
+    <button class="mgmt-tab active" onclick="mgmtTab('user-mgmt',this)">User Management</button>
+    <button class="mgmt-tab" onclick="mgmtTab('case-mon',this)">Case Monitoring</button>
+    <button class="mgmt-tab" onclick="mgmtTab('vet-mon',this)">Vet Monitoring</button>
+    <button class="mgmt-tab" onclick="mgmtTab('disease-mon',this)">Disease Monitoring</button>
+    <button class="mgmt-tab" onclick="mgmtTab('complaint-mgmt',this)">Complaint Management</button>
+    <button class="mgmt-tab" onclick="mgmtTab('platform-mon',this)">Platform Monitoring</button>
+  </div>
+
+  <!-- User Management -->
+  <div class="mgmt-panel active" id="mp-user-mgmt">
+    <div class="mgmt-kpi-grid">
+      <div class="mini-kpi c-blue"><div class="val">3,023</div><div class="lbl">Total Users</div></div>
+      <div class="mini-kpi c-green"><div class="val">2,933</div><div class="lbl">Active</div></div>
+      <div class="mini-kpi"><div class="val">56</div><div class="lbl">Inactive / Suspended</div></div>
+      <div class="mini-kpi c-warn"><div class="val">34</div><div class="lbl">Pending Approval</div></div>
+    </div>
+    <div class="table-card">
+      <div class="table-toolbar"><h3>All Users</h3><input class="search-input" placeholder="Search name or district…" oninput="filterTable('um-tbody',this.value)"/></div>
+      <div style="overflow-x:auto">
+        <table><thead><tr><th>ID</th><th>Name</th><th>Role</th><th>District</th><th>Status</th><th>Actions</th></tr></thead>
+        <tbody id="um-tbody">
+          <tr><td>F-1001</td><td><div class="cell-flex"><div class="avatar" style="background:#1F5D50">RK</div>Ramesh Kumar</div></td><td>Farmer</td><td>Pune</td><td><span class="pill active">Active</span></td><td><button class="btn-xs warn" onclick="handleUserAction(this,'suspend','F-1001','Ramesh Kumar')">Suspend</button></td></tr>
+          <tr><td>V-201</td><td><div class="cell-flex"><div class="avatar" style="background:#D98B2B">DS</div>Dr. Suresh Nair</div></td><td>Veterinarian</td><td>Pune</td><td><span class="pill active">Active</span></td><td><button class="btn-xs warn" onclick="handleUserAction(this,'suspend','V-201','Dr. Suresh Nair')">Suspend</button></td></tr>
+          <tr><td>F-1002</td><td><div class="cell-flex"><div class="avatar" style="background:#2F7A4F">SP</div>Sunita Patil</div></td><td>Farmer</td><td>Nashik</td><td><span class="pill active">Active</span></td><td><button class="btn-xs warn" onclick="handleUserAction(this,'suspend','F-1002','Sunita Patil')">Suspend</button></td></tr>
+          <tr><td>V-204</td><td><div class="cell-flex"><div class="avatar" style="background:#B9791F">DP</div>Dr. Pooja Mehta</div></td><td>Veterinarian</td><td>Jaipur</td><td><span class="pill pending">Pending</span></td><td><button class="btn-xs success" onclick="handleVetVerify(this,'verify','V-204','Dr. Pooja Mehta')">Verify</button> <button class="btn-xs danger" onclick="handleVetVerify(this,'reject','V-204','Dr. Pooja Mehta')">Reject</button></td></tr>
+          <tr><td>F-1004</td><td><div class="cell-flex"><div class="avatar" style="background:#2F6F63">MR</div>Meena Rawat</div></td><td>Farmer</td><td>Udaipur</td><td><span class="pill inactive">Inactive</span></td><td><button class="btn-xs success" onclick="handleUserAction(this,'activate','F-1004','Meena Rawat')">Activate</button></td></tr>
+          <tr><td>V-206</td><td><div class="cell-flex"><div class="avatar" style="background:#B3402A">DT</div>Dr. Tanya Singh</div></td><td>Veterinarian</td><td>Lucknow</td><td><span class="pill pending">Pending</span></td><td><button class="btn-xs success" onclick="handleVetVerify(this,'verify','V-206','Dr. Tanya Singh')">Verify</button> <button class="btn-xs danger" onclick="handleVetVerify(this,'reject','V-206','Dr. Tanya Singh')">Reject</button></td></tr>
+          <tr><td>F-1005</td><td><div class="cell-flex"><div class="avatar" style="background:#143F36">VR</div>Vijay Reddy</div></td><td>Farmer</td><td>Hyderabad</td><td><span class="pill active">Active</span></td><td><button class="btn-xs danger" onclick="handleUserAction(this,'deactivate','F-1005','Vijay Reddy')">Deactivate</button></td></tr>
+          <tr><td>F-1008</td><td><div class="cell-flex"><div class="avatar" style="background:#D98B2B">DM</div>Dinesh Mahato</div></td><td>Farmer</td><td>Ranchi</td><td><span class="pill pending">Pending</span></td><td><button class="btn-xs success" onclick="handleUserAction(this,'approve','F-1008','Dinesh Mahato')">Approve</button></td></tr>
+        </tbody></table>
+      </div>
+      <div class="table-footer">Showing 8 of 3,023 users</div>
+    </div>
+  </div>
+
+  <!-- Case Monitoring -->
+  <div class="mgmt-panel" id="mp-case-mon">
+    <div class="mgmt-kpi-grid">
+      <div class="mini-kpi c-red"><div class="val" id="cm-kpi-open">2</div><div class="lbl">Open Cases</div></div>
+      <div class="mini-kpi c-warn"><div class="val" id="cm-kpi-unassigned">2</div><div class="lbl">Unassigned</div></div>
+      <div class="mini-kpi c-red"><div class="val" id="cm-kpi-emergency">3</div><div class="lbl">Emergency Today</div></div>
+      <div class="mini-kpi c-blue"><div class="val">18 min</div><div class="lbl">Avg Response Time</div></div>
+    </div>
+    <div class="table-card">
+      <div class="table-toolbar"><h3>Active Cases</h3><input class="search-input" placeholder="Search case or farmer…" oninput="filterTable('cm-tbody',this.value)"/></div>
+      <div style="overflow-x:auto">
+        <table><thead><tr><th>Case ID</th><th>Farmer</th><th>Issue</th><th>Vet Assigned</th><th>Priority</th><th>Status</th><th>Age</th><th>Action</th></tr></thead>
+        <tbody id="cm-tbody">
+          <tr><td>C-4208</td><td>Ramesh Kumar</td><td>Foot &amp; Mouth Disease</td><td>Dr. Suresh Nair</td><td><span class="pill high">High</span></td><td><span class="pill open">Open</span></td><td>2h 14m</td><td><span style="font-size:.75rem;color:var(--text-muted)">In Progress</span></td></tr>
+          <tr><td>C-4207</td><td>Laxmi Singh</td><td>Mastitis — Dairy Cow</td><td><span class="pill inactive">Unassigned</span></td><td><span class="pill high">High</span></td><td><span class="pill open">Open</span></td><td>3h 52m</td><td><button class="btn-xs primary" onclick="handleCaseAssign(this,'C-4207','Dr. Anita Sharma')">Assign Vet</button></td></tr>
+          <tr><td>E-1042</td><td>Arjun Yadav</td><td>Emergency — Cow Collapse</td><td><span class="pill inactive">Unassigned</span></td><td><span class="pill critical">Critical</span></td><td><span class="pill open">Open</span></td><td>14 min</td><td><button class="btn-xs danger" onclick="handleCaseAssign(this,'E-1042','Dr. Suresh Nair',true)">🚨 Fast Assign</button></td></tr>
+          <tr><td>C-4206</td><td>Vijay Reddy</td><td>Respiratory Infection</td><td>Dr. Kamal Rao</td><td><span class="pill medium">Medium</span></td><td><span class="pill resolved">Resolved</span></td><td>18h</td><td><span style="font-size:.75rem;color:var(--success)">Closed</span></td></tr>
+          <tr><td>C-4205</td><td>Arjun Yadav</td><td>Bloat — Goat</td><td>Dr. Rajan Pillai</td><td><span class="pill low">Low</span></td><td><span class="pill resolved">Resolved</span></td><td>1d</td><td><span style="font-size:.75rem;color:var(--success)">Closed</span></td></tr>
+          <tr><td>C-4204</td><td>Priya Gupta</td><td>Tick Infestation</td><td>Dr. Anita Sharma</td><td><span class="pill low">Low</span></td><td><span class="pill resolved">Resolved</span></td><td>2d</td><td><span style="font-size:.75rem;color:var(--success)">Closed</span></td></tr>
+        </tbody></table>
+      </div>
+      <div class="table-footer">3 open · 2 unassigned · 3 resolved</div>
+    </div>
+  </div>
+
+  <!-- Vet Monitoring -->
+  <div class="mgmt-panel" id="mp-vet-mon">
+    <div class="mgmt-kpi-grid">
+      <div class="mini-kpi c-green"><div class="val">98</div><div class="lbl">Available Now</div></div>
+      <div class="mini-kpi"><div class="val">46</div><div class="lbl">Offline</div></div>
+      <div class="mini-kpi c-warn"><div class="val" id="vm-kpi-pending">3</div><div class="lbl">Pending Verification</div></div>
+      <div class="mini-kpi c-blue"><div class="val">4.7 ★</div><div class="lbl">Avg Platform Rating</div></div>
+    </div>
+    <div class="table-card">
+      <div class="table-toolbar"><h3>Veterinarian Performance</h3><input class="search-input" placeholder="Search name or specialty…" oninput="filterTable('vm-tbody',this.value)"/></div>
+      <div style="overflow-x:auto">
+        <table><thead><tr><th>Name</th><th>Specialty</th><th>Cases Today</th><th>Total Cases</th><th>Avg Response</th><th>Rating</th><th>Status</th></tr></thead>
+        <tbody id="vm-tbody">
+          <tr><td><div class="cell-flex"><div class="avatar" style="background:#1F5D50">DS</div>Dr. Suresh Nair</div></td><td>Large Animals</td><td>4</td><td>312</td><td>12 min</td><td>⭐ 4.9</td><td><span class="pill available">Available</span></td></tr>
+          <tr><td><div class="cell-flex"><div class="avatar" style="background:#2F6F63">DK</div>Dr. Kamal Rao</div></td><td>Surgery</td><td>6</td><td>421</td><td>9 min</td><td>⭐ 4.8</td><td><span class="pill offline">Offline</span></td></tr>
+          <tr><td><div class="cell-flex"><div class="avatar" style="background:#D98B2B">DA</div>Dr. Anita Sharma</div></td><td>Poultry</td><td>3</td><td>198</td><td>18 min</td><td>⭐ 4.7</td><td><span class="pill available">Available</span></td></tr>
+          <tr><td><div class="cell-flex"><div class="avatar" style="background:#2F7A4F">DR</div>Dr. Rajan Pillai</div></td><td>Internal Medicine</td><td>5</td><td>274</td><td>14 min</td><td>⭐ 4.6</td><td><span class="pill available">Available</span></td></tr>
+          <tr><td><div class="cell-flex"><div class="avatar" style="background:#B3402A">DT</div>Dr. Tanya Singh</div></td><td>Dairy Cattle</td><td>0</td><td>156</td><td>—</td><td>⭐ 4.4</td><td><span class="pill pending">Pending</span></td></tr>
+          <tr><td><div class="cell-flex"><div class="avatar" style="background:#B9791F">DP</div>Dr. Pooja Mehta</div></td><td>Pathology</td><td>0</td><td>87</td><td>—</td><td>⭐ 4.5</td><td><span class="pill pending">Pending</span></td></tr>
+        </tbody></table>
+      </div>
+      <div class="table-footer">Showing 6 of 164 veterinarians</div>
+    </div>
+  </div>
+
+  <!-- Disease Monitoring -->
+  <div class="mgmt-panel" id="mp-disease-mon">
+    <div class="dis-cluster-grid">
+      <div class="cluster-card"><div class="cc-val">2</div><div class="cc-lbl">Active Disease Clusters</div></div>
+      <div class="cluster-card warn"><div class="cc-val" style="color:var(--warn)">5</div><div class="cc-lbl">High-Risk Districts</div></div>
+      <div class="cluster-card ok"><div class="cc-val">3</div><div class="cc-lbl">Alerts Generated Today</div></div>
+    </div>
+    <div class="table-card">
+      <div class="table-toolbar"><h3>District Disease Monitor</h3><span style="font-size:.8rem;color:var(--text-muted)">Maharashtra · Last 7 Days</span></div>
+      <div style="overflow-x:auto">
+        <table><thead><tr><th>District</th><th>Cases This Week</th><th>Change</th><th>Top Disease</th><th>Risk Level</th><th>Last Alert</th></tr></thead>
+        <tbody>
+          <tr><td><b>Nashik</b></td><td>84</td><td style="color:var(--danger)">↑ +38%</td><td>FMD / LSD</td><td><span class="pill critical">Critical</span></td><td>2h ago</td></tr>
+          <tr><td>Aurangabad</td><td>62</td><td style="color:var(--danger)">↑ +21%</td><td>Mastitis</td><td><span class="pill high">High</span></td><td>5h ago</td></tr>
+          <tr><td>Pune</td><td>48</td><td style="color:var(--warn)">↑ +12%</td><td>Respiratory</td><td><span class="pill medium">Medium</span></td><td>1d ago</td></tr>
+          <tr><td>Nagpur</td><td>41</td><td style="color:var(--warn)">↑ +8%</td><td>Tick Infestation</td><td><span class="pill medium">Medium</span></td><td>1d ago</td></tr>
+          <tr><td>Solapur</td><td>34</td><td style="color:var(--success)">↓ -3%</td><td>Bloat</td><td><span class="pill low">Low</span></td><td>2d ago</td></tr>
+          <tr><td>Kolhapur</td><td>28</td><td style="color:var(--success)">↓ -6%</td><td>Diarrhea</td><td><span class="pill low">Low</span></td><td>3d ago</td></tr>
+          <tr><td>Amravati</td><td>19</td><td style="color:var(--success)">↓ -11%</td><td>PPR</td><td><span class="pill low">Low</span></td><td>4d ago</td></tr>
+        </tbody></table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Complaint Management -->
+  <div class="mgmt-panel" id="mp-complaint-mgmt">
+    <div class="mgmt-kpi-grid" style="grid-template-columns:repeat(3,1fr)">
+      <div class="mini-kpi c-red"><div class="val" id="cpm-kpi-open">4</div><div class="lbl">Open Complaints</div></div>
+      <div class="mini-kpi c-warn"><div class="val" id="cpm-kpi-review">8</div><div class="lbl">Under Review</div></div>
+      <div class="mini-kpi c-green"><div class="val" id="cpm-kpi-resolved">6</div><div class="lbl">Resolved Today</div></div>
+    </div>
+    <div class="table-card">
+      <div class="table-toolbar"><h3>Complaint Log</h3><input class="search-input" placeholder="Search complaints…" oninput="filterTable('cpm-tbody',this.value)"/></div>
+      <div style="overflow-x:auto">
+        <table><thead><tr><th>ID</th><th>Submitted By</th><th>Category</th><th>Status</th><th>Assigned To</th><th>Date</th><th>Actions</th></tr></thead>
+        <tbody id="cpm-tbody">
+          <tr><td>CP-074</td><td>Ramesh Kumar</td><td>Vet Response Delay</td><td><span class="pill open">New</span></td><td>—</td><td>Sep 3</td><td><button class="btn-xs primary" onclick="handleComplaintAction(this,'assign','CP-074','Ramesh Kumar')">Assign</button></td></tr>
+          <tr><td>CP-073</td><td>Sunita Patil</td><td>Wrong Diagnosis</td><td><span class="pill pending">Under Review</span></td><td>Admin Singh</td><td>Sep 2</td><td><button class="btn-xs success" onclick="handleComplaintAction(this,'resolve','CP-073','Sunita Patil')">Resolve</button></td></tr>
+          <tr><td>CP-072</td><td>Vijay Reddy</td><td>App Issues</td><td><span class="pill pending">Under Review</span></td><td>Admin Singh</td><td>Sep 1</td><td><button class="btn-xs success" onclick="handleComplaintAction(this,'resolve','CP-072','Vijay Reddy')">Resolve</button></td></tr>
+          <tr><td>CP-071</td><td>Priya Gupta</td><td>Billing</td><td><span class="pill open">New</span></td><td>—</td><td>Sep 1</td><td><button class="btn-xs primary" onclick="handleComplaintAction(this,'assign','CP-071','Priya Gupta')">Assign</button></td></tr>
+          <tr><td>CP-070</td><td>Arjun Yadav</td><td>Vet Response Delay</td><td><span class="pill resolved">Resolved</span></td><td>Admin Sharma</td><td>Aug 31</td><td><span style="font-size:.75rem;color:var(--success)">Closed</span></td></tr>
+          <tr><td>CP-069</td><td>Dinesh Mahato</td><td>App Issues</td><td><span class="pill resolved">Resolved</span></td><td>Admin Singh</td><td>Aug 30</td><td><span style="font-size:.75rem;color:var(--success)">Closed</span></td></tr>
+        </tbody></table>
+      </div>
+      <div class="table-footer">4 open · 8 under review · 62 resolved</div>
+    </div>
+  </div>
+
+  <!-- Platform Monitoring -->
+  <div class="mgmt-panel" id="mp-platform-mon">
+    <div class="sys-alert-grid">
+      <div class="sys-alert-card sa-critical"><div class="sa-title">🚨 1962 Helpline Integration</div><div class="sa-desc">Pashu Sanjivini Toll-Free Helpline: Active · 24x7 Inbound Dispatch SLA: 99.8%</div><span class="alert-badge critical">1962 Live</span></div>
+      <div class="sys-alert-card sa-warning"><div class="sa-title">⚠️ AI Low Confidence</div><div class="sa-desc">11 reports below 60% confidence threshold need manual review</div><span class="alert-badge warning">Warning</span></div>
+      <div class="sys-alert-card sa-warning"><div class="sa-title">📋 Vet Verification Pending</div><div class="sa-desc">3 veterinarian applications awaiting admin verification</div><span class="alert-badge warning">Pending</span></div>
+      <div class="sys-alert-card sa-critical"><div class="sa-title">🦠 Disease Cluster Alert</div><div class="sa-desc">FMD &amp; LSD spike detected in Nashik — 38% increase this week</div><span class="alert-badge critical">Alert</span></div>
+      <div class="sys-alert-card sa-info"><div class="sa-title">💻 System Load</div><div class="sa-desc">Current CPU load: 42% · Memory: 58% · All services running</div><span class="alert-badge info">Normal</span></div>
+      <div class="sys-alert-card sa-ok"><div class="sa-title">🗄️ Database Health</div><div class="sa-desc">All databases healthy · Last backup: 2h ago · Uptime 99.98%</div><span class="alert-badge" style="background:var(--success-bg);color:var(--success)">Good</span></div>
+    </div>
+    <div class="kpi-grid">
+      <div class="kpi-card sky"><div class="kpi-body"><div class="kpi-info"><div class="kpi-value">847</div><div class="kpi-title">AI Screenings Today</div></div><div class="kpi-icon"><svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></div></div></div>
+      <div class="kpi-card purple"><div class="kpi-body"><div class="kpi-info"><div class="kpi-value">1,284</div><div class="kpi-title">Active Sessions</div></div><div class="kpi-icon"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></div></div></div>
+      <div class="kpi-card blue"><div class="kpi-body"><div class="kpi-info"><div class="kpi-value">28.4K</div><div class="kpi-title">API Calls Today</div></div><div class="kpi-icon"><svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div></div></div>
+      <div class="kpi-card green"><div class="kpi-body"><div class="kpi-info"><div class="kpi-value">99.98%</div><div class="kpi-title">Platform Uptime</div></div><div class="kpi-icon"><svg viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ ANALYTICS ═══════════════ -->
+<div class="page" id="page-analytics">
+  <div class="page-header"><h1>Analytics</h1><p>Monitor platform growth, users, cases, diseases, and AI performance for the selected period.</p></div>
+
+  <div class="date-filter-bar">
+    <div class="date-filter-btns">
+      <button class="dfc-btn active" data-range="week" onclick="setAnalyticsRange('week',this)">Last Week</button>
+      <button class="dfc-btn" data-range="month" onclick="setAnalyticsRange('month',this)">Last 1 Month</button>
+      <button class="dfc-btn" data-range="any" onclick="setAnalyticsRange('any',this)">Any Month</button>
+      <select class="form-select" id="any-month-select" style="display:none;min-width:160px" onchange="onAnyMonthChange(this.value)"></select>
+    </div>
+  </div>
+
+  <div class="a-grid-1"><div class="a-card"><div class="a-card-header"><h3>New Users</h3><p id="sub-new-users">New farmer and veterinarian registrations</p></div><div class="a-chart" style="height:220px" id="wrap-new-users"><canvas id="cv-new-users"></canvas></div></div></div>
+
+  <div class="a-grid">
+    <div class="a-card"><div class="a-card-header"><h3>Active vs Inactive Users</h3><p>Account status among users registered up to the end of this period</p></div><div class="a-chart" style="height:220px" id="wrap-active-inactive"><canvas id="cv-active-inactive"></canvas></div></div>
+    <div class="a-card"><div class="a-card-header"><h3>Resolved vs Unresolved</h3><p>Case resolution outcome for this period</p></div><div class="a-chart" style="height:220px" id="wrap-resolved-unresolved"><canvas id="cv-resolved-unresolved"></canvas></div></div>
+  </div>
+
+  <div class="a-grid-1"><div class="a-card"><div class="a-card-header"><h3>Cases Reported</h3><p id="sub-cases-period">Total cases filed on the platform</p></div><div class="a-chart" style="height:220px" id="wrap-cases-period"><canvas id="cv-cases-period"></canvas></div></div></div>
+
+  <div class="a-grid">
+    <div class="a-card"><div class="a-card-header"><h3>Case Status Distribution</h3><p>Current status of cases reported in this period</p></div><div class="a-chart" style="height:220px" id="wrap-case-status"><canvas id="cv-case-status"></canvas></div></div>
+    <div class="a-card"><div class="a-card-header"><h3>High vs Low Confidence Reports</h3><p>AI screenings at ≥80% confidence vs below</p></div><div class="a-chart" style="height:220px" id="wrap-ai-confidence"><canvas id="cv-ai-confidence"></canvas></div></div>
+  </div>
+
+  <div class="a-grid-1"><div class="a-card"><div class="a-card-header"><h3>Cases by Animal Type</h3><p>Reported cases grouped by livestock category</p></div><div class="a-chart" style="height:260px" id="wrap-cases-animal"><canvas id="cv-cases-animal"></canvas></div></div></div>
+
+  <div class="a-grid-1"><div class="a-card"><div class="a-card-header"><h3>Disease Analytics — Most Reported Diseases</h3><p>Ranked by total recorded cases for this period</p></div><div class="a-chart" style="height:280px" id="wrap-disease"><canvas id="cv-disease"></canvas></div></div></div>
+
+  <div class="a-grid-1"><div class="a-card"><div class="a-card-header"><h3>Disease Cases by District</h3><p>Disease-linked cases grouped by farmer/case district</p></div><div class="a-chart" style="height:260px" id="wrap-disease-district"><canvas id="cv-disease-district"></canvas></div></div></div>
+
+  <div class="a-grid-1"><div class="a-card"><div class="a-card-header"><h3>Emergency Case Activity</h3><p id="sub-emergency">Emergency cases reported over this period</p></div><div class="a-chart" style="height:220px" id="wrap-emergency"><canvas id="cv-emergency"></canvas></div></div></div>
+</div>
+
+<!-- ═══════════════ FARMERS ═══════════════ -->
+<div class="page" id="page-farmers">
+  <div class="page-header"><h1>Farmers</h1><p>Registered farmer accounts across all districts</p></div>
+  <div class="kpi-grid" style="grid-template-columns:repeat(3,1fr)">
+    <div class="kpi-card blue"><div class="kpi-body"><div class="kpi-info"><div class="kpi-value">2,847</div><div class="kpi-title">Total Farmers</div></div><div class="kpi-icon"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></div></div></div>
+    <div class="kpi-card green"><div class="kpi-body"><div class="kpi-info"><div class="kpi-value">2,791</div><div class="kpi-title">Active</div></div><div class="kpi-icon"><svg viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div></div></div>
+    <div class="kpi-card red"><div class="kpi-body"><div class="kpi-info"><div class="kpi-value">56</div><div class="kpi-title">Inactive / Suspended</div></div><div class="kpi-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg></div></div></div>
+  </div>
+  <div class="table-card">
+    <div class="table-toolbar"><h3>Farmer Records</h3><input class="search-input" placeholder="Search by name or district…" oninput="filterTable('farmer-tbody',this.value)"/></div>
+    <div style="overflow-x:auto">
+      <table><thead><tr><th>#</th><th>Farmer</th><th>District</th><th>State</th><th>Livestock</th><th>Cases Filed</th><th>Joined</th><th>Status</th></tr></thead>
+      <tbody id="farmer-tbody">
+        <tr><td>F-1001</td><td><div class="cell-flex"><div class="avatar" style="background:#1F5D50">RK</div>Ramesh Kumar</div></td><td>Pune</td><td>Maharashtra</td><td>14</td><td>3</td><td>Jan 2024</td><td><span class="pill active">Active</span></td></tr>
+        <tr><td>F-1002</td><td><div class="cell-flex"><div class="avatar" style="background:#D98B2B">SP</div>Sunita Patil</div></td><td>Nashik</td><td>Maharashtra</td><td>8</td><td>1</td><td>Mar 2024</td><td><span class="pill active">Active</span></td></tr>
+        <tr><td>F-1003</td><td><div class="cell-flex"><div class="avatar" style="background:#2F7A4F">AY</div>Arjun Yadav</div></td><td>Jaipur</td><td>Rajasthan</td><td>22</td><td>5</td><td>Feb 2024</td><td><span class="pill active">Active</span></td></tr>
+        <tr><td>F-1004</td><td><div class="cell-flex"><div class="avatar" style="background:#B9791F">MR</div>Meena Rawat</div></td><td>Udaipur</td><td>Rajasthan</td><td>6</td><td>0</td><td>Apr 2024</td><td><span class="pill inactive">Inactive</span></td></tr>
+        <tr><td>F-1005</td><td><div class="cell-flex"><div class="avatar" style="background:#2F6F63">VR</div>Vijay Reddy</div></td><td>Hyderabad</td><td>Telangana</td><td>31</td><td>7</td><td>Dec 2023</td><td><span class="pill active">Active</span></td></tr>
+        <tr><td>F-1006</td><td><div class="cell-flex"><div class="avatar" style="background:#B3402A">LS</div>Laxmi Singh</div></td><td>Lucknow</td><td>Uttar Pradesh</td><td>11</td><td>2</td><td>May 2024</td><td><span class="pill active">Active</span></td></tr>
+        <tr><td>F-1007</td><td><div class="cell-flex"><div class="avatar" style="background:#D98B2B">PG</div>Priya Gupta</div></td><td>Bhopal</td><td>Madhya Pradesh</td><td>18</td><td>4</td><td>Jun 2024</td><td><span class="pill active">Active</span></td></tr>
+        <tr><td>F-1008</td><td><div class="cell-flex"><div class="avatar" style="background:#143F36">DM</div>Dinesh Mahato</div></td><td>Ranchi</td><td>Jharkhand</td><td>9</td><td>1</td><td>Aug 2024</td><td><span class="pill pending">Pending</span></td></tr>
+      </tbody></table>
+    </div>
+    <div class="table-footer">Showing 8 of 2,847 farmers</div>
+  </div>
+</div>
+
+<!-- ═══════════════ VETS ═══════════════ -->
+<div class="page" id="page-vets">
+  <div class="page-header"><h1>Veterinarians</h1><p>Registered veterinary professionals on the platform</p></div>
+  <div class="kpi-grid" style="grid-template-columns:repeat(3,1fr)">
+    <div class="kpi-card purple"><div class="kpi-body"><div class="kpi-info"><div class="kpi-value">164</div><div class="kpi-title">Total Veterinarians</div></div><div class="kpi-icon"><svg viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div></div></div>
+    <div class="kpi-card green"><div class="kpi-body"><div class="kpi-info"><div class="kpi-value">141</div><div class="kpi-title">Verified</div></div><div class="kpi-icon"><svg viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div></div></div>
+    <div class="kpi-card red"><div class="kpi-body"><div class="kpi-info"><div class="kpi-value">3</div><div class="kpi-title">Pending Verification</div></div><div class="kpi-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div></div></div>
+  </div>
+  <div class="table-card">
+    <div class="table-toolbar"><h3>Veterinarian Records</h3><input class="search-input" placeholder="Search by name or specialty…" oninput="filterTable('vet-tbody',this.value)"/></div>
+    <div style="overflow-x:auto">
+      <table><thead><tr><th>#</th><th>Name</th><th>Specialty</th><th>District</th><th>Cases Handled</th><th>Rating</th><th>License</th><th>Availability</th></tr></thead>
+      <tbody id="vet-tbody">
+        <tr><td>V-201</td><td><div class="cell-flex"><div class="avatar" style="background:#1F5D50">DS</div>Dr. Suresh Nair</div></td><td>Large Animals</td><td>Pune</td><td>312</td><td>⭐ 4.9</td><td><span class="pill verified">Verified</span></td><td><span class="pill available">Available</span></td></tr>
+        <tr><td>V-202</td><td><div class="cell-flex"><div class="avatar" style="background:#D98B2B">DA</div>Dr. Anita Sharma</div></td><td>Poultry</td><td>Nashik</td><td>198</td><td>⭐ 4.7</td><td><span class="pill verified">Verified</span></td><td><span class="pill available">Available</span></td></tr>
+        <tr><td>V-203</td><td><div class="cell-flex"><div class="avatar" style="background:#2F6F63">DK</div>Dr. Kamal Rao</div></td><td>Surgery</td><td>Hyderabad</td><td>421</td><td>⭐ 4.8</td><td><span class="pill verified">Verified</span></td><td><span class="pill offline">Offline</span></td></tr>
+        <tr><td>V-204</td><td><div class="cell-flex"><div class="avatar" style="background:#B9791F">DP</div>Dr. Pooja Mehta</div></td><td>Pathology</td><td>Jaipur</td><td>87</td><td>⭐ 4.5</td><td><span class="pill pending">Pending</span></td><td><span class="pill offline">Offline</span></td></tr>
+        <tr><td>V-205</td><td><div class="cell-flex"><div class="avatar" style="background:#2F7A4F">DR</div>Dr. Rajan Pillai</div></td><td>Internal Medicine</td><td>Kochi</td><td>274</td><td>⭐ 4.6</td><td><span class="pill verified">Verified</span></td><td><span class="pill available">Available</span></td></tr>
+        <tr><td>V-206</td><td><div class="cell-flex"><div class="avatar" style="background:#B3402A">DT</div>Dr. Tanya Singh</div></td><td>Dairy Cattle</td><td>Lucknow</td><td>156</td><td>⭐ 4.4</td><td><span class="pill pending">Pending</span></td><td><span class="pill offline">Offline</span></td></tr>
+      </tbody></table>
+    </div>
+    <div class="table-footer">Showing 6 of 164 veterinarians</div>
+  </div>
+</div>
+
+<!-- ═══════════════ CASES ═══════════════ -->
+<div class="page" id="page-cases">
+  <div class="page-header"><h1>Cases &amp; Complaints</h1><p>All farmer-reported cases, emergency requests, and platform complaints</p></div>
+  <div class="kpi-grid">
+    <div class="kpi-card blue"><div class="kpi-body"><div class="kpi-info"><div class="kpi-value">4,208</div><div class="kpi-title">Total Cases</div></div><div class="kpi-icon"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div></div></div>
+    <div class="kpi-card green"><div class="kpi-body"><div class="kpi-info"><div class="kpi-value">4,206</div><div class="kpi-title">Resolved</div></div><div class="kpi-icon"><svg viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div></div></div>
+    <div class="kpi-card red"><div class="kpi-body"><div class="kpi-info"><div class="kpi-value">2</div><div class="kpi-title">Unresolved</div></div><div class="kpi-icon"><svg viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg></div></div></div>
+    <div class="kpi-card purple"><div class="kpi-body"><div class="kpi-info"><div class="kpi-value">99.9%</div><div class="kpi-title">Resolution Rate</div></div><div class="kpi-icon"><svg viewBox="0 0 24 24"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/></svg></div></div></div>
+  </div>
+  <div class="table-card">
+    <div class="table-toolbar"><h3>Case Log</h3><input class="search-input" placeholder="Search by ID or farmer…" oninput="filterTable('case-tbody',this.value)"/></div>
+    <div style="overflow-x:auto">
+      <table><thead><tr><th>Case ID</th><th>Farmer</th><th>District</th><th>Issue</th><th>Assigned Vet</th><th>Priority</th><th>Reported</th><th>Status</th></tr></thead>
+      <tbody id="case-tbody">
+        <tr><td>C-4208</td><td>Ramesh Kumar</td><td>Pune</td><td>Foot &amp; Mouth Disease</td><td>Dr. Suresh Nair</td><td><span class="pill high">High</span></td><td>Sep 2, 2026</td><td><span class="pill open">Open</span></td></tr>
+        <tr><td>C-4207</td><td>Laxmi Singh</td><td>Lucknow</td><td>Mastitis — Dairy Cow</td><td>Unassigned</td><td><span class="pill high">High</span></td><td>Sep 2, 2026</td><td><span class="pill open">Open</span></td></tr>
+        <tr><td>E-1042</td><td>Arjun Yadav</td><td>Jaipur</td><td>Emergency — Cow Collapse (1962 Inbound)</td><td>Dr. Suresh Nair</td><td><span class="pill critical">Critical</span></td><td>Sep 2, 2026</td><td><span class="pill open">Open</span></td></tr>
+        <tr><td>C-4206</td><td>Vijay Reddy</td><td>Hyderabad</td><td>Respiratory Infection</td><td>Dr. Kamal Rao</td><td><span class="pill medium">Medium</span></td><td>Sep 1, 2026</td><td><span class="pill resolved">Resolved</span></td></tr>
+        <tr><td>C-4205</td><td>Arjun Yadav</td><td>Jaipur</td><td>Bloat — Goat</td><td>Dr. Rajan Pillai</td><td><span class="pill medium">Medium</span></td><td>Aug 30, 2026</td><td><span class="pill resolved">Resolved</span></td></tr>
+        <tr><td>C-4204</td><td>Priya Gupta</td><td>Bhopal</td><td>Tick Infestation</td><td>Dr. Anita Sharma</td><td><span class="pill low">Low</span></td><td>Aug 28, 2026</td><td><span class="pill resolved">Resolved</span></td></tr>
+        <tr><td>C-4203</td><td>Sunita Patil</td><td>Nashik</td><td>Suspected Cluster — FMD</td><td>Dr. Suresh Nair</td><td><span class="pill high">High</span></td><td>Aug 27, 2026</td><td><span class="pill resolved">Resolved</span></td></tr>
+      </tbody></table>
+    </div>
+    <div class="table-footer">Showing 7 recent cases · 3 currently open</div>
+  </div>
+</div>
+
+<!-- ═══════════════ REPORTS ═══════════════ -->
+<div class="page" id="page-reports">
+  <div class="page-header"><h1>Reports</h1><p>Platform analytics, disease tracking and exportable summaries</p></div>
+  <div class="report-grid">
+    <div class="report-card"><div class="report-icon" style="background:#DCEAE4"><svg viewBox="0 0 24 24" style="stroke:#1F5D50"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></div><h3>Monthly User Growth</h3><p>New farmer and veterinarian registrations — June to November 2026.</p><div class="report-meta"><span class="report-date">Updated: Sep 1, 2026</span><button class="btn-sm" onclick="exportSpecificReport('Monthly User Growth')">↓ Export</button></div></div>
+    <div class="report-card"><div class="report-icon" style="background:#DFEEE2"><svg viewBox="0 0 24 24" style="stroke:#2F7A4F"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div><h3>Case Resolution Summary</h3><p>Breakdown of resolved vs. open cases by district and category.</p><div class="report-meta"><span class="report-date">Updated: Sep 2, 2026</span><button class="btn-sm" onclick="exportSpecificReport('Case Resolution Summary')">↓ Export</button></div></div>
+    <div class="report-card"><div class="report-icon" style="background:#F6E7C9"><svg viewBox="0 0 24 24" style="stroke:#B9791F"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div><h3>Complaint Audit Log</h3><p>Full history of platform complaints with timestamps and resolution notes.</p><div class="report-meta"><span class="report-date">Updated: Sep 3, 2026</span><button class="btn-sm" onclick="exportSpecificReport('Complaint Audit Log')">↓ Export</button></div></div>
+    <div class="report-card"><div class="report-icon" style="background:#F5DCD3"><svg viewBox="0 0 24 24" style="stroke:#B3402A"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></div><h3>Disease Cluster Map</h3><p>Geographic heatmap of reported livestock disease clusters by district.</p><div class="report-meta"><span class="report-date">Updated: Sep 2, 2026</span><button class="btn-sm" onclick="exportSpecificReport('Disease Cluster Map')">↓ Export</button></div></div>
+    <div class="report-card"><div class="report-icon" style="background:#F6E3C2"><svg viewBox="0 0 24 24" style="stroke:#D98B2B"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></div><h3>Veterinarian Performance</h3><p>Response times, case loads, and ratings for all registered veterinarians.</p><div class="report-meta"><span class="report-date">Updated: Sep 1, 2026</span><button class="btn-sm" onclick="exportSpecificReport('Veterinarian Performance')">↓ Export</button></div></div>
+    <div class="report-card"><div class="report-icon" style="background:#DEEAE6"><svg viewBox="0 0 24 24" style="stroke:#2F6F63"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/></svg></div><h3>AI Confidence Report</h3><p>Low-confidence AI diagnosis flags (&lt;60%) across all reports for the past 30 days.</p><div class="report-meta"><span class="report-date">Updated: Sep 3, 2026</span><button class="btn-sm" onclick="exportSpecificReport('AI Confidence Report')">↓ Export</button></div></div>
+  </div>
+</div>
+
+<!-- ═══════════════ HEAT MAP / DISEASE MONITORING DASHBOARD ═══════════════ -->
+<div class="page" id="page-heatmap">
+  <div class="page-header"><h1>Heat Map</h1><p>Real-time veterinary disease-monitoring dashboard — hotspots, risk zones, spread trends and response priorities across districts</p></div>
+
+  <!-- Filters -->
+  <div class="hm-toolbar">
+    <span class="hm-toolbar-label">Filters</span>
+    <select class="form-select" id="hm-f-disease" onchange="applyHeatmapFilters()">
+      <option value="all">All Diseases</option>
+    </select>
+    <select class="form-select" id="hm-f-district" onchange="applyHeatmapFilters()">
+      <option value="all">All Districts</option>
+    </select>
+    <select class="form-select" id="hm-f-risk" onchange="applyHeatmapFilters()">
+      <option value="all">All Risk Levels</option>
+      <option value="critical">Critical</option>
+      <option value="high">High</option>
+      <option value="medium">Medium</option>
+      <option value="low">Low</option>
+    </select>
+    <select class="form-select" id="hm-f-case" onchange="applyHeatmapFilters()">
+      <option value="all">Confirmed + Suspected</option>
+      <option value="confirmed">Confirmed Only</option>
+      <option value="suspected">Suspected Only</option>
+    </select>
+    <div class="date-filter-btns" id="hm-f-date-btns">
+      <button class="dfc-btn" data-range="today" onclick="setHeatmapDateRange('today',this)">Today</button>
+      <button class="dfc-btn" data-range="7d" onclick="setHeatmapDateRange('7d',this)">Last 7 Days</button>
+      <button class="dfc-btn active" data-range="30d" onclick="setHeatmapDateRange('30d',this)">Last 30 Days</button>
+      <button class="dfc-btn" data-range="all" onclick="setHeatmapDateRange('all',this)">All Time</button>
+    </div>
+    <button class="hm-toolbar-reset" onclick="resetHeatmapFilters()">Reset Filters</button>
+  </div>
+
+  <!-- Summary KPIs -->
+  <div class="kpi-grid" style="grid-template-columns:repeat(5,1fr)" id="hm-kpi-grid">
+    <div class="kpi-card red"><div class="kpi-body"><div class="kpi-info"><div class="kpi-value" id="hm-kpi-hotspots">—</div><div class="kpi-title">Active Hotspots</div></div><div class="kpi-icon"><svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></div></div></div>
+    <div class="kpi-card amber"><div class="kpi-body"><div class="kpi-info"><div class="kpi-value" id="hm-kpi-highrisk">—</div><div class="kpi-title">High / Critical Zones</div></div><div class="kpi-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div></div></div>
+    <div class="kpi-card blue"><div class="kpi-body"><div class="kpi-info"><div class="kpi-value" id="hm-kpi-confirmed">—</div><div class="kpi-title">Confirmed Cases</div></div><div class="kpi-icon"><svg viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div></div></div>
+    <div class="kpi-card sky"><div class="kpi-body"><div class="kpi-info"><div class="kpi-value" id="hm-kpi-suspected">—</div><div class="kpi-title">Suspected Cases</div></div><div class="kpi-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 2-3 4"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div></div></div>
+    <div class="kpi-card green"><div class="kpi-card purple" style="display:none"></div><div class="kpi-body"><div class="kpi-info"><div class="kpi-value" id="hm-kpi-newalerts">—</div><div class="kpi-title">New Outbreak Alerts</div></div><div class="kpi-icon"><svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></div></div></div>
+  </div>
+
+  <!-- New outbreak alerts -->
+  <div class="chart-card">
+    <div class="section-header"><h2>Newly Detected Outbreak Alerts</h2><p>Clusters flagged in the last 48 hours that require review</p></div>
+    <div class="hm-alert-strip" id="hm-alert-strip"></div>
+  </div>
+
+  <!-- Hotspot map -->
+  <div class="chart-card hm-map-card">
+    <div class="section-header"><h2>Disease Hotspot Map</h2><p>Color-coded by severity · marker size reflects total case volume · click a hotspot for full details</p></div>
+    <div class="hm-map-wrap" id="hm-map-wrap"></div>
+    <div class="hm-legend">
+      <span class="hm-legend-item"><span class="hm-legend-dot" style="background:#8B2A1C"></span>Critical Risk</span>
+      <span class="hm-legend-item"><span class="hm-legend-dot" style="background:#B3402A"></span>High Risk</span>
+      <span class="hm-legend-item"><span class="hm-legend-dot" style="background:#B9791F"></span>Medium Risk</span>
+      <span class="hm-legend-item"><span class="hm-legend-dot" style="background:#2F7A4F"></span>Low Risk</span>
+      <span class="hm-legend-item" style="margin-left:auto;font-style:italic">Marker size = case volume · click for details</span>
+    </div>
+  </div>
+
+  <!-- Risk zone breakdown -->
+  <div class="hm-zone-grid" id="hm-zone-grid"></div>
+
+  <!-- Disease spread trend -->
+  <div class="a-grid">
+    <div class="a-card"><div class="a-card-header"><h3>Disease Spread — Last 7 Days</h3><p>Confirmed vs. suspected cases across filtered hotspots</p></div><div class="a-chart" style="height:220px"><canvas id="cv-hm-trend7"></canvas></div></div>
+    <div class="a-card"><div class="a-card-header"><h3>Disease Spread — Last 30 Days</h3><p>Confirmed vs. suspected cases across filtered hotspots</p></div><div class="a-chart" style="height:220px"><canvas id="cv-hm-trend30"></canvas></div></div>
+  </div>
+
+  <!-- Priority response ranking -->
+  <div class="table-card">
+    <div class="table-toolbar"><h3>Priority Response Ranking</h3><span style="font-size:.8rem;color:var(--text-muted)">Ranked by risk, growth rate &amp; outbreak recency</span></div>
+    <div style="overflow-x:auto">
+      <table><thead><tr><th>Rank</th><th>District</th><th>Primary Disease</th><th>Risk</th><th>Confirmed</th><th>Suspected</th><th>7-Day Trend</th><th>Status</th><th>Action</th></tr></thead>
+      <tbody id="hm-priority-tbody"></tbody></table>
+    </div>
+    <div class="table-footer" id="hm-priority-footer"></div>
+  </div>
+
+  <!-- Nearby veterinarians -->
+  <div class="chart-card">
+    <div class="section-header"><h2>Nearby Veterinarians &amp; 1962 Ambulances</h2><p>Closest available responders to current hotspot districts</p></div>
+    <div class="vet-grid" id="hm-vet-grid"></div>
+  </div>
+</div>
+
+<!-- ═══════════════ SETTINGS ═══════════════ -->
+<div class="page" id="page-settings">
+  <div class="page-header"><h1 data-t="settings_title">Settings</h1><p data-t="settings_sub">Manage your account, preferences and app settings.</p></div>
+  <div class="settings-grid">
+
+    <!-- Account -->
+    <div class="settings-group">
+      <h3 data-t="acct_h">Account</h3><p class="sg-sub" data-t="acct_sub">Your admin identity and account actions</p>
+      <div class="account-id">
+        <div class="admin-avatar">SA</div>
+        <div><div class="ai-name">Super Admin</div><div class="ai-role">admin@pashucare.in · Administrator</div></div>
+      </div>
+      <div class="settings-row-actions">
+        <button class="btn-outline" onclick="openModal('modal-password')" data-t="btn_change_pw">Change Password</button>
+        <button class="btn-danger-outline" onclick="openModal('modal-delete')" data-t="btn_delete_acct">Delete Account</button>
+        <button class="btn-danger-outline" onclick="logout()" data-t="btn_logout">Log Out</button>
+      </div>
+    </div>
+
+    <!-- Preferences (Language & Accessibility) -->
+    <div class="settings-group">
+      <h3 data-t="pref_h">Language &amp; Accessibility</h3><p class="sg-sub" data-t="pref_sub">Display language, text size and contrast</p>
+      <div class="form-row">
+        <label class="form-label" data-t="pref_lang">App Language</label>
+        <select class="form-select" id="pref-lang" onchange="setLanguage(this.value)">
+          <option value="en">English</option>
+          <option value="hi">हिंदी (Hindi)</option>
+          <option value="mr">मराठी (Marathi)</option>
+          <option value="gu">ગુજરાતી (Gujarati)</option>
+          <option value="pa">ਪੰਜਾਬੀ (Punjabi)</option>
+          <option value="bn">বাংলা (Bengali)</option>
+          <option value="ta">தமிழ் (Tamil)</option>
+          <option value="te">తెలుగు (Telugu)</option>
+          <option value="kn">ಕನ್ನಡ (Kannada)</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label class="form-label" data-t="pref_textsize">Text Size</label>
+        <div class="seg-control" id="textsize-seg" role="group" aria-label="Text size">
+          <button type="button" class="seg-btn" data-size="small" onclick="setTextSize('small')" data-t="size_small">Small</button>
+          <button type="button" class="seg-btn" data-size="medium" onclick="setTextSize('medium')" data-t="size_medium">Medium</button>
+          <button type="button" class="seg-btn" data-size="large" onclick="setTextSize('large')" data-t="size_large">Large</button>
+        </div>
+      </div>
+      <div class="form-row">
+        <label class="form-label" data-t="pref_theme">Theme</label>
+        <div class="seg-control" id="theme-seg" role="group" aria-label="Theme">
+          <button type="button" class="seg-btn" data-theme="light" onclick="setTheme('light')" data-t="theme_light">Light</button>
+          <button type="button" class="seg-btn" data-theme="dark" onclick="setTheme('dark')" data-t="theme_dark">Dark</button>
+          <button type="button" class="seg-btn" data-theme="system" onclick="setTheme('system')" data-t="theme_system">System Default</button>
+        </div>
+      </div>
+      <div class="toggle-row">
+        <div><div class="tl" data-t="pref_hc">High Contrast Mode</div><div class="ts" data-t="pref_hc_sub">Increase contrast for text, controls and borders</div></div>
+        <label class="switch"><input type="checkbox" id="pref-contrast" onchange="toggleHighContrast(this.checked)"/><span class="slider"></span></label>
+      </div>
+    </div>
+
+    <!-- General -->
+    <div class="settings-group">
+      <h3>General Settings</h3><p class="sg-sub">Basic platform configuration</p>
+      <div class="form-row"><label class="form-label">Platform Name</label><input class="form-input" id="set-plat-name" value="PashuCare"/></div>
+      <div class="form-row"><label class="form-label">Contact Email</label><input class="form-input" id="set-email" type="email" value="admin@pashucare.in"/></div>
+      <div class="form-row"><label class="form-label">Timezone</label><select class="form-select" id="set-tz"><option selected>IST — UTC+5:30</option><option>UTC</option><option>EST — UTC-5</option></select></div>
+      <div class="settings-save"><button class="btn-primary" onclick="saveSettings('General Settings')">Save Changes</button></div>
+    </div>
+    <!-- Notifications -->
+    <div class="settings-group">
+      <h3 data-t="notif_h">Notifications</h3><p class="sg-sub" data-t="notif_sub">Control which alerts are sent to admins</p>
+      <div class="toggle-row"><div><div class="tl">Emergency Alerts</div><div class="ts">Notify when emergency case is unanswered</div></div><label class="switch"><input type="checkbox" id="notif-emerg" checked/><span class="slider"></span></label></div>
+      <div class="toggle-row"><div><div class="tl">New Case Notifications</div><div class="ts">Alert when a new case is filed</div></div><label class="switch"><input type="checkbox" id="notif-case" checked/><span class="slider"></span></label></div>
+      <div class="toggle-row"><div><div class="tl">Vet Registration Alerts</div><div class="ts">Alert when a vet applies for registration</div></div><label class="switch"><input type="checkbox" id="notif-vet" checked/><span class="slider"></span></label></div>
+      <div class="toggle-row"><div><div class="tl">Disease Cluster Alerts</div><div class="ts">Notify when a disease cluster is detected</div></div><label class="switch"><input type="checkbox" id="notif-cluster" checked/><span class="slider"></span></label></div>
+      <div class="toggle-row"><div><div class="tl">Low AI Confidence Alert</div><div class="ts">Alert when AI reports fall below threshold</div></div><label class="switch"><input type="checkbox" id="notif-ai" checked/><span class="slider"></span></label></div>
+      <div class="toggle-row"><div><div class="tl">Weekly Summary Email</div><div class="ts">Weekly platform summary to admin email</div></div><label class="switch"><input type="checkbox" id="notif-email"/><span class="slider"></span></label></div>
+      <div class="settings-save"><button class="btn-primary" onclick="saveSettings('Notification Settings')">Save Changes</button></div>
+    </div>
+    <!-- Privacy & Security -->
+    <div class="settings-group">
+      <h3 data-t="priv_h">Privacy &amp; Security</h3><p class="sg-sub" data-t="priv_sub">Authentication, permissions and access control</p>
+      <div class="form-row"><label class="form-label">Session Timeout</label><select class="form-select" id="sec-timeout"><option>30 Minutes</option><option selected>1 Hour</option><option>2 Hours</option><option>4 Hours</option></select></div>
+      <div class="form-row"><label class="form-label">Password Expiry (days)</label><input class="form-input" id="sec-expiry" type="number" value="90"/></div>
+      <div class="toggle-row"><div><div class="tl">Two-Factor Authentication</div><div class="ts">Require 2FA for admin login</div></div><label class="switch"><input type="checkbox" id="sec-2fa"/><span class="slider"></span></label></div>
+      <div class="toggle-row"><div><div class="tl">Force Password Reset on First Login</div><div class="ts">New admin must reset password</div></div><label class="switch"><input type="checkbox" id="sec-reset" checked/><span class="slider"></span></label></div>
+      <div class="settings-save"><button class="btn-primary" onclick="saveSettings('Security Settings')">Save Changes</button></div>
+      <h4 style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border);font-size:.8125rem;font-weight:700;color:var(--text-primary);margin-bottom:10px" data-t="perm_h">App Permissions</h4>
+      <div class="perm-row"><span class="tl" style="font-size:.875rem">Camera</span><span class="perm-status unknown" id="perm-camera">Not requested</span></div>
+      <div class="perm-row"><span class="tl" style="font-size:.875rem">Notifications</span><span class="perm-status unknown" id="perm-notifications">Not requested</span></div>
+      <div class="perm-row"><span class="tl" style="font-size:.875rem">Location</span><span class="perm-status unknown" id="perm-location">Not requested</span></div>
+      <div class="perm-row"><span class="tl" style="font-size:.875rem">Microphone</span><span class="perm-status unknown" id="perm-microphone">Not requested</span></div>
+      <div class="settings-row-actions" style="margin-top:10px"><button class="btn-outline" onclick="checkPermissions()" data-t="btn_check_perms">Check Browser Permissions</button></div>
+      <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
+        <button class="settings-link-row" onclick="openModal('modal-privacy')"><span class="slr-text"><span class="tl" data-t="priv_policy">Privacy Policy</span></span><span class="chev">›</span></button>
+        <button class="settings-link-row" onclick="openModal('modal-terms')"><span class="slr-text"><span class="tl" data-t="terms">Terms &amp; Conditions</span></span><span class="chev">›</span></button>
+      </div>
+    </div>
+    <!-- Platform -->
+    <div class="settings-group">
+      <h3>Platform Settings</h3><p class="sg-sub">AI, auto-assign, and data policies</p>
+      <div class="form-row"><label class="form-label">AI Confidence Threshold (%)</label><input class="form-input" id="plat-ai-thresh" type="number" value="60" min="0" max="100"/></div>
+      <div class="form-row"><label class="form-label">Emergency Response Timeout</label><select class="form-select" id="plat-emerg-to"><option>10 Minutes</option><option selected>15 Minutes</option><option>20 Minutes</option><option>30 Minutes</option></select></div>
+      <div class="form-row"><label class="form-label">Max Cases Per Vet Per Day</label><input class="form-input" id="plat-max-cases" type="number" value="10"/></div>
+      <div class="form-row"><label class="form-label">Data Retention Period</label><select class="form-select" id="plat-retention"><option>1 Year</option><option selected>2 Years</option><option>5 Years</option><option>Forever</option></select></div>
+      <div class="toggle-row"><div><div class="tl">Auto-Assign Cases to Nearest Vet</div><div class="ts">Automatically assign unhandled cases</div></div><label class="switch"><input type="checkbox" id="plat-auto-assign"/><span class="slider"></span></label></div>
+      <div class="settings-save"><button class="btn-primary" onclick="saveSettings('Platform Settings')">Save Changes</button></div>
+    </div>
+
+    <!-- Help & Support -->
+    <div class="settings-group">
+      <h3 data-t="help_h">Help &amp; Support</h3><p class="sg-sub" data-t="help_sub">Guides, contact and issue reporting</p>
+      <button class="settings-link-row" onclick="openModal('modal-faq')"><span class="slr-text"><span class="tl" data-t="faq">FAQs</span></span><span class="chev">›</span></button>
+      <button class="settings-link-row" onclick="openModal('modal-helpcenter')"><span class="slr-text"><span class="tl" data-t="help_center">Help Center</span></span><span class="chev">›</span></button>
+      <button class="settings-link-row" onclick="openModal('modal-contact')"><span class="slr-text"><span class="tl" data-t="contact_support">Contact Support</span></span><span class="chev">›</span></button>
+      <button class="settings-link-row" onclick="openModal('modal-report')"><span class="slr-text"><span class="tl" data-t="report_problem">Report a Problem</span></span><span class="chev">›</span></button>
+    </div>
+
+    <!-- About -->
+    <div class="settings-group">
+      <h3 data-t="about_h">About</h3><p class="sg-sub" data-t="about_sub">Platform information and feedback</p>
+      <button class="settings-link-row" onclick="openModal('modal-about')"><span class="slr-text"><span class="tl" data-t="about_ps">About PashuCare</span></span><span class="chev">›</span></button>
+      <button class="settings-link-row" onclick="openModal('modal-feedback')"><span class="slr-text"><span class="tl" data-t="feedback">Feedback</span></span><span class="chev">›</span></button>
+      <div class="form-row" style="margin-top:14px">
+        <label class="form-label" data-t="app_version">App Version</label>
+        <div class="app-version-box">PashuCare Admin Console · v2.4.1 (Integrated Pashu Sakhi Release)</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ SETTINGS MODALS ═══════════════ -->
+
+<div class="pc-modal-overlay" id="modal-password" role="dialog" aria-modal="true" aria-labelledby="modal-password-title">
+  <div class="pc-modal">
+    <div class="pc-modal-header"><h3 id="modal-password-title" data-t="btn_change_pw">Change Password</h3><button class="pc-modal-close" aria-label="Close" onclick="closeModal('modal-password')">✕</button></div>
+    <div class="pc-modal-body">
+      <div class="form-row">
+        <label class="form-label" for="pw-current">Current Password</label>
+        <input class="form-input" type="password" id="pw-current" autocomplete="current-password"/>
+        <div class="field-error" id="err-pw-current"></div>
+      </div>
+      <div class="form-row">
+        <label class="form-label" for="pw-new">New Password</label>
+        <input class="form-input" type="password" id="pw-new" autocomplete="new-password"/>
+        <div class="field-error" id="err-pw-new"></div>
+      </div>
+      <div class="form-row">
+        <label class="form-label" for="pw-confirm">Confirm New Password</label>
+        <input class="form-input" type="password" id="pw-confirm" autocomplete="new-password"/>
+        <div class="field-error" id="err-pw-confirm"></div>
+      </div>
+    </div>
+    <div class="pc-modal-footer">
+      <button class="btn-outline" onclick="closeModal('modal-password')">Cancel</button>
+      <button class="btn-primary" onclick="submitPasswordChange()">Update Password</button>
+    </div>
+  </div>
+</div>
+
+<div class="pc-modal-overlay" id="modal-delete" role="dialog" aria-modal="true" aria-labelledby="modal-delete-title">
+  <div class="pc-modal">
+    <div class="pc-modal-header"><h3 id="modal-delete-title" data-t="btn_delete_acct">Delete Account</h3><button class="pc-modal-close" aria-label="Close" onclick="closeModal('modal-delete')">✕</button></div>
+    <div class="pc-modal-body">
+      <div class="confirm-warning-box">This will permanently delete your admin account and revoke access to the PashuCare Admin Console. This action cannot be undone.</div>
+      <div class="form-row">
+        <label class="form-label" for="del-confirm-text">Type <strong>DELETE</strong> to confirm</label>
+        <input class="form-input" id="del-confirm-text" autocomplete="off"/>
+        <div class="field-error" id="err-del-confirm"></div>
+      </div>
+    </div>
+    <div class="pc-modal-footer">
+      <button class="btn-outline" onclick="closeModal('modal-delete')">Cancel</button>
+      <button class="btn-danger-solid" onclick="submitDeleteAccount()">Permanently Delete</button>
+    </div>
+  </div>
+</div>
+
+<div class="pc-modal-overlay" id="modal-privacy" role="dialog" aria-modal="true" aria-labelledby="modal-privacy-title">
+  <div class="pc-modal">
+    <div class="pc-modal-header"><h3 id="modal-privacy-title" data-t="priv_policy">Privacy Policy</h3><button class="pc-modal-close" aria-label="Close" onclick="closeModal('modal-privacy')">✕</button></div>
+    <div class="pc-modal-body">
+      <p>PashuCare collects operational data — farmer, veterinarian and case records — solely to operate the livestock healthcare platform.</p>
+      <h4>What we collect</h4>
+      <p>Account details, case and treatment records, and platform usage logs needed to run the service.</p>
+      <h4>How it's used</h4>
+      <p>To assign cases, monitor animal health trends, and improve platform reliability. Data is never sold to third parties.</p>
+      <h4>Your controls</h4>
+      <p>You can review permission settings above and request account deletion at any time from the Account section.</p>
+    </div>
+    <div class="pc-modal-footer"><button class="btn-primary" onclick="closeModal('modal-privacy')">Close</button></div>
+  </div>
+</div>
+
+<div class="pc-modal-overlay" id="modal-terms" role="dialog" aria-modal="true" aria-labelledby="modal-terms-title">
+  <div class="pc-modal">
+    <div class="pc-modal-header"><h3 id="modal-terms-title" data-t="terms">Terms &amp; Conditions</h3><button class="pc-modal-close" aria-label="Close" onclick="closeModal('modal-terms')">✕</button></div>
+    <div class="pc-modal-body">
+      <p>By using the PashuCare Admin Console you agree to use case, farmer and veterinarian data only for legitimate platform administration.</p>
+      <h4>Acceptable use</h4>
+      <p>Admin accounts must not be shared. Access to sensitive health records should be limited to operational need.</p>
+      <h4>Availability</h4>
+      <p>PashuCare is provided as-is during this prototype phase and features may change without notice.</p>
+    </div>
+    <div class="pc-modal-footer"><button class="btn-primary" onclick="closeModal('modal-terms')">Close</button></div>
+  </div>
+</div>
+
+<div class="pc-modal-overlay" id="modal-faq" role="dialog" aria-modal="true" aria-labelledby="modal-faq-title">
+  <div class="pc-modal">
+    <div class="pc-modal-header"><h3 id="modal-faq-title" data-t="faq">FAQs</h3><button class="pc-modal-close" aria-label="Close" onclick="closeModal('modal-faq')">✕</button></div>
+    <div class="pc-modal-body">
+      <h4>How do I assign a case to a veterinarian?</h4>
+      <p>Open Cases from the sidebar and use the assign action on any unresolved case.</p>
+      <h4>How do I verify a new veterinarian?</h4>
+      <p>Go to Management → Veterinarians and approve pending registrations there.</p>
+      <h4>Where can I export analytics data?</h4>
+      <p>Use the Reports page, or the Export CSV action inside Analytics.</p>
+    </div>
+    <div class="pc-modal-footer"><button class="btn-primary" onclick="closeModal('modal-faq')">Close</button></div>
+  </div>
+</div>
+
+<div class="pc-modal-overlay" id="modal-helpcenter" role="dialog" aria-modal="true" aria-labelledby="modal-helpcenter-title">
+  <div class="pc-modal">
+    <div class="pc-modal-header"><h3 id="modal-helpcenter-title" data-t="help_center">Help Center</h3><button class="pc-modal-close" aria-label="Close" onclick="closeModal('modal-helpcenter')">✕</button></div>
+    <div class="pc-modal-body">
+      <p>Browse admin guides for managing farmers, veterinarians, cases and platform analytics.</p>
+      <h4>Topics</h4>
+      <p>Onboarding veterinarians · Handling 1962 emergency dispatches · Reading disease cluster alerts · Exporting reports</p>
+    </div>
+    <div class="pc-modal-footer"><button class="btn-primary" onclick="closeModal('modal-helpcenter')">Close</button></div>
+  </div>
+</div>
+
+<div class="pc-modal-overlay" id="modal-contact" role="dialog" aria-modal="true" aria-labelledby="modal-contact-title">
+  <div class="pc-modal">
+    <div class="pc-modal-header"><h3 id="modal-contact-title" data-t="contact_support">Contact Support</h3><button class="pc-modal-close" aria-label="Close" onclick="closeModal('modal-contact')">✕</button></div>
+    <div class="pc-modal-body">
+      <div style="background:var(--accent-light);border:1px solid var(--accent);border-radius:var(--radius-sm);padding:10px 12px;margin-bottom:14px;font-size:.8125rem;color:var(--accent);font-weight:600">
+        📞 National Livestock Emergency Helpline: 1962 (Toll Free · 24x7)
+      </div>
+      <div class="form-row"><label class="form-label">Subject</label><input class="form-input" id="contact-subject" placeholder="What do you need help with?"/></div>
+      <div class="form-row"><label class="form-label">Message</label><textarea class="settings-textarea" id="contact-message" placeholder="Describe your issue…"></textarea></div>
+    </div>
+    <div class="pc-modal-footer">
+      <button class="btn-outline" onclick="closeModal('modal-contact')">Cancel</button>
+      <button class="btn-primary" onclick="submitContactSupport()">Send Message</button>
+    </div>
+  </div>
+</div>
+
+<div class="pc-modal-overlay" id="modal-report" role="dialog" aria-modal="true" aria-labelledby="modal-report-title">
+  <div class="pc-modal">
+    <div class="pc-modal-header"><h3 id="modal-report-title" data-t="report_problem">Report a Problem</h3><button class="pc-modal-close" aria-label="Close" onclick="closeModal('modal-report')">✕</button></div>
+    <div class="pc-modal-body">
+      <div class="form-row"><label class="form-label">What went wrong?</label><textarea class="settings-textarea" id="report-message" placeholder="Describe the problem you encountered…"></textarea></div>
+    </div>
+    <div class="pc-modal-footer">
+      <button class="btn-outline" onclick="closeModal('modal-report')">Cancel</button>
+      <button class="btn-primary" onclick="submitReportProblem()">Submit Report</button>
+    </div>
+  </div>
+</div>
+
+<div class="pc-modal-overlay" id="modal-about" role="dialog" aria-modal="true" aria-labelledby="modal-about-title">
+  <div class="pc-modal">
+    <div class="pc-modal-header"><h3 id="modal-about-title" data-t="about_ps">About PashuCare</h3><button class="pc-modal-close" aria-label="Close" onclick="closeModal('modal-about')">✕</button></div>
+    <div class="pc-modal-body">
+      <p>PashuCare is a smart livestock healthcare platform connecting farmers with veterinarians, AI-assisted diagnosis, and 1962 emergency dispatch across rural India.</p>
+      <p>This Admin Console lets platform administrators monitor cases, manage farmer and veterinarian accounts, track disease trends, and keep the platform running smoothly.</p>
+    </div>
+    <div class="pc-modal-footer"><button class="btn-primary" onclick="closeModal('modal-about')">Close</button></div>
+  </div>
+</div>
+
+<div class="pc-modal-overlay" id="modal-feedback" role="dialog" aria-modal="true" aria-labelledby="modal-feedback-title">
+  <div class="pc-modal">
+    <div class="pc-modal-header"><h3 id="modal-feedback-title" data-t="feedback">Feedback</h3><button class="pc-modal-close" aria-label="Close" onclick="closeModal('modal-feedback')">✕</button></div>
+    <div class="pc-modal-body">
+      <div class="form-row"><label class="form-label">Share your feedback</label><textarea class="settings-textarea" id="feedback-message" placeholder="Tell us what's working well or what could be better…"></textarea></div>
+    </div>
+    <div class="pc-modal-footer">
+      <button class="btn-outline" onclick="closeModal('modal-feedback')">Cancel</button>
+      <button class="btn-primary" onclick="submitFeedback()">Send Feedback</button>
+    </div>
+  </div>
+</div>
+
+<!-- Hotspot detail modal (Heat Map) -->
+<div class="pc-modal-overlay" id="modal-hotspot" role="dialog" aria-modal="true" aria-labelledby="modal-hotspot-title">
+  <div class="pc-modal">
+    <div class="pc-modal-header"><h3 id="modal-hotspot-title">Hotspot Details</h3><button class="pc-modal-close" aria-label="Close" onclick="closeModal('modal-hotspot')">✕</button></div>
+    <div class="pc-modal-body" id="hm-modal-body">
+      <div class="hm-detail-grid">
+        <div class="hm-detail-item"><div class="hdi-lbl">Disease</div><div class="hdi-val" id="hmd-disease">—</div></div>
+        <div class="hm-detail-item"><div class="hdi-lbl">Risk Level</div><div class="hdi-val" id="hmd-risk">—</div></div>
+        <div class="hm-detail-item"><div class="hdi-lbl">Affected Animals</div><div class="hdi-val" id="hmd-animals">—</div></div>
+        <div class="hm-detail-item"><div class="hdi-lbl">Farms Affected</div><div class="hdi-val" id="hmd-farms">—</div></div>
+        <div class="hm-detail-item"><div class="hdi-lbl">Confirmed Cases</div><div class="hdi-val" id="hmd-confirmed">—</div></div>
+        <div class="hm-detail-item"><div class="hdi-lbl">Suspected Cases</div><div class="hdi-val" id="hmd-suspected">—</div></div>
+        <div class="hm-detail-item"><div class="hdi-lbl">Last Reported</div><div class="hdi-val" id="hmd-lastreported">—</div></div>
+        <div class="hm-detail-item"><div class="hdi-lbl">Status</div><div class="hdi-val" id="hmd-status">—</div></div>
+      </div>
+      <p style="font-size:.8rem;color:var(--text-secondary);line-height:1.5" id="hmd-summary"></p>
+    </div>
+    <div class="pc-modal-footer">
+      <button class="btn-outline" onclick="closeModal('modal-hotspot')">Close</button>
+      <button class="btn-primary" id="hmd-dispatch-btn" onclick="dispatchVetToHotspot()">Dispatch Vet / 1962 Unit</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container" id="toast-container"></div>
+<div class="footer">Pashu Sakhi Admin Console &nbsp;·&nbsp; Smart Livestock Healthcare Platform &nbsp;·&nbsp; Helpline 1962</div>
+</main>
+
+<script>
+function updateTime(){const e=document.getElementById('live-time');if(e)e.textContent=new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:true})}
+updateTime();setInterval(updateTime,1000);
+
+function toggleSidebar(){document.body.classList.toggle('sidebar-open')}
+function closeSidebar(){document.body.classList.remove('sidebar-open')}
+
+function navigate(page){
+  document.querySelectorAll('.nav-item[data-page]').forEach(e=>e.classList.toggle('active',e.dataset.page===page));
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.getElementById('page-'+page).classList.add('active');
+  if(page==='overview')setTimeout(renderChart,60);
+  if(page==='analytics')setTimeout(renderAllAnalytics,80);
+  if(page==='heatmap')setTimeout(initHeatmapPage,80);
+  if(window.innerWidth<900)closeSidebar();
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+function mgmtTab(id,btn){
+  document.querySelectorAll('.mgmt-tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.mgmt-panel').forEach(p=>p.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('mp-'+id).classList.add('active');
+}
+
+function showToast(message, type='success'){
+  const container = document.getElementById('toast-container');
+  if(!container) return;
+  const toast = document.createElement('div');
+  toast.className = 'toast';
+  const iconSymbol = type==='success' ? '✓' : (type==='warn' ? '!' : 'ℹ');
+  toast.innerHTML = `<div class="toast-icon ${type}">${iconSymbol}</div><span>${message}</span>`;
+  container.appendChild(toast);
+  setTimeout(()=>{
+    toast.classList.add('toast-out');
+    setTimeout(()=>toast.remove(), 260);
+  }, 3200);
+}
+
+function animateValue(el, start, end, duration, prefix='', suffix=''){
+  if(!el) return;
+  const s = performance.now();
+  (function f(now){
+    const p = Math.min((now - s) / duration, 1);
+    const ease = 1 - Math.pow(1 - p, 3);
+    const val = Math.round(start + (end - start) * ease);
+    el.textContent = prefix + val.toLocaleString('en-IN') + suffix;
+    if(p < 1) requestAnimationFrame(f);
+  })(s);
+}
+
+window.addEventListener('load',()=>{
+  document.querySelectorAll('#page-overview .kpi-value[data-target]').forEach(el=>{
+    const t = parseInt(el.dataset.target, 10);
+    animateValue(el, 0, t, 950);
+  });
+  renderChart();
+  if(typeof populateAnyMonthDropdown==='function')populateAnyMonthDropdown();
+});
+
+const chartData=[{month:'June',users:142},{month:'July',users:198},{month:'August',users:171},{month:'September',users:251},{month:'October',users:222},{month:'November',users:315}];
+function renderChart(){
+  const c=document.getElementById('chart-container');if(!c)return;
+  const isDark=document.body.classList.contains('dark');
+  const W=Math.max(c.clientWidth||700,300),M={top:28,right:20,bottom:56,left:52};
+  const H=Math.min(340,Math.max(220,W*.46)),iW=W-M.left-M.right,iH=H-M.top-M.bottom;
+  const maxV=Math.max(...chartData.map(d=>d.users)),tV=Math.ceil(maxV/50)*50+30;
+  const gStroke=isDark?'#3A4433':'#E3DCC8', tFill=isDark?'#B8C3AC':'#8B9184', lFill=isDark?'#B8C3AC':'#5B6154';
+  const barTop=isDark?'#2F8570':'#2F7A68', barBot=isDark?'#183329':'#9AC7B7';
+  const hiTop=isDark?'#E59832':'#B9791F', hiBot=isDark?'#3A2812':'#D98B2B';
+  const valFill=isDark?'#7FD9C4':'#3D8B77', hiValFill=isDark?'#F3AF4D':'#B9791F', hiLabelFill=isDark?'#F3AF4D':'#1F5D50';
+  let defs='',grid='',bars='',labels='';
+  for(let i=0;i<=5;i++){const v=Math.round(tV/5*i),y=iH-(v/tV)*iH;grid+=`<line x1="0" y1="${y.toFixed(1)}" x2="${iW}" y2="${y.toFixed(1)}" stroke="${gStroke}" stroke-width="1" ${v?'stroke-dasharray="4,3"':''}/>`;grid+=`<text x="-10" y="${(y+4.5).toFixed(1)}" text-anchor="end" font-size="11" fill="${tFill}" font-family="system-ui">${v}</text>`;}
+  const sW=iW/chartData.length,bW=sW*.70;
+  chartData.forEach((d,i)=>{const isM=d.users===maxV,x=(i*sW+(sW-bW)/2).toFixed(1),bH=((d.users/tV)*iH).toFixed(1),y=(iH-parseFloat(bH)).toFixed(1),cx=(i*sW+sW/2).toFixed(1),g=`g${i}`;
+    defs+=`<linearGradient id="${g}" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="${isM?hiTop:barTop}"/><stop offset="100%" stop-color="${isM?hiBot:barBot}"/></linearGradient>`;
+    bars+=`<rect x="${x}" y="${y}" width="${bW.toFixed(1)}" height="${bH}" rx="5" ry="5" fill="url(#${g})"><title>${d.month}: ${d.users}</title></rect>`;
+    bars+=`<text x="${cx}" y="${(parseFloat(y)-7).toFixed(1)}" text-anchor="middle" font-size="11.5" font-weight="700" fill="${isM?hiValFill:valFill}" font-family="system-ui">${d.users}</text>`;
+    labels+=`<text x="${cx}" y="${(iH+22).toFixed(1)}" text-anchor="middle" font-size="11.5" fill="${lFill}" font-family="system-ui">${d.month}</text>`;
+    if(isM)labels+=`<text x="${cx}" y="${(iH+42).toFixed(1)}" text-anchor="middle" font-size="10" fill="${hiLabelFill}" font-weight="600" font-family="system-ui">▲ Highest</text>`;
+  });
+  c.innerHTML=`<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block"><defs>${defs}</defs><g transform="translate(${M.left},${M.top})">${grid}${bars}${labels}</g></svg>`;
+}
+let _rt;window.addEventListener('resize',()=>{clearTimeout(_rt);_rt=setTimeout(renderChart,120)});
+
+function filterTable(id,q){document.querySelectorAll('#'+id+' tr').forEach(r=>{r.style.display=r.textContent.toLowerCase().includes(q.toLowerCase())?'':'none'})}
+
+function handleUserAction(btn, action, id, name){
+  const row = btn.closest('tr');
+  const statusCell = row.querySelector('td:nth-child(5) .pill');
+  if(action === 'suspend'){
+    statusCell.className = 'pill inactive';
+    statusCell.textContent = 'Suspended';
+    btn.className = 'btn-xs success';
+    btn.textContent = 'Reactivate';
+    btn.setAttribute('onclick', `handleUserAction(this, 'activate', '${id}', '${name}')`);
+    showToast(`User ${name} (${id}) has been suspended.`, 'warn');
+  } else if(action === 'activate' || action === 'approve'){
+    statusCell.className = 'pill active';
+    statusCell.textContent = 'Active';
+    btn.className = 'btn-xs warn';
+    btn.textContent = 'Suspend';
+    btn.setAttribute('onclick', `handleUserAction(this, 'suspend', '${id}', '${name}')`);
+    showToast(`User ${name} (${id}) is now active.`, 'success');
+  } else if(action === 'deactivate'){
+    statusCell.className = 'pill inactive';
+    statusCell.textContent = 'Inactive';
+    btn.className = 'btn-xs success';
+    btn.textContent = 'Activate';
+    btn.setAttribute('onclick', `handleUserAction(this, 'activate', '${id}', '${name}')`);
+    showToast(`Account ${name} (${id}) deactivated.`, 'warn');
+  }
+  if (window.PashuSakhiBridge) {
+    window.PashuSakhiBridge.updateUserStatus(id, action);
+  }
+}
+
+function handleVetVerify(btn, action, id, name){
+  const row = btn.closest('tr');
+  const statusCell = row.querySelector('td:nth-child(5) .pill');
+  const actionCell = row.querySelector('td:last-child');
+  const kpiPending = document.getElementById('vm-kpi-pending');
+
+  if(action === 'verify'){
+    statusCell.className = 'pill verified';
+    statusCell.textContent = 'Verified';
+    actionCell.innerHTML = `<span style="font-size:.75rem;color:var(--success);font-weight:600">✓ Verified</span>`;
+    if(kpiPending){
+      let count = parseInt(kpiPending.textContent, 10);
+      if(count > 0) kpiPending.textContent = count - 1;
+    }
+    showToast(`Credentials verified for ${name} (${id}). License approved.`, 'success');
+  } else if(action === 'reject'){
+    statusCell.className = 'pill critical';
+    statusCell.textContent = 'Rejected';
+    actionCell.innerHTML = `<span style="font-size:.75rem;color:var(--danger)">✗ Rejected</span>`;
+    if(kpiPending){
+      let count = parseInt(kpiPending.textContent, 10);
+      if(count > 0) kpiPending.textContent = count - 1;
+    }
+    showToast(`Registration rejected for ${name} (${id}). Notice dispatched.`, 'warn');
+  }
+  if (window.PashuSakhiBridge) {
+    window.PashuSakhiBridge.updateUserStatus(id, action);
+  }
+}
+
+function handleCaseAssign(btn, caseId, vetName, isEmergency=false){
+  const row = btn.closest('tr');
+  const vetCell = row.querySelector('td:nth-child(4)');
+  const actionCell = row.querySelector('td:last-child');
+  const unassignedKpi = document.getElementById('cm-kpi-unassigned');
+
+  vetCell.innerHTML = `<span style="color:var(--accent);font-weight:600">${vetName}</span>`;
+  actionCell.innerHTML = `<span style="font-size:.75rem;color:var(--success);font-weight:600">Assigned</span>`;
+
+  if(unassignedKpi){
+    let count = parseInt(unassignedKpi.textContent, 10);
+    if(count > 0) unassignedKpi.textContent = count - 1;
+  }
+
+  if (window.PashuSakhiBridge) {
+    window.PashuSakhiBridge.updateCase(caseId, { status: 'assigned', assignedVet: vetName });
+    window.PashuSakhiBridge.updateEmergencyStatus(caseId, 'accepted', vetName);
+  }
+
+  showToast(`${isEmergency ? '🚨 1962 EMERGENCY DISPATCH: ' : ''}Case ${caseId} assigned to ${vetName}`, isEmergency ? 'warn' : 'success');
+}
+
+function handleComplaintAction(btn, action, id, userName){
+  const row = btn.closest('tr');
+  const statusCell = row.querySelector('td:nth-child(4) .pill');
+  const assignedCell = row.querySelector('td:nth-child(5)');
+  const actionCell = row.querySelector('td:last-child');
+  const openKpi = document.getElementById('cpm-kpi-open');
+  const revKpi = document.getElementById('cpm-kpi-review');
+  const resKpi = document.getElementById('cpm-kpi-resolved');
+
+  if(action === 'assign'){
+    assignedCell.textContent = 'Admin SA';
+    statusCell.className = 'pill pending';
+    statusCell.textContent = 'Under Review';
+    actionCell.innerHTML = `<button class="btn-xs success" onclick="handleComplaintAction(this, 'resolve', '${id}', '${userName}')">Resolve</button>`;
+    if(openKpi && revKpi){
+      let op = parseInt(openKpi.textContent, 10);
+      let rev = parseInt(revKpi.textContent, 10);
+      if(op > 0) openKpi.textContent = op - 1;
+      revKpi.textContent = rev + 1;
+    }
+    showToast(`Complaint ${id} assigned to Super Admin for investigation.`, 'info');
+  } else if(action === 'resolve'){
+    statusCell.className = 'pill resolved';
+    statusCell.textContent = 'Resolved';
+    actionCell.innerHTML = `<span style="font-size:.75rem;color:var(--success)">Closed</span>`;
+    if(revKpi && resKpi){
+      let rev = parseInt(revKpi.textContent, 10);
+      let res = parseInt(resKpi.textContent, 10);
+      if(rev > 0) revKpi.textContent = rev - 1;
+      resKpi.textContent = res + 1;
+    }
+    showToast(`Complaint ${id} has been marked as resolved and archived.`, 'success');
+  }
+
+  if (window.PashuSakhiApi && action === 'resolve') {
+    window.PashuSakhiApi.resolveComplaint(id, 'Resolved by Super Admin via Admin Console')
+      .catch(e => console.warn('Backend resolveComplaint error:', e));
+  }
+
+  if (window.PashuSakhiBridge) {
+    window.PashuSakhiBridge.updateComplaint(id, action);
+  }
+}
+
+function saveSettings(groupName){
+  showToast(`${groupName} preferences saved and synced to database!`, 'success');
+}
+
+function exportSpecificReport(reportName){
+  const csvContent = "data:text/csv;charset=utf-8,"
+    + `"Report","${reportName}"\n"Exported At","${new Date().toISOString()}"\n"Platform","PashuCare Smart Livestock Healthcare"\n"Emergency Helpline","1962 (Pashu Sanjivini)"\n\n`
+    + `"Metric","Current Value","Status","Target"\n`
+    + `"Total Active Livestock Farmers",2791,"Healthy",3000\n`
+    + `"Registered Verified Veterinarians",141,"Operational",150\n`
+    + `"Average Consultation Turnaround (min)",14.2,"Above SLA",20.0\n`
+    + `"Resolution Rate (%)",99.7,"Target Exceeded",98.0\n`
+    + `"AI Model Reliability (%)",96.8,"Optimal",90.0\n`;
+  const encodedUri = encodeURI(csvContent);
+  const link = document.createElement("a");
+  link.setAttribute("href", encodedUri);
+  link.setAttribute("download", `${reportName.toLowerCase().replace(/\\s+/g, '_')}_${Date.now()}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  showToast(`Exported ${reportName} to CSV file!`, 'success');
+}
+
+function seededRandom(seed){
+  let s = seed % 2147483647; if (s <= 0) s += 2147483646;
+  return function(){ s = (s * 16807) % 2147483647; return (s - 1) / 2147483646; };
+}
+const _rng = seededRandom(19870601);
+function rndInt(min, max){ return Math.floor(min + _rng() * (max - min + 1)); }
+function pick(arr){ return arr[Math.floor(_rng() * arr.length)]; }
+function weightedPick(entries){
+  const total = entries.reduce((s, e) => s + e[1], 0);
+  let r = _rng() * total;
+  for (const [v, w] of entries) { r -= w; if (r <= 0) return v; }
+  return entries[entries.length - 1][0];
+}
+
+const ANIMAL_TYPES = ['Cow', 'Buffalo', 'Goat', 'Sheep', 'Poultry', 'Other'];
+const DISTRICTS = ['Nashik', 'Pune', 'Aurangabad', 'Nagpur', 'Kolhapur', 'Solapur', 'Amravati'];
+const DISEASES = ['Foot & Mouth Disease (FMD)', 'Bovine Mastitis', 'Respiratory Infection', 'Tick Infestation', 'Rumen Bloat', 'Acute Diarrhea', 'Bovine Brucellosis', 'PPR Disease'];
+const NOT_RECORDED = 'Unknown / Not Recorded';
+const DISTRICT_NOT_RECORDED = 'District not recorded';
+
+const DATA_END = new Date(); DATA_END.setHours(0, 0, 0, 0);
+const DATA_DAYS = 400;
+const DATA_START = new Date(DATA_END); DATA_START.setDate(DATA_START.getDate() - (DATA_DAYS - 1));
+
+const MOCK_DAILY = [];
+(function generateMockData(){
+  for (let i = 0; i < DATA_DAYS; i++){
+    const d = new Date(DATA_START); d.setDate(d.getDate() + i);
+    const trend = 1 + (i / DATA_DAYS) * 0.9;
+    const isWeekend = [0, 6].includes(d.getDay());
+    const activityMul = isWeekend ? 0.7 : 1;
+
+    const newFarmers = Math.round(rndInt(1, 7) * trend * activityMul);
+    const newVets = _rng() < 0.35 ? rndInt(0, 2) : 0;
+
+    const caseCount = Math.round(rndInt(2, 14) * trend * activityMul);
+    const cases = [];
+    for (let c = 0; c < caseCount; c++){
+      const status = weightedPick([['Resolved', 0.86], ['In Progress', 0.09], ['Open', 0.05]]);
+      const isEmergency = _rng() < 0.09;
+      const hasDisease = _rng() < 0.78;
+      cases.push({
+        status,
+        animalType: weightedPick([['Cow', 0.34], ['Buffalo', 0.19], ['Goat', 0.16], ['Sheep', 0.09], ['Poultry', 0.14], ['Other', 0.08]]),
+        district: _rng() < 0.96 ? pick(DISTRICTS) : null,
+        disease: hasDisease ? pick(DISEASES) : null,
+        isEmergency
+      });
+    }
+
+    const aiCount = Math.round(rndInt(6, 22) * trend);
+    const aiReports = [];
+    for (let a = 0; a < aiCount; a++){
+      aiReports.push({ confidence: _rng() < 0.72 ? 'high' : 'low' });
+    }
+
+    MOCK_DAILY.push({ date: d, newFarmers, newVets, cases, aiReports });
+  }
+})();
+
+function monthKey(y, m){ return `${y}-${String(m).padStart(2, '0')}`; }
+function monthLabelFromKey(key){
+  const [y, m] = key.split('-').map(Number);
+  return new Date(y, m - 1, 1).toLocaleString('en-US', { month: 'long', year: 'numeric' });
+}
+function populateAnyMonthDropdown(){
+  const sel = document.getElementById('any-month-select');
+  if (!sel) return;
+  const opts = [];
+  const cursor = new Date(DATA_START.getFullYear(), DATA_START.getMonth(), 1);
+  const last = new Date(DATA_END.getFullYear(), DATA_END.getMonth(), 1);
+  while (cursor <= last){
+    opts.push(monthKey(cursor.getFullYear(), cursor.getMonth() + 1));
+    cursor.setMonth(cursor.getMonth() + 1);
+  }
+  sel.innerHTML = opts.map(k => `<option value="${k}">${monthLabelFromKey(k)}</option>`).join('');
+  sel.value = opts[opts.length - 1];
+  currentAnyMonth = sel.value;
+}
+
+let currentAnalyticsRange = 'week';
+let currentAnyMonth = null;
+
+function setAnalyticsRange(range, btn){
+  document.querySelectorAll('#page-analytics .dfc-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  currentAnalyticsRange = range;
+  const monthSel = document.getElementById('any-month-select');
+  if (monthSel) monthSel.style.display = (range === 'any') ? 'inline-block' : 'none';
+  if (range === 'any' && monthSel && !currentAnyMonth) currentAnyMonth = monthSel.value;
+  renderAllAnalytics();
+  showToast(`Analytics updated: ${btn ? btn.textContent : range}`, 'info');
+}
+
+function onAnyMonthChange(val){
+  currentAnyMonth = val;
+  renderAllAnalytics();
+}
+
+function getSelectedRangeDays(){
+  if (currentAnalyticsRange === 'week'){
+    const end = DATA_END, start = new Date(end); start.setDate(start.getDate() - 6);
+    return { days: MOCK_DAILY.filter(d => d.date >= start && d.date <= end), rangeLabel: 'the last 7 days' };
+  }
+  if (currentAnalyticsRange === 'month'){
+    const end = DATA_END, start = new Date(end); start.setDate(start.getDate() - 29);
+    return { days: MOCK_DAILY.filter(d => d.date >= start && d.date <= end), rangeLabel: 'the last 1 month' };
+  }
+  const key = currentAnyMonth || monthKey(DATA_END.getFullYear(), DATA_END.getMonth() + 1);
+  const [y, m] = key.split('-').map(Number);
+  const start = new Date(y, m - 1, 1), end = new Date(y, m, 0);
+  return { days: MOCK_DAILY.filter(d => d.date >= start && d.date <= end), rangeLabel: monthLabelFromKey(key) };
+}
+
+function computeAnalyticsBundle(days){
+  const labels = days.map(d => d.date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }));
+  const farmerSeries = days.map(d => d.newFarmers);
+  const vetSeries = days.map(d => d.newVets);
+  const casesPerDay = days.map(d => d.cases.length);
+  const emergencySeries = days.map(d => d.cases.filter(c => c.isEmergency).length);
+
+  let resolvedCount = 0, openCount = 0, inProgCount = 0;
+  const animalCounts = {}; ANIMAL_TYPES.forEach(a => animalCounts[a] = 0);
+  const diseaseCounts = {}; DISEASES.forEach(x => diseaseCounts[x] = 0); diseaseCounts[NOT_RECORDED] = 0;
+  const districtDiseaseCounts = {}; DISTRICTS.forEach(x => districtDiseaseCounts[x] = 0); districtDiseaseCounts[DISTRICT_NOT_RECORDED] = 0;
+  let aiHigh = 0, aiLow = 0;
+
+  days.forEach(d => {
+    d.cases.forEach(c => {
+      if (c.status === 'Resolved') resolvedCount++;
+      else if (c.status === 'Open') openCount++;
+      else inProgCount++;
+      animalCounts[c.animalType] = (animalCounts[c.animalType] || 0) + 1;
+      if (c.disease){
+        diseaseCounts[c.disease] = (diseaseCounts[c.disease] || 0) + 1;
+        const dist = c.district || DISTRICT_NOT_RECORDED;
+        districtDiseaseCounts[dist] = (districtDiseaseCounts[dist] || 0) + 1;
+      } else {
+        diseaseCounts[NOT_RECORDED]++;
+      }
+    });
+    d.aiReports.forEach(r => { if (r.confidence === 'high') aiHigh++; else aiLow++; });
+  });
+
+  const rangeEnd = days.length ? days[days.length - 1].date : DATA_END;
+  let totalUsers = 0;
+  MOCK_DAILY.forEach(d => { if (d.date <= rangeEnd) totalUsers += d.newFarmers + d.newVets; });
+  const INACTIVE_RATE = 0.045;
+  const inactiveUsers = Math.round(totalUsers * INACTIVE_RATE);
+  const activeUsers = totalUsers - inactiveUsers;
+
+  return {
+    labels, farmerSeries, vetSeries, casesPerDay, emergencySeries,
+    resolvedCount, openCount, inProgCount,
+    animalCounts, diseaseCounts, districtDiseaseCounts,
+    aiHigh, aiLow, activeUsers, inactiveUsers,
+    totalCases: resolvedCount + openCount + inProgCount
+  };
+}
+
+const CI = {};
+function mk(id, cfg){
+  if (CI[id]) { CI[id].destroy(); delete CI[id]; }
+  const c = document.getElementById(id);
+  if (!c) return null;
+  CI[id] = new Chart(c, cfg);
+  return CI[id];
+}
+function gridColor(){ return document.body.classList.contains('dark') ? 'rgba(255,255,255,.07)' : 'rgba(0,0,0,.06)'; }
+function tickColor(){ return document.body.classList.contains('dark') ? '#B8C3AC' : '#5B6154'; }
+
+function lineOpts(showLegend, extra = {}){
+  return {
+    responsive: true, maintainAspectRatio: false, animation: { duration: 400 },
+    plugins: {
+      legend: { display: showLegend, position: 'bottom', labels: { boxWidth: 10, padding: 10, font: { size: 10.5, family: 'system-ui' }, color: tickColor() } },
+      tooltip: { bodyFont: { size: 11.5, family: 'system-ui' }, titleFont: { size: 11.5, family: 'system-ui', weight: '700' }, padding: 8, cornerRadius: 6 }
+    },
+    scales: {
+      x: { grid: { color: gridColor() }, ticks: { font: { size: 10, family: 'system-ui' }, color: tickColor() } },
+      y: { grid: { color: gridColor() }, beginAtZero: true, ticks: { font: { size: 10, family: 'system-ui' }, color: tickColor() } }
+    },
+    ...extra
+  };
+}
+function barOpts(showLegend, stacked = false){
+  return {
+    responsive: true, maintainAspectRatio: false, animation: { duration: 400 },
+    plugins: {
+      legend: { display: showLegend, position: 'bottom', labels: { boxWidth: 10, padding: 10, font: { size: 10.5, family: 'system-ui' }, color: tickColor() } },
+      tooltip: { bodyFont: { size: 11.5, family: 'system-ui' }, titleFont: { size: 11.5, family: 'system-ui' }, padding: 8, cornerRadius: 6 }
+    },
+    scales: {
+      x: { stacked, grid: { color: gridColor() }, ticks: { font: { size: 10, family: 'system-ui' }, color: tickColor() } },
+      y: { stacked, beginAtZero: true, grid: { color: gridColor() }, ticks: { font: { size: 10, family: 'system-ui' }, color: tickColor() } }
+    }
+  };
+}
+function barHOpts(){
+  return {
+    responsive: true, maintainAspectRatio: false, animation: { duration: 400 }, indexAxis: 'y',
+    plugins: { legend: { display: false }, tooltip: { bodyFont: { size: 11.5, family: 'system-ui' }, titleFont: { size: 11.5, family: 'system-ui' }, padding: 8, cornerRadius: 6 } },
+    scales: {
+      x: { grid: { color: gridColor() }, beginAtZero: true, ticks: { font: { size: 10, family: 'system-ui' }, color: tickColor() } },
+      y: { grid: { display: false }, ticks: { font: { size: 10, family: 'system-ui' }, color: tickColor() } }
+    }
+  };
+}
+function donutOpts(){
+  return {
+    responsive: true, maintainAspectRatio: false, animation: { duration: 400 },
+    plugins: {
+      legend: { position: 'bottom', labels: { boxWidth: 10, padding: 10, font: { size: 10.5, family: 'system-ui' }, color: tickColor() } },
+      tooltip: { bodyFont: { size: 11.5, family: 'system-ui' }, titleFont: { size: 11.5, family: 'system-ui' }, padding: 8, cornerRadius: 6 }
+    }
+  };
+}
+function ld(color, fill = true){ return { borderColor: color, backgroundColor: fill ? color + '22' : 'transparent', fill, tension: 0.38, pointRadius: 3.5, pointHoverRadius: 5.5, borderWidth: 2.4, pointBackgroundColor: color }; }
+function bd(color){ return { backgroundColor: color + 'cc', hoverBackgroundColor: color, borderRadius: 4, borderWidth: 0 }; }
+const PC = ['#1F5D50', '#D98B2B', '#2F7A4F', '#B9791F', '#B3402A', '#2F6F63', '#A85C4A', '#7C8C3F'];
+
+function renderOrEmpty(canvasId, wrapId, hasData, renderFn){
+  const wrap = document.getElementById(wrapId);
+  const canvas = document.getElementById(canvasId);
+  if (!wrap || !canvas) return;
+  let emptyEl = wrap.querySelector('.a-empty');
+  if (!emptyEl){ emptyEl = document.createElement('div'); emptyEl.className = 'a-empty'; wrap.appendChild(emptyEl); }
+  if (!hasData){
+    canvas.style.display = 'none';
+    emptyEl.style.display = 'flex';
+    emptyEl.textContent = 'No data available for this period.';
+    if (CI[canvasId]) { CI[canvasId].destroy(); delete CI[canvasId]; }
+    return;
+  }
+  canvas.style.display = 'block';
+  emptyEl.style.display = 'none';
+  renderFn();
+}
+
+function renderAllAnalytics(){
+  const { days, rangeLabel } = getSelectedRangeDays();
+  const b = computeAnalyticsBundle(days);
+
+  const subNewUsers = document.getElementById('sub-new-users');
+  if (subNewUsers) subNewUsers.textContent = `New farmer and veterinarian registrations — ${rangeLabel}`;
+  const subCases = document.getElementById('sub-cases-period');
+  if (subCases) subCases.textContent = `Total cases filed on the platform — ${rangeLabel}`;
+  const subEmerg = document.getElementById('sub-emergency');
+  if (subEmerg) subEmerg.textContent = `Emergency cases reported — ${rangeLabel}`;
+
+  renderOrEmpty('cv-new-users', 'wrap-new-users', days.length > 0, () => {
+    mk('cv-new-users', { type: 'bar', data: { labels: b.labels, datasets: [
+      { label: 'Farmer', ...bd('#1F5D50'), data: b.farmerSeries },
+      { label: 'Veterinarian', ...bd('#D98B2B'), data: b.vetSeries }
+    ] }, options: barOpts(true, true) });
+  });
+
+  renderOrEmpty('cv-active-inactive', 'wrap-active-inactive', (b.activeUsers + b.inactiveUsers) > 0, () => {
+    mk('cv-active-inactive', { type: 'doughnut', data: { labels: ['Active Users', 'Inactive Users'], datasets: [{ data: [b.activeUsers, b.inactiveUsers], backgroundColor: ['#2F7A4F', '#B3402A'], borderWidth: 0 }] }, options: donutOpts() });
+  });
+
+  renderOrEmpty('cv-resolved-unresolved', 'wrap-resolved-unresolved', b.totalCases > 0, () => {
+    mk('cv-resolved-unresolved', { type: 'doughnut', data: { labels: ['Resolved Cases', 'Unresolved Cases'], datasets: [{ data: [b.resolvedCount, b.openCount + b.inProgCount], backgroundColor: ['#2F7A4F', '#B3402A'], borderWidth: 0 }] }, options: donutOpts() });
+  });
+
+  renderOrEmpty('cv-cases-period', 'wrap-cases-period', days.length > 0, () => {
+    mk('cv-cases-period', { type: 'line', data: { labels: b.labels, datasets: [{ label: 'Cases Reported', ...ld('#2F7A4F'), data: b.casesPerDay }] }, options: lineOpts(false) });
+  });
+
+  renderOrEmpty('cv-case-status', 'wrap-case-status', b.totalCases > 0, () => {
+    mk('cv-case-status', { type: 'doughnut', data: { labels: ['Resolved', 'Open', 'In Progress'], datasets: [{ data: [b.resolvedCount, b.openCount, b.inProgCount], backgroundColor: ['#2F7A4F', '#B3402A', '#B9791F'], borderWidth: 0 }] }, options: donutOpts() });
+  });
+
+  renderOrEmpty('cv-ai-confidence', 'wrap-ai-confidence', (b.aiHigh + b.aiLow) > 0, () => {
+    mk('cv-ai-confidence', { type: 'doughnut', data: { labels: ['High Confidence (≥80%)', 'Low Confidence (<80%)'], datasets: [{ data: [b.aiHigh, b.aiLow], backgroundColor: ['#2F7A4F', '#B3402A'], borderWidth: 0 }] }, options: donutOpts() });
+  });
+
+  const animalLbl = ANIMAL_TYPES, animalVals = animalLbl.map(a => b.animalCounts[a] || 0);
+  renderOrEmpty('cv-cases-animal', 'wrap-cases-animal', animalVals.some(v => v > 0), () => {
+    mk('cv-cases-animal', { type: 'bar', data: { labels: animalLbl, datasets: [{ label: 'Cases Reported', data: animalVals, backgroundColor: PC.map(c => c + 'cc'), borderRadius: 4 }] }, options: barHOpts() });
+  });
+
+  const diseaseLbl = [...DISEASES, NOT_RECORDED], diseaseVals = diseaseLbl.map(x => b.diseaseCounts[x] || 0);
+  renderOrEmpty('cv-disease', 'wrap-disease', diseaseVals.some(v => v > 0), () => {
+    mk('cv-disease', { type: 'bar', data: { labels: diseaseLbl, datasets: [{ data: diseaseVals, backgroundColor: diseaseLbl.map((_, i) => PC[i % PC.length] + 'cc'), borderRadius: 4 }] }, options: barHOpts() });
+  });
+
+  const distLbl = [...DISTRICTS, DISTRICT_NOT_RECORDED], distVals = distLbl.map(x => b.districtDiseaseCounts[x] || 0);
+  renderOrEmpty('cv-disease-district', 'wrap-disease-district', distVals.some(v => v > 0), () => {
+    mk('cv-disease-district', { type: 'bar', data: { labels: distLbl, datasets: [{ data: distVals, backgroundColor: distLbl.map((_, i) => PC[i % PC.length] + 'cc'), borderRadius: 4 }] }, options: barHOpts() });
+  });
+
+  renderOrEmpty('cv-emergency', 'wrap-emergency', b.emergencySeries.some(v => v > 0), () => {
+    mk('cv-emergency', { type: 'bar', data: { labels: b.labels, datasets: [{ label: 'Emergency Cases Reported', ...bd('#B3402A'), data: b.emergencySeries }] }, options: barOpts(false) });
+  });
+}
+
+function updateChartTheme(){
+  if(typeof renderChart==='function')renderChart();
+  Object.values(CI).forEach(c=>{
+    if(!c?.options)return;
+    const tc=tickColor(), gc=gridColor();
+    if(c.options.scales?.x){ if(c.options.scales.x.ticks) c.options.scales.x.ticks.color=tc; if(c.options.scales.x.grid) c.options.scales.x.grid.color=gc; }
+    if(c.options.scales?.y){ if(c.options.scales.y.ticks) c.options.scales.y.ticks.color=tc; if(c.options.scales.y.grid) c.options.scales.y.grid.color=gc; }
+    if(c.options.plugins?.legend?.labels) c.options.plugins.legend.labels.color=tc;
+    c.update('none');
+  });
+  if(document.getElementById('page-heatmap')?.classList.contains('active') && typeof applyHeatmapFilters==='function') applyHeatmapFilters();
+}
+
+const HM_TODAY = new Date(2026,8,9);
+
+const HM_HOTSPOTS = [
+  { id:'nashik',    name:'Nashik',    x:330, y:120, diseaseCategory:'FMD',                 diseaseName:'Foot & Mouth Disease (FMD)',        risk:'critical', confirmed:52, suspected:32, farms:19, animals:214, status:'Active',               lastReported:'Sep 8, 2026', lastReportedDate:new Date(2026,8,8), isNew:true,  trend7:[40,46,55,61,70,78,84] },
+  { id:'aurangabad',name:'Aurangabad',x:430, y:190, diseaseCategory:'Mastitis',             diseaseName:'Mastitis',                          risk:'high',     confirmed:44, suspected:18, farms:14, animals:122, status:'Active',               lastReported:'Sep 8, 2026', lastReportedDate:new Date(2026,8,8), isNew:false, trend7:[38,40,45,50,55,58,62] },
+  { id:'thane',     name:'Thane',     x:230, y:180, diseaseCategory:'FMD',                 diseaseName:'Suspected FMD Cluster',              risk:'high',     confirmed:9,  suspected:21, farms:6,  animals:58,  status:'Under Investigation',  lastReported:'Sep 9, 2026', lastReportedDate:new Date(2026,8,9), isNew:true,  trend7:[2,3,5,9,14,22,30] },
+  { id:'pune',      name:'Pune',      x:300, y:230, diseaseCategory:'Respiratory Infection',diseaseName:'Respiratory Infection',             risk:'medium',   confirmed:30, suspected:18, farms:11, animals:96,  status:'Monitoring',           lastReported:'Sep 7, 2026', lastReportedDate:new Date(2026,8,7), isNew:false, trend7:[35,34,36,40,44,46,48] },
+  { id:'nagpur',    name:'Nagpur',    x:620, y:140, diseaseCategory:'Tick Infestation',      diseaseName:'Tick Infestation',                  risk:'medium',   confirmed:26, suspected:15, farms:9,  animals:77,  status:'Monitoring',           lastReported:'Sep 7, 2026', lastReportedDate:new Date(2026,8,7), isNew:false, trend7:[30,29,31,34,37,39,41] },
+  { id:'satara',    name:'Satara',    x:310, y:290, diseaseCategory:'Bloat',                 diseaseName:'Bloat',                             risk:'medium',   confirmed:18, suspected:9,  farms:5,  animals:41,  status:'Contained',            lastReported:'Sep 6, 2026', lastReportedDate:new Date(2026,8,6), isNew:false, trend7:[20,19,20,22,23,24,25] },
+  { id:'solapur',   name:'Solapur',   x:400, y:300, diseaseCategory:'Bloat',                 diseaseName:'Bloat',                             risk:'low',      confirmed:20, suspected:6,  farms:7,  animals:52,  status:'Contained',            lastReported:'Sep 6, 2026', lastReportedDate:new Date(2026,8,6), isNew:false, trend7:[38,37,36,35,34,35,34] },
+  { id:'kolhapur',  name:'Kolhapur',  x:270, y:360, diseaseCategory:'Diarrhea',              diseaseName:'Diarrhea',                          risk:'low',      confirmed:16, suspected:8,  farms:6,  animals:44,  status:'Resolved',             lastReported:'Sep 5, 2026', lastReportedDate:new Date(2026,8,5), isNew:false, trend7:[32,30,29,28,27,28,28] },
+  { id:'amravati',  name:'Amravati',  x:520, y:110, diseaseCategory:'PPR',                   diseaseName:'PPR (Peste des Petits Ruminants)',  risk:'low',      confirmed:12, suspected:4,  farms:4,  animals:29,  status:'Resolved',             lastReported:'Sep 4, 2026', lastReportedDate:new Date(2026,8,4), isNew:false, trend7:[22,21,20,19,19,18,19] },
+  { id:'jalgaon',   name:'Jalgaon',   x:380, y:90,  diseaseCategory:'Diarrhea',              diseaseName:'Diarrhea',                          risk:'low',      confirmed:9,  suspected:3,  farms:3,  animals:21,  status:'Resolved',             lastReported:'Sep 3, 2026', lastReportedDate:new Date(2026,8,3), isNew:false, trend7:[15,14,13,12,12,11,12] }
+];
+HM_HOTSPOTS.forEach(h => { h.trend30 = hmExtendTo30(h.trend7); });
+
+function hmExtendTo30(trend7){
+  const day0 = trend7[0];
+  const growthPerDay = (trend7[6]-trend7[0])/6;
+  const early = [];
+  for(let i=23;i>=1;i--){
+    const noise = Math.sin(i/2.6) * Math.max(1, day0*0.05);
+    early.push(Math.max(1, Math.round(day0 - growthPerDay*i + noise)));
+  }
+  return early.concat(trend7);
+}
+
+const HM_VETS = [
+  { name:'Pashu Sanjivini 1962 Ambulances', clinic:'National Emergency Command',       district:'All Districts', distance:'0 km away', specialty:'Statewide 24x7 Ambulance Dispatch', status:'available' },
+  { name:'Dr. Anita Sharma',    clinic:'Nashik Veterinary Hospital',       district:'Nashik',     distance:'2.1 km', specialty:'Livestock & Epidemiology', status:'available' },
+  { name:'Dr. Suresh Nair',     clinic:'Aurangabad Animal Health Centre',  district:'Aurangabad', distance:'3.4 km', specialty:'General Practice',         status:'available' },
+  { name:'Dr. Kavita Joshi',    clinic:'Thane Rural Vet Clinic',           district:'Thane',      distance:'1.8 km', specialty:'Infectious Disease',       status:'busy' },
+  { name:'Dr. Ramesh Deshmukh', clinic:'Pune District Vet Dispensary',     district:'Pune',       distance:'4.6 km', specialty:'Large Animal Medicine',    status:'available' },
+  { name:'Dr. Meena Kulkarni',  clinic:'Nagpur Livestock Care',            district:'Nagpur',     distance:'5.2 km', specialty:'Parasitology',             status:'offline' },
+  { name:'Dr. Vikram Patil',    clinic:'Satara Veterinary Services',       district:'Satara',     distance:'3.0 km', specialty:'General Practice',         status:'available' }
+];
+
+let HM_INITIALIZED = false, HM_DATE_RANGE = '30d', HM_ACTIVE_HOTSPOT_ID = null;
+
+function hmCap(s){ return s.charAt(0).toUpperCase()+s.slice(1); }
+function hmRiskFill(risk){ return {critical:'#8B2A1C',high:'#B3402A',medium:'#B9791F',low:'#2F7A4F'}[risk] || '#8B9184'; }
+function hmRiskWeight(risk){ return {critical:4,high:3,medium:2,low:1}[risk] || 0; }
+
+function initHeatmapPage(){
+  if(!HM_INITIALIZED){
+    const diseaseSel = document.getElementById('hm-f-disease');
+    [...new Set(HM_HOTSPOTS.map(h=>h.diseaseCategory))].sort().forEach(d=>{
+      const opt=document.createElement('option'); opt.value=d; opt.textContent=d; diseaseSel.appendChild(opt);
+    });
+    const districtSel = document.getElementById('hm-f-district');
+    HM_HOTSPOTS.map(h=>h.name).forEach(name=>{
+      const opt=document.createElement('option'); opt.value=name; opt.textContent=name; districtSel.appendChild(opt);
+    });
+    HM_INITIALIZED = true;
+  }
+  
+  if (window.PashuSakhiApi) {
+    window.PashuSakhiApi.getHotspots().then(res => {
+      if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
+        res.data.forEach(bh => {
+          const match = HM_HOTSPOTS.find(h => (h.name || '').toLowerCase() === (bh.district || '').toLowerCase() || h.id === bh.id);
+          if (match) {
+            match.confirmed = bh.confirmedCases || match.confirmed;
+            match.suspected = bh.suspectedCases || match.suspected;
+            match.risk = (bh.riskLevel || match.risk).toLowerCase();
+          }
+        });
+        applyHeatmapFilters();
+      }
+    }).catch(e => console.warn('Backend getHotspots fallback:', e));
+  }
+
+  applyHeatmapFilters();
+}
+
+function setHeatmapDateRange(range, btn){
+  HM_DATE_RANGE = range;
+  document.querySelectorAll('#hm-f-date-btns .dfc-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  applyHeatmapFilters();
+}
+
+function resetHeatmapFilters(){
+  ['hm-f-disease','hm-f-district','hm-f-risk','hm-f-case'].forEach(id=>{ document.getElementById(id).value='all'; });
+  HM_DATE_RANGE = '30d';
+  document.querySelectorAll('#hm-f-date-btns .dfc-btn').forEach(b=>b.classList.remove('active'));
+  const btn30 = document.querySelector('#hm-f-date-btns .dfc-btn[data-range="30d"]');
+  if(btn30) btn30.classList.add('active');
+  applyHeatmapFilters();
+}
+
+function hmWithinDateRange(h){
+  if(HM_DATE_RANGE==='all') return true;
+  const diffDays = Math.round((HM_TODAY - h.lastReportedDate)/86400000);
+  if(HM_DATE_RANGE==='today') return diffDays<=0;
+  if(HM_DATE_RANGE==='7d') return diffDays<=7;
+  if(HM_DATE_RANGE==='30d') return diffDays<=30;
+  return true;
+}
+
+function applyHeatmapFilters(){
+  const disease = document.getElementById('hm-f-disease').value;
+  const district = document.getElementById('hm-f-district').value;
+  const risk = document.getElementById('hm-f-risk').value;
+  const caseType = document.getElementById('hm-f-case').value;
+
+  const filtered = HM_HOTSPOTS.filter(h=>{
+    if(disease!=='all' && h.diseaseCategory!==disease) return false;
+    if(district!=='all' && h.name!==district) return false;
+    if(risk!=='all' && h.risk!==risk) return false;
+    if(caseType==='confirmed' && h.confirmed<=0) return false;
+    if(caseType==='suspected' && h.suspected<=0) return false;
+    if(!hmWithinDateRange(h)) return false;
+    return true;
+  });
+
+  const displayFiltered = filtered.map(h => ({
+    ...h,
+    confirmed: caseType==='suspected' ? 0 : h.confirmed,
+    suspected: caseType==='confirmed' ? 0 : h.suspected
+  }));
+
+  const filteredIds = new Set(filtered.map(h=>h.id));
+  renderHeatmapMap(filteredIds);
+  renderHeatmapKPIs(displayFiltered);
+  renderHeatmapAlerts(filtered);
+  renderZoneGrid(filtered);
+  renderPriorityTable(displayFiltered);
+  renderVetList(filtered, district);
+  renderHeatmapTrendCharts(displayFiltered);
+}
+
+function renderHeatmapMap(filteredIds){
+  const wrap = document.getElementById('hm-map-wrap');
+  if(!wrap) return;
+  const isDark = document.body.classList.contains('dark');
+  const gridColor = isDark ? 'rgba(255,255,255,.07)' : 'rgba(35,41,31,.06)';
+  const labelColor = isDark ? '#B8C3AC' : '#5B6154';
+  let gridLines = '';
+  for(let gx=0; gx<=800; gx+=80) gridLines += `<line x1="${gx}" y1="0" x2="${gx}" y2="460" stroke="${gridColor}" stroke-width="1"/>`;
+  for(let gy=0; gy<=460; gy+=76.6) gridLines += `<line x1="0" y1="${gy.toFixed(1)}" x2="800" y2="${gy.toFixed(1)}" stroke="${gridColor}" stroke-width="1"/>`;
+  let markers = '';
+  HM_HOTSPOTS.forEach(h=>{
+    const included = filteredIds.has(h.id);
+    const total = h.confirmed + h.suspected;
+    const r = Math.max(12, Math.min(30, 10 + Math.sqrt(total)*1.6));
+    const color = hmRiskFill(h.risk);
+    const dimClass = included ? '' : ' dim';
+    const pulseClass = (h.isNew && included) ? 'hm-marker-pulse' : '';
+    markers += `<g class="hm-marker${dimClass}" onclick="showHotspotDetail('${h.id}')">
+      <circle cx="${h.x}" cy="${h.y}" r="${(r*1.7).toFixed(1)}" fill="${color}" opacity="0.16" class="${pulseClass}"/>
+      <circle cx="${h.x}" cy="${h.y}" r="${r.toFixed(1)}" fill="${color}" stroke="#fff" stroke-width="2"/>
+      <text x="${h.x}" y="${(h.y+4).toFixed(1)}" text-anchor="middle" font-size="10.5" font-weight="700" fill="#fff" font-family="system-ui">${total}</text>
+      <text x="${h.x}" y="${(h.y+r+16).toFixed(1)}" text-anchor="middle" font-size="11.5" font-weight="600" fill="${labelColor}" font-family="system-ui">${h.name}</text>
+      <title>${h.name} — ${h.diseaseName} (${h.risk.toUpperCase()}) — ${total} cases</title>
+    </g>`;
+  });
+  wrap.innerHTML = `<svg viewBox="0 0 800 460" xmlns="http://www.w3.org/2000/svg">${gridLines}${markers}</svg>`;
+}
+
+function renderHeatmapKPIs(filtered){
+  document.getElementById('hm-kpi-hotspots').textContent = filtered.length;
+  document.getElementById('hm-kpi-highrisk').textContent = filtered.filter(h=>h.risk==='critical'||h.risk==='high').length;
+  document.getElementById('hm-kpi-confirmed').textContent = filtered.reduce((s,h)=>s+h.confirmed,0);
+  document.getElementById('hm-kpi-suspected').textContent = filtered.reduce((s,h)=>s+h.suspected,0);
+  document.getElementById('hm-kpi-newalerts').textContent = filtered.filter(h=>h.isNew).length;
+}
+
+function renderHeatmapAlerts(filtered){
+  const el = document.getElementById('hm-alert-strip');
+  const newOnes = filtered.filter(h=>h.isNew);
+  if(!newOnes.length){ el.innerHTML = `<div class="hm-empty-state">No new outbreaks detected for the selected filters.</div>`; return; }
+  el.innerHTML = newOnes.map(h=>`
+    <div class="sys-alert-card sa-critical">
+      <div class="sa-text">
+        <div class="sa-title">🚨 New Outbreak — ${h.name}</div>
+        <div class="sa-desc">${h.diseaseName} · ${h.farms} farms affected · reported ${h.lastReported}</div>
+      </div>
+      <div class="sa-actions">
+        <span class="alert-badge critical">${hmCap(h.risk)}</span>
+        <button class="btn-sm" onclick="showHotspotDetail('${h.id}')">View</button>
+      </div>
+    </div>`).join('');
+}
+
+function renderZoneGrid(filtered){
+  const el = document.getElementById('hm-zone-grid');
+  const groups = { critical:[], high:[], medium:[], low:[] };
+  filtered.forEach(h=>{ if(groups[h.risk]) groups[h.risk].push(h); });
+  const highCombined = groups.critical.concat(groups.high);
+  el.innerHTML = `
+    <div class="hm-zone-card high">
+      <div class="hz-count">${highCombined.length}</div>
+      <div class="hz-lbl">High Risk Zones</div>
+      <div class="hz-sub">${groups.critical.length} critical · ${groups.high.length} high — ${highCombined.map(h=>h.name).join(', ') || 'None'}</div>
+    </div>
+    <div class="hm-zone-card medium">
+      <div class="hz-count">${groups.medium.length}</div>
+      <div class="hz-lbl">Medium Risk Zones</div>
+      <div class="hz-sub">${groups.medium.map(h=>h.name).join(', ') || 'None'}</div>
+    </div>
+    <div class="hm-zone-card low">
+      <div class="hz-count">${groups.low.length}</div>
+      <div class="hz-lbl">Low Risk Zones</div>
+      <div class="hz-sub">${groups.low.map(h=>h.name).join(', ') || 'None'}</div>
+    </div>`;
+}
+
+function hmPriorityScore(h){
+  const growth = h.trend7[6]-h.trend7[0];
+  const growthRate = growth/(h.trend7[0]||1);
+  return hmRiskWeight(h.risk)*100 + growthRate*40 + (h.isNew?30:0) + (h.confirmed+h.suspected)*0.3;
+}
+
+function renderPriorityTable(filtered){
+  const tbody = document.getElementById('hm-priority-tbody');
+  const footer = document.getElementById('hm-priority-footer');
+  if(!filtered.length){
+    tbody.innerHTML = `<tr><td colspan="9" class="hm-empty-state">No hotspots match the selected filters.</td></tr>`;
+    footer.textContent = '0 zones ranked';
+    return;
+  }
+  const ranked = [...filtered].sort((a,b)=>hmPriorityScore(b)-hmPriorityScore(a));
+  tbody.innerHTML = ranked.map((h,i)=>{
+    const rank = i+1;
+    const growth = h.trend7[6]-h.trend7[0];
+    const pct = h.trend7[0] ? Math.round((growth/h.trend7[0])*100) : 0;
+    const trendColor = pct>0 ? 'var(--danger)' : (pct<0 ? 'var(--success)' : 'var(--text-muted)');
+    const trendArrow = pct>0 ? '↑' : (pct<0 ? '↓' : '→');
+    const rankClass = rank===1 ? 'rank-1' : (rank===2 ? 'rank-2' : '');
+    return `<tr>
+      <td><span class="priority-rank-badge ${rankClass}">${rank}</span></td>
+      <td><b>${h.name}</b></td>
+      <td>${h.diseaseName}</td>
+      <td><span class="pill ${h.risk}">${hmCap(h.risk)}</span></td>
+      <td>${h.confirmed}</td>
+      <td>${h.suspected}</td>
+      <td style="color:${trendColor}">${trendArrow} ${Math.abs(pct)}%</td>
+      <td>${h.status}</td>
+      <td><button class="btn-xs primary" onclick="showHotspotDetail('${h.id}')">Review</button></td>
+    </tr>`;
+  }).join('');
+  footer.textContent = `${ranked.length} zone${ranked.length!==1?'s':''} ranked · Top priority: ${ranked[0].name} (${hmCap(ranked[0].risk)})`;
+}
+
+function renderVetList(filtered, districtSel){
+  const el = document.getElementById('hm-vet-grid');
+  let vets;
+  if(districtSel && districtSel!=='all'){
+    vets = HM_VETS.filter(v=>v.district===districtSel || v.district==='All Districts');
+  } else {
+    vets = HM_VETS;
+  }
+  if(!vets.length){ el.innerHTML = `<div class="hm-empty-state">No veterinarians found nearby.</div>`; return; }
+  const statusPill = s => s==='available' ? 'available' : (s==='busy' ? 'pending' : 'offline');
+  el.innerHTML = vets.map(v=>`
+    <div class="vet-card">
+      <div class="vet-info">
+        <div class="vet-name">${v.name}</div>
+        <div class="vet-meta">${v.clinic} · ${v.district}<br>${v.specialty}</div>
+      </div>
+      <div class="vet-side">
+        <span class="pill ${statusPill(v.status)}">${hmCap(v.status)}</span>
+        <span class="vet-distance">${v.distance}</span>
+      </div>
+    </div>`).join('');
+}
+
+function hmDateLabels(n){
+  const labels = [];
+  for(let i=n-1; i>=0; i--){
+    const d = new Date(HM_TODAY); d.setDate(d.getDate()-i);
+    labels.push(d.toLocaleDateString('en-GB',{day:'2-digit',month:'short'}));
+  }
+  return labels;
+}
+
+function hmComputeTrendSeries(hotspots, days){
+  const totalsConfirmed = new Array(days).fill(0);
+  const totalsSuspected = new Array(days).fill(0);
+  hotspots.forEach(h=>{
+    const series = days===7 ? h.trend7 : h.trend30;
+    const ratio = (h.confirmed+h.suspected)>0 ? h.confirmed/(h.confirmed+h.suspected) : 0.65;
+    series.forEach((v,i)=>{
+      const c = Math.round(v*ratio);
+      totalsConfirmed[i] += c;
+      totalsSuspected[i] += (v-c);
+    });
+  });
+  return { confirmed: totalsConfirmed, suspected: totalsSuspected };
+}
+
+function renderHeatmapTrendCharts(filtered){
+  if(!filtered.length){
+    ['cv-hm-trend7','cv-hm-trend30'].forEach(id=>{ if(CI[id]){ CI[id].destroy(); delete CI[id]; } });
+    return;
+  }
+  const s7 = hmComputeTrendSeries(filtered, 7);
+  const s30 = hmComputeTrendSeries(filtered, 30);
+  mk('cv-hm-trend7', { type:'line', data:{ labels:hmDateLabels(7), datasets:[
+    { label:'Confirmed', ...ld('#B3402A'), data:s7.confirmed },
+    { label:'Suspected', ...ld('#B9791F'), data:s7.suspected }
+  ]}, options: lineOpts(true) });
+  mk('cv-hm-trend30', { type:'line', data:{ labels:hmDateLabels(30), datasets:[
+    { label:'Confirmed', ...ld('#B3402A'), data:s30.confirmed },
+    { label:'Suspected', ...ld('#B9791F'), data:s30.suspected }
+  ]}, options: lineOpts(true) });
+}
+
+function showHotspotDetail(id){
+  const h = HM_HOTSPOTS.find(x=>x.id===id);
+  if(!h) return;
+  HM_ACTIVE_HOTSPOT_ID = id;
+  document.getElementById('modal-hotspot-title').textContent = `${h.name} — Hotspot Details`;
+  document.getElementById('hmd-disease').textContent = h.diseaseName;
+  document.getElementById('hmd-risk').innerHTML = `<span class="pill ${h.risk}">${hmCap(h.risk)}</span>`;
+  document.getElementById('hmd-animals').textContent = h.animals.toLocaleString('en-IN');
+  document.getElementById('hmd-farms').textContent = h.farms;
+  document.getElementById('hmd-confirmed').textContent = h.confirmed;
+  document.getElementById('hmd-suspected').textContent = h.suspected;
+  document.getElementById('hmd-lastreported').textContent = h.lastReported;
+  document.getElementById('hmd-status').textContent = h.status;
+  const growth = h.trend7[6]-h.trend7[0];
+  const pct = h.trend7[0] ? Math.round((growth/h.trend7[0])*100) : 0;
+  document.getElementById('hmd-summary').textContent = `${h.name} has ${h.confirmed+h.suspected} total reported cases across ${h.farms} farms. Case volume has ${pct>=0?'increased':'decreased'} ${Math.abs(pct)}% over the last 7 days.${h.isNew?' This cluster was flagged as a new outbreak.':''}`;
+  openModal('modal-hotspot');
+}
+
+function dispatchVetToHotspot(){
+  const h = HM_HOTSPOTS.find(x=>x.id===HM_ACTIVE_HOTSPOT_ID);
+  closeModal('modal-hotspot');
+  if(h) showToast(`Emergency Vet / 1962 Ambulance dispatch requested for ${h.name}`, 'success');
+}
+
+const PC_TRANSLATIONS = {
+  en:{nav_overview:"Overview",nav_management:"Management",nav_analytics:"Analytics",nav_farmers:"Farmers",nav_vets:"Veterinarians",nav_cases:"Cases",nav_reports:"Reports",nav_settings:"Settings",btn_logout:"Logout",settings_title:"Settings",settings_sub:"Manage your account, preferences and app settings.",acct_h:"Account",acct_sub:"Your admin identity and account actions",btn_change_pw:"Change Password",btn_delete_acct:"Delete Account",pref_h:"Language & Accessibility",pref_sub:"Display language, text size and contrast",pref_lang:"App Language",pref_textsize:"Text Size",size_small:"Small",size_medium:"Medium",size_large:"Large",pref_theme:"Theme",theme_light:"Light",theme_dark:"Dark",theme_system:"System Default",pref_hc:"High Contrast Mode",pref_hc_sub:"Increase contrast for text, controls and borders",notif_h:"Notifications",notif_sub:"Control which alerts are sent to admins",priv_h:"Privacy & Security",priv_sub:"Authentication, permissions and access control",perm_h:"App Permissions",btn_check_perms:"Check Browser Permissions",priv_policy:"Privacy Policy",terms:"Terms & Conditions",help_h:"Help & Support",help_sub:"Guides, contact and issue reporting",faq:"FAQs",help_center:"Help Center",contact_support:"Contact Support",report_problem:"Report a Problem",about_h:"About",about_sub:"Platform information and feedback",about_ps:"About PashuCare",feedback:"Feedback",app_version:"App Version"},
+  hi:{nav_overview:"अवलोकन",nav_management:"प्रबंधन",nav_analytics:"विश्लेषण",nav_farmers:"किसान",nav_vets:"पशु चिकित्सक",nav_cases:"मामले",nav_reports:"रिपोर्ट",nav_settings:"सेटिंग्स",btn_logout:"लॉग आउट",settings_title:"सेटिंग्स",settings_sub:"अपना खाता, प्राथमिकताएं और ऐप सेटिंग्स प्रबंधित करें।",acct_h:"खाता",acct_sub:"आपकी एडमिन पहचान और खाता क्रियाएं",btn_change_pw:"पासवर्ड बदलें",btn_delete_acct:"खाता हटाएं",pref_h:"भाषा और सुगमता",pref_sub:"प्रदर्शन भाषा, टेक्स्ट आकार और कंट्रास्ट",pref_lang:"ऐप भाषा",pref_textsize:"टेक्स्ट आकार",size_small:"छोटा",size_medium:"मध्यम",size_large:"बड़ा",pref_theme:"थीम",theme_light:"लाइट",theme_dark:"डार्क",theme_system:"सिस्टम डिफ़ॉल्ट",pref_hc:"हाई कॉन्ट्रास्ट मोड",pref_hc_sub:"टेक्स्ट, नियंत्रण और बॉर्डर के लिए कंट्रास्ट बढ़ाएं",notif_h:"सूचनाएं",notif_sub:"नियंत्रित करें कि एडमिन को कौन से अलर्ट भेजे जाएं",priv_h:"गोपनीयता और सुरक्षा",priv_sub:"प्रमाणीकरण, अनुमतियां और पहुंच नियंत्रण",perm_h:"ऐप अनुमतियां",btn_check_perms:"ब्राउज़र अनुमतियां जांचें",priv_policy:"गोपनीयता नीति",terms:"नियम और शर्तें",help_h:"सहायता और समर्थन",help_sub:"गाइड, संपर्क और समस्या रिपोर्टिंग",faq:"अक्सर पूछे जाने वाले प्रश्न",help_center:"सहायता केंद्र",contact_support:"सहायता से संपर्क करें",report_problem:"समस्या की रिपोर्ट करें",about_h:"के बारे में",about_sub:"प्लेटफ़ॉर्म जानकारी और प्रतिक्रिया",about_ps:"पशुकेयर के बारे में",feedback:"प्रतिक्रिया",app_version:"ऐप संस्करण"},
+  mr:{nav_overview:"आढावा",nav_management:"व्यवस्थापन",nav_analytics:"विश्लेषण",nav_farmers:"शेतकरी",nav_vets:"पशुवैद्य",nav_cases:"प्रकरणे",nav_reports:"अहवाल",nav_settings:"सेटिंग्ज",btn_logout:"लॉग आऊट",settings_title:"सेटिंग्ज",settings_sub:"तुमचे खाते, प्राधान्ये आणि अॅप सेटिंग्ज व्यवस्थापित करा.",acct_h:"खाते",acct_sub:"तुमची अॅडमिन ओळख आणि खाते क्रिया",btn_change_pw:"पासवर्ड बदला",btn_delete_acct:"खाते हटवा",pref_h:"भाषा आणि सुलभता",pref_sub:"प्रदर्शन भाषा, मजकूर आकार आणि कॉन्ट्रास्ट",pref_lang:"अॅप भाषा",pref_textsize:"मजकूर आकार",size_small:"लहान",size_medium:"मध्यम",size_large:"मोठा",pref_theme:"थीम",theme_light:"लाइट",theme_dark:"डार्क",theme_system:"सिस्टम डीफॉल्ट",pref_hc:"हाय कॉन्ट्रास्ट मोड",pref_hc_sub:"मजकूर, नियंत्रणे आणि सीमारेषांसाठी कॉन्ट्रास्ट वाढवा",notif_h:"सूचना",notif_sub:"अॅडमिनला कोणते अलर्ट पाठवले जातात ते नियंत्रित करा",priv_h:"गोपनीयता आणि सुरक्षा",priv_sub:"प्रमाणीकरण, परवानग्या आणि प्रवेश नियंत्रण",perm_h:"अॅप परवानग्या",btn_check_perms:"ब्राउझर परवानग्या तपासा",priv_policy:"गोपनीयता धोरण",terms:"अटी व शर्ती",help_h:"मदत आणि समर्थन",help_sub:"मार्गदर्शक, संपर्क आणि समस्या नोंदवणे",faq:"वारंवार विचारले जाणारे प्रश्न",help_center:"मदत केंद्र",contact_support:"समर्थनाशी संपर्क साधा",report_problem:"समस्या नोंदवा",about_h:"बद्दल",about_sub:"प्लॅटफॉर्म माहिती आणि अभिप्राय",about_ps:"पशुकेअर बद्दल",feedback:"अभिप्राय",app_version:"अॅप आवृत्ती"},
+  gu:{nav_overview:"ઝાંખી",nav_management:"સંચાલન",nav_analytics:"વિશ્લેષણ",nav_farmers:"ખેડૂતો",nav_vets:"પશુચિકિત્સકો",nav_cases:"કેસો",nav_reports:"અહેવાલો",nav_settings:"સેટિંગ્સ",btn_logout:"લૉગ આઉટ",settings_title:"સેટિંગ્સ",settings_sub:"તમારું ખાતું, પસંદગીઓ અને એપ સેટિંગ્સ સંચાલિત કરો.",acct_h:"ખાતું",acct_sub:"તમારી એડમિન ઓળખ અને ખાતાની ક્રિયાઓ",btn_change_pw:"પાસવર્ડ બદલો",btn_delete_acct:"ખાતું કાઢી નાખો",pref_h:"ભાષા અને સુલભતા",pref_sub:"ડિસ્પ્લે ભાષા, ટેક્સ્ટ કદ અને કોન્ટ્રાસ્ટ",pref_lang:"એપ ભાષા",pref_textsize:"ટેક્સ્ટ કદ",size_small:"નાનું",size_medium:"મધ્યમ",size_large:"મોટું",pref_theme:"થીમ",theme_light:"લાઇટ",theme_dark:"ડાર્ક",theme_system:"સિસ્ટમ ડિફૉલ્ટ",pref_hc:"હાઇ કોન્ટ્રાસ્ટ મોડ",pref_hc_sub:"ટેક્સ્ટ, નિયંત્રણો અને સીમાઓ માટે કોન્ટ્રાસ્ટ વધારો",notif_h:"સૂચનાઓ",notif_sub:"એડમિનને કયા એલર્ટ મોકલવામાં આવે તે નિયંત્રિત કરો",priv_h:"ગોપનીયતા અને સુરક્ષા",priv_sub:"પ્રમાણીકરણ, પરવાનગીઓ અને ઍક્સેસ નિયંત્રણ",perm_h:"એપ પરવાનગીઓ",btn_check_perms:"બ્રાઉઝર પરવાનગીઓ તપાસો",priv_policy:"ગોપનીયતા નીતિ",terms:"નિયમો અને શરતો",help_h:"સહાય અને સપોર્ટ",help_sub:"માર્ગદર્શિકાઓ, સંપર્ક અને સમસ્યા રિપોર્ટિંગ",faq:"વારંવાર પૂછાતા પ્રશ્નો",help_center:"સહાય કેન્દ્ર",contact_support:"સપોર્ટનો સંપર્ક કરો",report_problem:"સમસ્યાની જાણ કરો",about_h:"વિશે",about_sub:"પ્લેટફોર્મ માહિતી અને પ્રતિસાદ",about_ps:"પશુકેર વિશે",feedback:"પ્રતિસાદ",app_version:"એપ સંસ્કરણ"},
+  pa:{nav_overview:"ਸੰਖੇਪ ਜਾਣਕਾਰੀ",nav_management:"ਪ੍ਰਬੰਧਨ",nav_analytics:"ਵਿਸ਼ਲੇਸ਼ਣ",nav_farmers:"ਕਿਸਾਨ",nav_vets:"ਪਸ਼ੂ ਡਾਕਟਰ",nav_cases:"ਕੇਸ",nav_reports:"ਰਿਪੋਰਟਾਂ",nav_settings:"ਸੈਟਿੰਗਾਂ",btn_logout:"ਲਾਗ ਆਉਟ",settings_title:"ਸੈਟਿੰਗਾਂ",settings_sub:"ਆਪਣਾ ਖਾਤਾ, ਤਰਜੀਹਾਂ ਅਤੇ ਐਪ ਸੈਟਿੰਗਾਂ ਦਾ ਪ੍ਰਬੰਧਨ ਕਰੋ।",acct_h:"ਖਾਤਾ",acct_sub:"ਤੁਹਾਡੀ ਐਡਮਿਨ ਪਛਾਣ ਅਤੇ ਖਾਤਾ ਕਾਰਵਾਈਆਂ",btn_change_pw:"ਪਾਸਵਰਡ ਬਦਲੋ",btn_delete_acct:"ਖਾਤਾ ਮਿਟਾਓ",pref_h:"ਭਾਸ਼ਾ ਅਤੇ ਪਹੁੰਚਯੋਗਤਾ",pref_sub:"ਡਿਸਪਲੇ ਭਾਸ਼ਾ, ਟੈਕਸਟ ਆਕਾਰ ਅਤੇ ਕੰਟ੍ਰਾਸਟ",pref_lang:"ਐਪ ਭਾਸ਼ਾ",pref_textsize:"ਟੈਕਸਟ ਆਕਾਰ",size_small:"ਛੋਟਾ",size_medium:"ਮੱਧਮ",size_large:"ਵੱਡਾ",pref_theme:"ਥੀਮ",theme_light:"ਲਾਈਟ",theme_dark:"ਡਾਰਕ",theme_system:"ਸਿਸਟਮ ਡਿਫਾਲਟ",pref_hc:"ਹਾਈ ਕੰਟ੍ਰਾਸਟ ਮੋਡ",pref_hc_sub:"ਟੈਕਸਟ, ਕੰਟਰੋਲ ਅਤੇ ਬਾਰਡਰ ਲਈ ਕੰਟ੍ਰਾਸਟ ਵਧਾਓ",notif_h:"ਸੂਚਨਾਵਾਂ",notif_sub:"ਕੰਟਰੋਲ ਕਰੋ ਕਿ ਐਡਮਿਨ ਨੂੰ ਕਿਹੜੇ ਅਲਰਟ ਭੇਜੇ ਜਾਣ",priv_h:"ਪਰਦੇਦਾਰੀ ਅਤੇ ਸੁਰੱਖਿਆ",priv_sub:"ਪ੍ਰਮਾਣੀਕਰਨ, ਇਜਾਜ਼ਤਾਂ ਅਤੇ ਪਹੁੰਚ ਨਿਯੰਤਰਣ",perm_h:"ਐਪ ਇਜਾਜ਼ਤਾਂ",btn_check_perms:"ਬ੍ਰਾਊਜ਼ਰ ਇਜਾਜ਼ਤਾਂ ਦੀ ਜਾਂਚ ਕਰੋ",priv_policy:"ਪਰਦੇਦਾਰੀ ਨੀਤੀ",terms:"ਨਿਯਮ ਅਤੇ ਸ਼ਰਤਾਂ",help_h:"ਮਦਦ ਅਤੇ ਸਹਾਇਤਾ",help_sub:"ਗਾਈਡਾਂ, ਸੰਪਰਕ ਅਤੇ ਸਮੱਸਿਆ ਰਿਪੋਰਟਿੰਗ",faq:"ਅਕਸਰ ਪੁੱਛੇ ਜਾਂਦੇ ਸਵਾਲ",help_center:"ਮਦਦ ਕੇਂਦਰ",contact_support:"ਸਹਾਇਤਾ ਨਾਲ ਸੰਪਰਕ ਕਰੋ",report_problem:"ਸਮੱਸਿਆ ਦੀ ਰਿਪੋਰਟ ਕਰੋ",about_h:"ਬਾਰੇ",about_sub:"ਪਲੇਟਫਾਰਮ ਜਾਣਕਾਰੀ ਅਤੇ ਫੀਡਬੈਕ",about_ps:"ਪਸ਼ੂਕੇਅਰ ਬਾਰੇ",feedback:"ਫੀਡਬੈਕ",app_version:"ਐਪ ਵਰਜ਼ਨ"},
+  bn:{nav_overview:"ওভারভিউ",nav_management:"ব্যবস্থাপনা",nav_analytics:"বিশ্লেষণ",nav_farmers:"কৃষক",nav_vets:"পশুচিকিৎসক",nav_cases:"মামলা",nav_reports:"রিপোর্ট",nav_settings:"সেটিংস",btn_logout:"লগ আউট",settings_title:"সেটিংস",settings_sub:"আপনার অ্যাকাউন্ট, পছন্দ এবং অ্যাপ সেটিংস পরিচালনা করুন।",acct_h:"অ্যাকাউন্ট",acct_sub:"আপনার অ্যাডমিন পরিচয় এবং অ্যাকাউন্ট কার্যক্রম",btn_change_pw:"পাসওয়ার্ড পরিবর্তন করুন",btn_delete_acct:"অ্যাকাউন্ট মুছুন",pref_h:"ভাষা ও অ্যাক্সেসিবিলিটি",pref_sub:"প্রদর্শন ভাষা, টেক্সট আকার এবং কনট্রাস্ট",pref_lang:"অ্যাপ ভাষা",pref_textsize:"টেক্সট আকার",size_small:"ছোট",size_medium:"মাঝারি",size_large:"বড়",pref_theme:"থিম",theme_light:"লাইট",theme_dark:"ডার্ক",theme_system:"সিস্টেম ডিফল্ট",pref_hc:"হাই কনট্রাস্ট মোড",pref_hc_sub:"টেক্সট, নিয়ন্ত্রণ এবং বর্ডারের জন্য কনট্রাস্ট বাড়ান",notif_h:"বিজ্ঞপ্তি",notif_sub:"অ্যাডমিনকে কোন সতর্কতা পাঠানো হবে তা নিয়ন্ত্রণ করুন",priv_h:"গোপনীয়তা ও নিরাপত্তা",priv_sub:"প্রমাণীকরণ, অনুমতি এবং অ্যাক্সেস নিয়ন্ত্রণ",perm_h:"অ্যাপ অনুমতি",btn_check_perms:"ব্রাউজার অনুমতি পরীক্ষা করুন",priv_policy:"গোপনীয়তা নীতি",terms:"শর্তাবলী",help_h:"সহায়তা ও সমর্থন",help_sub:"গাইড, যোগাযোগ এবং সমস্যা রিপোর্টিং",faq:"সাধারণ জিজ্ঞাসা",help_center:"সহায়তা কেন্দ্র",contact_support:"সাপোর্টের সাথে যোগাযোগ করুন",report_problem:"সমস্যা রিপোর্ট করুন",about_h:"সম্পর্কে",about_sub:"প্ল্যাটফর্ম তথ্য এবং মতামত",about_ps:"পশুকেয়ার সম্পর্কে",feedback:"মতামত",app_version:"অ্যাপ সংস্করণ"},
+  ta:{nav_overview:"கண்ணோட்டம்",nav_management:"மேலாண்மை",nav_analytics:"பகுப்பாய்வு",nav_farmers:"விவசாயிகள்",nav_vets:"கால்நடை மருத்துவர்கள்",nav_cases:"வழக்குகள்",nav_reports:"அறிக்கைகள்",nav_settings:"அமைப்புகள்",btn_logout:"வெளியேறு",settings_title:"அமைப்புகள்",settings_sub:"உங்கள் கணக்கு, விருப்பத்தேர்வுகள் மற்றும் ஆப் அமைப்புகளை நிர்வகிக்கவும்.",acct_h:"கணக்கு",acct_sub:"உங்கள் நிர்வாக அடையாளம் மற்றும் கணக்கு செயல்கள்",btn_change_pw:"கடவுச்சொல்லை மாற்று",btn_delete_acct:"கணக்கை நீக்கு",pref_h:"மொழி மற்றும் அணுகல்தன்மை",pref_sub:"காட்சி மொழி, உரை அளவு மற்றும் மாறுபாடு",pref_lang:"ஆப் மொழி",pref_textsize:"உரை அளவு",size_small:"சிறியது",size_medium:"நடுத்தரம்",size_large:"பெரியது",pref_theme:"தீம்",theme_light:"லைட்",theme_dark:"டார்க்",theme_system:"சிஸ்டம் இயல்பு",pref_hc:"அதிக மாறுபாடு பயன்முறை",pref_hc_sub:"உரை, கட்டுப்பாடுகள் மற்றும் எல்லைகளுக்கான மாறுபாட்டை அதிகரிக்கவும்",notif_h:"அறிவிப்புகள்",notif_sub:"நிர்வாகிகளுக்கு எந்த எச்சரிக்கைகள் அனுப்பப்படும் என்பதைக் கட்டுப்படுத்தவும்",priv_h:"தனியுரிமை மற்றும் பாதுகாப்பு",priv_sub:"அங்கீகாரம், அனுமதிகள் மற்றும் அணுகல் கட்டுப்பாடு",perm_h:"ஆப் அனுமதிகள்",btn_check_perms:"உலாவி அனுமதிகளைச் சரிபார்க்கவும்",priv_policy:"தனியுரிமைக் கொள்கை",terms:"விதிமுறைகள் மற்றும் நிபந்தனைகள்",help_h:"உதவி மற்றும் ஆதரவு",help_sub:"வழிகாட்டிகள், தொடர்பு மற்றும் சிக்கல் அறிக்கை",faq:"அடிக்கடி கேட்கப்படும் கேள்விகள்",help_center:"உதவி மையம்",contact_support:"ஆதரவைத் தொடர்பு கொள்ளவும்",report_problem:"சிக்கலைப் புகாரளிக்கவும்",about_h:"பற்றி",about_sub:"தளத் தகவல் மற்றும் கருத்து",about_ps:"பசுகேர் பற்றி",feedback:"கருத்து",app_version:"ஆப் பதிப்பு"},
+  te:{nav_overview:"అవలోకనం",nav_management:"నిర్వహణ",nav_analytics:"విశ్లేషణ",nav_farmers:"రైతులు",nav_vets:"పశువైద్యులు",nav_cases:"కేసులు",nav_reports:"నివేదికలు",nav_settings:"సెట్టింగ్‌లు",btn_logout:"లాగ్ అవుట్",settings_title:"సెట్టింగ్‌లు",settings_sub:"మీ ఖాతా, ప్రాధాన్యతలు మరియు యాప్ సెట్టింగ్‌లను నిర్వహించండి.",acct_h:"ఖాతా",acct_sub:"మీ అడ్మిన్ గుర్తింపు మరియు ఖాతా చర్యలు",btn_change_pw:"పాస్‌వర్డ్ మార్చండి",btn_delete_acct:"ఖాతాను తొలగించండి",pref_h:"భాష & సౌలభ్యం",pref_sub:"ప్రదర్శన భాష, టెక్స్ట్ పరిమాణం మరియు కాంట్రాస్ట్",pref_lang:"యాప్ భాష",pref_textsize:"టెక్స్ట్ పరిమాణం",size_small:"చిన్నది",size_medium:"మధ్యస్థం",size_large:"పెద్దది",pref_theme:"థీమ్",theme_light:"లైట్",theme_dark:"డార్క్",theme_system:"సిస్టమ్ డిఫాల్ట్",pref_hc:"హై కాంట్రాస్ట్ మోడ్",pref_hc_sub:"టెక్స్ట్, నియంత్రణలు మరియు అంచుల కాంట్రాస్ట్‌ను పెంచండి",notif_h:"నోటిఫికేషన్‌లు",notif_sub:"అడ్మిన్‌లకు ఏ అలర్ట్‌లు పంపబడతాయో నియంత్రించండి",priv_h:"గోప్యత & భద్రత",priv_sub:"ప్రామాణీకరణ, అనుమతులు మరియు యాక్సెస్ నియంత్రణ",perm_h:"యాప్ అనుమతులు",btn_check_perms:"బ్రౌజర్ అనుమతులను తనిఖీ చేయండి",priv_policy:"గోప్యతా విధానం",terms:"నిబంధనలు & షరతులు",help_h:"సహాయం & మద్దతు",help_sub:"గైడ్‌లు, సంప్రదింపు మరియు సమస్య నివేదిక",faq:"తరచుగా అడిగే ప్రశ్నలు",help_center:"సహాయ కేంద్రం",contact_support:"మద్దతును సంప్రదించండి",report_problem:"సమస్యను నివేదించండి",about_h:"గురించి",about_sub:"ప్లాట్‌ఫారమ్ సమాచారం మరియు అభిప్రాయం",about_ps:"పశుకేర్ గురించి",feedback:"అభిప్రాయం",app_version:"యాప్ వెర్షన్"},
+  kn:{nav_overview:"ಅವಲೋಕನ",nav_management:"ನಿರ್ವಹಣೆ",nav_analytics:"ವಿಶ್ಲೇಷಣೆ",nav_farmers:"ರೈತರು",nav_vets:"ಪಶುವೈದ್ಯರು",nav_cases:"ಪ್ರಕರಣಗಳು",nav_reports:"ವರದಿಗಳು",nav_settings:"ಸೆಟ್ಟಿಂಗ್‌ಗಳು",btn_logout:"ಲಾಗ್ ಔಟ್",settings_title:"ಸೆಟ್ಟಿಂಗ್‌ಗಳು",settings_sub:"ನಿಮ್ಮ ಖಾತೆ, ಆದ್ಯತೆಗಳು ಮತ್ತು ಆ್ಯಪ್ ಸೆಟ್ಟಿಂಗ್‌ಗಳನ್ನು ನಿರ್ವಹಿಸಿ.",acct_h:"ಖಾತೆ",acct_sub:"ನಿಮ್ಮ ಅಡ್ಮಿನ್ ಗುರುತು ಮತ್ತು ಖಾತೆ ಕ್ರಿಯೆಗಳು",btn_change_pw:"ಪಾಸ್‌ವರ್ಡ್ ಬದಲಾಯಿಸಿ",btn_delete_acct:"ಖಾತೆಯನ್ನು ಅಳಿಸಿ",pref_h:"ಭಾಷೆ ಮತ್ತು ಪ್ರವೇಶಸಾಧ್ಯತೆ",pref_sub:"ಪ್ರದರ್ಶನ ಭಾಷೆ, ಪಠ್ಯ ಗಾತ್ರ ಮತ್ತು ಕಾಂಟ್ರಾಸ್ಟ್",pref_lang:"ಆ್ಯಪ್ ಭಾಷೆ",pref_textsize:"ಪಠ್ಯ ಗಾತ್ರ",size_small:"ಚಿಕ್ಕದು",size_medium:"ಮಧ್ಯಮ",size_large:"ದೊಡ್ಡದು",pref_theme:"ಥೀಮ್",theme_light:"ಲೈಟ್",theme_dark:"ಡಾರ್ಕ್",theme_system:"ಸಿಸ್ಟಂ ಡೀಫಾಲ್ಟ್",pref_hc:"ಹೈ ಕಾಂಟ್ರಾಸ್ಟ್ ಮೋಡ್",pref_hc_sub:"ಪಠ್ಯ, ನಿಯಂತ್ರಣಗಳು ಮತ್ತು ಗಡಿಗಳಿಗೆ ಕಾಂಟ್ರಾಸ್ಟ್ ಹೆಚ್ಚಿಸಿ",notif_h:"ಅಧಿಸೂಚನೆಗಳು",notif_sub:"ಅಡ್ಮಿನ್‌ಗೆ ಯಾವ ಎಚ್ಚರಿಕೆಗಳನ್ನು ಕಳುಹಿಸಲಾಗುತ್ತದೆ ಎಂಬುದನ್ನು ನಿಯಂತ್ರಿಸಿ",priv_h:"ಗೌಪ್ಯತೆ ಮತ್ತು ಭದ್ರತೆ",priv_sub:"ದೃಢೀಕರಣ, ಅನುಮತಿಗಳು ಮತ್ತು ಪ್ರವೇಶ ನಿಯಂತ್ರಣ",perm_h:"ಆ್ಯಪ್ ಅನುಮತಿಗಳು",btn_check_perms:"ಬ್ರೌಸರ್ ಅನುಮತಿಗಳನ್ನು ಪರಿಶೀಲಿಸಿ",priv_policy:"ಗೌಪ್ಯತಾ ನೀತಿ",terms:"ನಿಯಮಗಳು ಮತ್ತು ಷರತ್ತುಗಳು",help_h:"ಸಹಾಯ ಮತ್ತು ಬೆಂಬಲ",help_sub:"ಮಾರ್ಗದರ್ಶಿಗಳು, ಸಂಪರ್ಕ ಮತ್ತು ಸಮಸ್ಯೆ ವರದಿ",faq:"ಪದೇ ಪದೇ ಕೇಳಲಾಗುವ ಪ್ರಶ್ನೆಗಳು",help_center:"ಸಹಾಯ ಕೇಂದ್ರ",contact_support:"ಬೆಂಬಲವನ್ನು ಸಂಪರ್ಕಿಸಿ",report_problem:"ಸಮಸ್ಯೆಯನ್ನು ವರದಿ ಮಾಡಿ",about_h:"ಬಗ್ಗೆ",about_sub:"ಪ್ಲಾಟ್‌ಫಾರ್ಮ್ ಮಾಹಿತಿ ಮತ್ತು ಪ್ರತಿಕ್ರಿಯೆ",about_ps:"ಪಶುಕೇರ್ ಬಗ್ಗೆ",feedback:"ಪ್ರತಿಕ್ರಿಯೆ",app_version:"ಆ್ಯಪ್ ಆವೃತ್ತಿ"}
+};
+let PC_LANG = localStorage.getItem('pc-lang') || 'en';
+
+function t(key){
+  const dict = PC_TRANSLATIONS[PC_LANG] || PC_TRANSLATIONS.en;
+  return dict[key] || PC_TRANSLATIONS.en[key] || key;
+}
+
+function applyTranslations(){
+  document.querySelectorAll('[data-t]').forEach(el=>{
+    el.textContent = t(el.getAttribute('data-t'));
+  });
+  document.documentElement.lang = PC_LANG;
+}
+
+function setLanguage(lang){
+  PC_LANG = lang;
+  localStorage.setItem('pc-lang', lang);
+  applyTranslations();
+  const sel = document.getElementById('pref-lang');
+  if(sel) sel.value = lang;
+  showToast(t('settings_title') + ' · ' + (document.querySelector(`#pref-lang option[value="${lang}"]`)?.textContent || lang), 'success');
+}
+
+function applyThemeVisual(isDark){
+  document.body.classList.toggle('dark', isDark);
+  const icon = document.getElementById('dark-icon');
+  if(icon){
+    icon.innerHTML = isDark
+      ? '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>'
+      : '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>';
+  }
+  if(typeof updateChartTheme==='function' && typeof CI!=='undefined') updateChartTheme();
+}
+
+function setTheme(mode){
+  localStorage.setItem('pc-theme', mode);
+  document.querySelectorAll('#theme-seg .seg-btn').forEach(b=>b.classList.toggle('active', b.dataset.theme===mode));
+  if(mode==='system'){
+    const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    applyThemeVisual(prefersDark);
+  } else {
+    applyThemeVisual(mode==='dark');
+  }
+}
+
+function toggleDark(){
+  const willBeDark = !document.body.classList.contains('dark');
+  setTheme(willBeDark ? 'dark' : 'light');
+}
+
+if(window.matchMedia){
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e=>{
+    if((localStorage.getItem('pc-theme')||'system')==='system') applyThemeVisual(e.matches);
+  });
+}
+
+const PC_SIZE_SCALE = {small:0.9, medium:1, large:1.15};
+function setTextSize(size){
+  localStorage.setItem('pc-textsize', size);
+  document.documentElement.style.setProperty('--font-scale', PC_SIZE_SCALE[size] || 1);
+  document.querySelectorAll('#textsize-seg .seg-btn').forEach(b=>b.classList.toggle('active', b.dataset.size===size));
+}
+
+function toggleHighContrast(on){
+  document.body.classList.toggle('high-contrast', on);
+  localStorage.setItem('pc-contrast', on ? '1' : '0');
+}
+
+function openModal(id){
+  const el = document.getElementById(id);
+  if(!el) return;
+  el.classList.add('open');
+  document.addEventListener('keydown', pcModalEscHandler);
+  const focusable = el.querySelector('input,textarea,button');
+  if(focusable) setTimeout(()=>focusable.focus(), 50);
+}
+function closeModal(id){
+  const el = document.getElementById(id);
+  if(!el) return;
+  el.classList.remove('open');
+  document.removeEventListener('keydown', pcModalEscHandler);
+}
+function pcModalEscHandler(e){
+  if(e.key==='Escape') document.querySelectorAll('.pc-modal-overlay.open').forEach(m=>closeModal(m.id));
+}
+document.addEventListener('click', e=>{
+  if(e.target.classList && e.target.classList.contains('pc-modal-overlay')) closeModal(e.target.id);
+});
+
+function submitPasswordChange(){
+  const cur = document.getElementById('pw-current');
+  const nw = document.getElementById('pw-new');
+  const cf = document.getElementById('pw-confirm');
+  ['err-pw-current','err-pw-new','err-pw-confirm'].forEach(id=>document.getElementById(id).textContent='');
+  let valid = true;
+  if(!cur.value){ document.getElementById('err-pw-current').textContent='Enter your current password.'; valid=false; }
+  if(!nw.value || nw.value.length < 8){ document.getElementById('err-pw-new').textContent='New password must be at least 8 characters.'; valid=false; }
+  if(cf.value !== nw.value || !cf.value){ document.getElementById('err-pw-confirm').textContent='Passwords do not match.'; valid=false; }
+  if(!valid) return;
+  closeModal('modal-password');
+  cur.value=''; nw.value=''; cf.value='';
+  showToast('Password updated successfully.', 'success');
+}
+
+function submitDeleteAccount(){
+  const input = document.getElementById('del-confirm-text');
+  const err = document.getElementById('err-del-confirm');
+  err.textContent='';
+  if(input.value.trim().toUpperCase() !== 'DELETE'){
+    err.textContent = 'Please type DELETE exactly to confirm.';
+    return;
+  }
+  closeModal('modal-delete');
+  input.value='';
+  showToast('Account deleted. Redirecting to Portal Sign In...', 'warn');
+  setTimeout(() => {
+    logout();
+  }, 1200);
+}
+
+function logout(){
+  if(!confirm('Log out of the Pashu Sakhi Admin Console?')) return;
+  try {
+    localStorage.removeItem("pashusakhi_session");
+    localStorage.removeItem("session:current");
+    localStorage.removeItem("pashusakhi_user");
+    if (window.PashuSakhiBridge) window.PashuSakhiBridge.clearSession();
+  } catch (e) {}
+  window.location.href = "index.html?logout=true";
+}
+
+function setPermBadge(key, state){
+  const el = document.getElementById('perm-'+key);
+  if(!el) return;
+  const map = {granted:['granted','Granted'],denied:['denied','Denied'],prompt:['prompt','Not yet decided'],unknown:['unknown','Unsupported here']};
+  const [cls,label] = map[state] || map.unknown;
+  el.className = 'perm-status '+cls;
+  el.textContent = label;
+}
+async function checkPermissions(){
+  if(!navigator.permissions){
+    ['camera','notifications','location','microphone'].forEach(k=>setPermBadge(k,'unknown'));
+    showToast('This browser does not expose the Permissions API.', 'warn');
+    return;
+  }
+  const queries = [
+    ['camera','camera'],
+    ['microphone','microphone'],
+    ['location','geolocation']
+  ];
+  for(const [uiKey, permName] of queries){
+    try{
+      const status = await navigator.permissions.query({name:permName});
+      setPermBadge(uiKey, status.state);
+    }catch(e){
+      setPermBadge(uiKey, 'unknown');
+    }
+  }
+  if('Notification' in window){
+    const map = {granted:'granted', denied:'denied', default:'prompt'};
+    setPermBadge('notifications', map[Notification.permission] || 'unknown');
+  } else {
+    setPermBadge('notifications','unknown');
+  }
+  showToast('Checked live browser permission status.', 'info');
+}
+
+function submitContactSupport(){
+  const subj = document.getElementById('contact-subject');
+  const msg = document.getElementById('contact-message');
+  if(!subj.value.trim() || !msg.value.trim()){
+    showToast('Please fill in both the subject and message.', 'warn');
+    return;
+  }
+  closeModal('modal-contact');
+  subj.value=''; msg.value='';
+  showToast('Your message has been queued for the support team.', 'success');
+}
+function submitReportProblem(){
+  const msg = document.getElementById('report-message');
+  if(!msg.value.trim()){
+    showToast('Please describe the problem before submitting.', 'warn');
+    return;
+  }
+  closeModal('modal-report');
+  msg.value='';
+  showToast('Thanks — your report has been logged.', 'success');
+}
+function submitFeedback(){
+  const msg = document.getElementById('feedback-message');
+  if(!msg.value.trim()){
+    showToast('Please write your feedback before sending.', 'warn');
+    return;
+  }
+  closeModal('modal-feedback');
+  msg.value='';
+  showToast('Thanks for the feedback!', 'success');
+}
+
+function initSettings(){
+  applyTranslations();
+  const langSel = document.getElementById('pref-lang');
+  if(langSel) langSel.value = PC_LANG;
+
+  const savedTheme = localStorage.getItem('pc-theme') || (localStorage.getItem('pc-dark')==='1' ? 'dark' : 'system');
+  setTheme(savedTheme);
+
+  const savedSize = localStorage.getItem('pc-textsize') || 'medium';
+  setTextSize(savedSize);
+
+  const savedContrast = localStorage.getItem('pc-contrast') === '1';
+  const contrastToggle = document.getElementById('pref-contrast');
+  if(contrastToggle) contrastToggle.checked = savedContrast;
+  toggleHighContrast(savedContrast);
+}
+function refreshAdminData(){
+  if (!window.PashuSakhiBridge) return;
+  const emergencies = window.PashuSakhiBridge.getEmergencies();
+  const cmTbody = document.getElementById('cm-tbody');
+  if (cmTbody && emergencies && emergencies.length > 0) {
+    emergencies.forEach(e => {
+      const rowId = 'cm-row-' + e.id;
+      let tr = document.getElementById(rowId);
+      const isAssigned = Boolean(e.assignedVet);
+      const isEmergency = (e.severity === 'critical' || e.severity === 'high');
+      const badgeCls = e.severity === 'critical' ? 'critical' : e.severity === 'high' ? 'high' : 'medium';
+      
+      if (!tr) {
+        tr = document.createElement('tr');
+        tr.id = rowId;
+        tr.innerHTML = `
+          <td>${e.id.substring(0, 10).toUpperCase()}</td>
+          <td>${e.farmerName || 'Suresh Patil'} (${e.animalName || 'Livestock'})</td>
+          <td>${e.title || 'Livestock Case'}</td>
+          <td>${isAssigned ? `<span style="color:var(--accent);font-weight:600">${e.assignedVet}</span>` : '<span class="pill inactive">Unassigned</span>'}</td>
+          <td><span class="pill ${badgeCls}">${e.severity.toUpperCase()}</span></td>
+          <td><span class="pill ${e.status === 'resolved' ? 'resolved' : 'open'}">${e.status === 'resolved' ? 'Resolved' : 'Open'}</span></td>
+          <td>${e.time || 'Just now'}</td>
+          <td>${isAssigned ? '<span style="font-size:.75rem;color:var(--success);font-weight:600">Assigned</span>' : `<button class="btn-xs ${isEmergency ? 'danger' : 'primary'}" onclick="handleCaseAssign(this,'${e.id}','Dr. Suresh Nair',${isEmergency})">${isEmergency ? '🚨 Fast Assign' : 'Assign Vet'}</button>`}</td>
+        `;
+        cmTbody.insertBefore(tr, cmTbody.firstChild);
+      } else {
+        const vetCell = tr.querySelector('td:nth-child(4)');
+        if (isAssigned && vetCell) {
+          vetCell.innerHTML = `<span style="color:var(--accent);font-weight:600">${e.assignedVet}</span>`;
+        }
+      }
+    });
+
+    const emgKpi = document.getElementById('cm-kpi-emergency');
+    if (emgKpi) {
+      const activeEmg = emergencies.filter(e => e.severity === 'critical' || e.severity === 'high').length;
+      emgKpi.textContent = Math.max(3, activeEmg);
+    }
+  }
+
+  const cmFooter = document.querySelector('#mp-case-mon .table-footer');
+  if (cmFooter && cmTbody) {
+    const totalRows = cmTbody.querySelectorAll('tr').length;
+    const unassigned = cmTbody.querySelectorAll('.pill.inactive').length;
+    cmFooter.textContent = `${totalRows} active cases · ${unassigned} unassigned · Bridge synced`;
+  }
+
+  const caseTbody = document.getElementById('case-tbody');
+  if (caseTbody && emergencies && emergencies.length > 0) {
+    emergencies.forEach(e => {
+      const rowId = 'case-row-' + e.id;
+      let tr = document.getElementById(rowId);
+      const isAssigned = Boolean(e.assignedVet);
+      const badgeCls = e.severity === 'critical' ? 'critical' : e.severity === 'high' ? 'high' : 'medium';
+      if (!tr) {
+        tr = document.createElement('tr');
+        tr.id = rowId;
+        tr.innerHTML = `
+          <td>${e.id.substring(0, 10).toUpperCase()}</td>
+          <td>${e.farmerName || 'Suresh Patil'}</td>
+          <td>${e.village || 'Pune'}</td>
+          <td>${e.title || 'Livestock Case'}</td>
+          <td>${isAssigned ? `<span style="color:var(--accent);font-weight:600">${e.assignedVet}</span>` : 'Unassigned'}</td>
+          <td><span class="pill ${badgeCls}">${e.severity.toUpperCase()}</span></td>
+          <td>${e.time || 'Just now'}</td>
+          <td><span class="pill ${e.status === 'resolved' ? 'resolved' : 'open'}">${e.status === 'resolved' ? 'Resolved' : 'Open'}</span></td>
+        `;
+        caseTbody.insertBefore(tr, caseTbody.firstChild);
+      }
+    });
+  }
+}
+
+initSettings();
+refreshAdminData();
+
+if (window.PashuSakhiBridge) {
+  window.PashuSakhiBridge.onEvent(() => {
+    refreshAdminData();
+  });
+}
+window.addEventListener('storage', (e) => {
+  if (e.key === 'psk_bridge_event') {
+    refreshAdminData();
+  }
+});
+</script>
+</body>
+</html>

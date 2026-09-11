@@ -1,0 +1,2891 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Pashu Sakhi — Portal Sign In & Role Selection</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+<style>
+@import url('https://fonts.googleapis.com/css?family=Montserrat:400,600,800');
+
+:root {
+    /* PashuSakhi palette (light / paper theme) */
+    --bg: #F5F1E6;            /* Paper - main page background */
+    --bg-light: #FBF9F3;      /* Paper Soft - cards / elevated surfaces */
+    --text-main: #23291F;     /* Ink - primary text */
+    --text-muted: #5B6154;    /* Ink Soft - secondary text */
+    --shadow-dark: #E3DCC8;   /* Border - warm neumorphic shadow */
+    --shadow-light: #ffffff;
+    --accent-start: #1F5D50;  /* Primary Green */
+    --accent-end: #143F36;    /* Deep Green */
+    --on-accent: #ffffff;     /* text color on top of the green accent */
+    --soft-green: #DCEAE4;
+    --ochre: #D98B2B;
+    --soft-ochre: #F6E3C2;
+    --border-color: #E3DCC8;
+    --status-error: #B3402A;  /* Urgent */
+    --status-success: #2F7A4F;/* Healthy */
+    --focus-ring: rgba(31, 93, 80, 0.4);
+    --overlay-tint: rgba(20, 63, 54, 0.32);
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    background: var(--bg);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+    font-family: 'Montserrat', sans-serif;
+    min-height: 100vh;
+    margin: 0;
+    padding: clamp(16px, 4vw, 40px) clamp(12px, 4vw, 24px) clamp(16px, 4vw, 80px);
+    color: var(--text-main);
+}
+
+h1 {
+    font-weight: 800;
+    margin: 0;
+    color: var(--text-main);
+}
+
+form h1 {
+    font-size: 24px;
+    margin: 0 0 8px;
+}
+
+h2 {
+    text-align: center;
+    color: var(--text-main);
+    letter-spacing: 0px;
+    font-weight: 600;
+    font-size: clamp(13px, 2vw, 16px);
+    margin: 0 0 clamp(8px, 2vw, 16px);
+}
+
+p {
+    font-size: 14px;
+    font-weight: 100;
+    line-height: 20px;
+    letter-spacing: .5px;
+    margin: 20px 0 30px;
+    color: var(--text-muted);
+}
+
+span {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+a {
+    color: var(--text-muted);
+    font-size: 14px;
+    text-decoration: none;
+    margin: 15px 0;
+    transition: color 0.2s ease;
+}
+
+a:hover {
+    color: var(--accent-end);
+}
+
+form {
+    background-color: var(--bg-light);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    padding: 0 40px;
+    height: 100%;
+    text-align: center;
+}
+
+.social-container {
+    margin: 16px 0 8px;
+}
+
+.social-container a {
+    border: none;
+    border-radius: 50%;
+    display: inline-flex;
+    justify-content: center;
+    align-items: center;
+    margin: 0 8px;
+    height: 42px;
+    width: 42px;
+    background: var(--bg-light);
+    box-shadow: 5px 5px 10px var(--shadow-dark), -5px -5px 10px var(--shadow-light);
+    transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.social-container a i {
+    font-size: 16px;
+    background: linear-gradient(160deg, var(--accent-start), var(--accent-end));
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+}
+
+.social-container a:hover {
+    transform: translateY(-2px);
+}
+
+.social-container a:active {
+    box-shadow: inset 3px 3px 6px var(--shadow-dark), inset -3px -3px 6px var(--shadow-light);
+}
+
+input {
+    background: var(--bg-light);
+    border: none;
+    padding: 12px 15px;
+    margin: 6px 0;
+    width: 100%;
+    color: var(--text-main);
+    border-radius: 10px;
+    box-shadow: inset 4px 4px 8px var(--shadow-dark), inset -4px -4px 8px var(--shadow-light);
+    font-family: 'Montserrat', sans-serif;
+    font-size: 14px;
+}
+
+input::placeholder {
+    color: var(--text-muted);
+}
+
+input:focus {
+    outline: none;
+    box-shadow: inset 4px 4px 8px var(--shadow-dark), inset -4px -4px 8px var(--shadow-light), 0 0 0 1px var(--focus-ring);
+}
+
+.container {
+    background-color: var(--bg-light);
+    border-radius: 16px;
+    box-shadow: 14px 14px 28px var(--shadow-dark), -14px -14px 28px var(--shadow-light);
+    position: relative;
+    overflow: hidden;
+    width: 440px;
+    max-width: 100%;
+    min-height: 590px;
+    margin-top: 10px;
+}
+
+.form-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    overflow-y: auto;
+    transition: opacity 0.6s ease-in-out, transform 0.6s ease-in-out;
+}
+
+.sign-in-container {
+    opacity: 1;
+    transform: translateX(0);
+    z-index: 2;
+    pointer-events: auto;
+}
+
+.container.right-panel-active .sign-in-container {
+    opacity: 0;
+    transform: translateX(-24px);
+    z-index: 1;
+    pointer-events: none;
+}
+
+.sign-up-container {
+    opacity: 0;
+    transform: translateX(24px);
+    z-index: 1;
+    pointer-events: none;
+}
+
+.container.right-panel-active .sign-up-container {
+    opacity: 1;
+    transform: translateX(0);
+    z-index: 2;
+    pointer-events: auto;
+}
+
+.demo-login-box {
+    width: 100%;
+    margin: 8px 0 10px;
+    padding: 10px 12px;
+    background: #F1ECE0;
+    border: 1.5px dashed var(--border-color);
+    border-radius: 14px;
+    text-align: left;
+}
+
+.demo-login-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11.5px;
+    font-weight: 700;
+    color: var(--text-main);
+    margin-bottom: 7px;
+}
+
+.demo-subtext {
+    font-size: 10px;
+    color: var(--text-muted);
+    font-weight: 500;
+}
+
+.demo-login-chips {
+    display: flex;
+    gap: 6px;
+    width: 100%;
+}
+
+.demo-chip {
+    flex: 1;
+    padding: 8px 4px !important;
+    border-radius: 999px !important;
+    font-size: 11px !important;
+    font-weight: 700 !important;
+    text-transform: none !important;
+    letter-spacing: 0 !important;
+    background: var(--bg-light) !important;
+    color: var(--accent-end) !important;
+    border: 1.5px solid var(--border-color) !important;
+    box-shadow: 2px 2px 5px var(--shadow-dark), -2px -2px 5px var(--shadow-light) !important;
+    cursor: pointer;
+    transition: all 0.15s ease !important;
+    white-space: nowrap;
+}
+
+.demo-chip:hover {
+    background: var(--soft-green) !important;
+    border-color: var(--accent-start) !important;
+    color: var(--accent-start) !important;
+    transform: translateY(-1px);
+}
+
+.demo-chip.active {
+    background: linear-gradient(135deg, var(--accent-start), var(--accent-end)) !important;
+    color: #fff !important;
+    border-color: transparent !important;
+    box-shadow: 0 4px 10px rgba(31,93,80,.25) !important;
+}
+
+.signup-role-group {
+    width: 100%;
+    margin: 6px 0 8px;
+    text-align: left;
+}
+
+.signup-role-label {
+    font-size: 11.5px;
+    font-weight: 700;
+    color: var(--text-muted);
+    display: block;
+    margin-bottom: 5px;
+}
+
+.role-pills-row {
+    display: flex;
+    gap: 6px;
+    width: 100%;
+}
+
+.role-radio-pill {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 9px 4px;
+    border-radius: 12px;
+    background: var(--bg-light);
+    border: 1.5px solid var(--border-color);
+    font-size: 11.5px;
+    font-weight: 700;
+    color: var(--text-main);
+    cursor: pointer;
+    box-shadow: 2px 2px 5px var(--shadow-dark), -2px -2px 5px var(--shadow-light);
+    transition: all 0.15s ease;
+    user-select: none;
+}
+
+.role-radio-pill input[type="radio"] {
+    display: none;
+}
+
+.role-radio-pill:hover {
+    border-color: var(--accent-start);
+}
+
+.role-radio-pill.selected {
+    border-color: var(--accent-start);
+    background: var(--soft-green);
+    color: var(--accent-end);
+    box-shadow: inset 2px 2px 4px var(--shadow-dark);
+}
+
+.sign-up-container button[type="submit"] {
+    margin-top: 10px;
+}
+
+
+button {
+    border-radius: 20px;
+    border: none;
+    background: linear-gradient(135deg, var(--accent-start), var(--accent-end));
+    font-size: 12px;
+    font-weight: 800;
+    font-family: 'Montserrat', sans-serif;
+    padding: 12px 45px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    transition: transform 80ms ease-in, box-shadow 80ms ease-in;
+    box-shadow: 6px 6px 12px var(--shadow-dark), -6px -6px 12px var(--shadow-light);
+    color: var(--on-accent);
+    cursor: pointer;
+}
+
+button:active {
+    transform: scale(0.95);
+    box-shadow: inset 4px 4px 8px rgba(35, 41, 31, 0.25), inset -4px -4px 8px rgba(255,255,255,0.6);
+}
+
+button:focus {
+    outline: none;
+}
+
+button.ghost {
+    background: var(--bg-light);
+    color: var(--text-main);
+    box-shadow: 6px 6px 12px rgba(35, 41, 31, 0.10), -6px -6px 12px rgba(255,255,255,0.8);
+    border: 1px solid rgba(35, 41, 31, 0.06);
+}
+
+footer {
+    background-color: var(--soft-green);
+    color: var(--text-muted);
+    font-size: 14px;
+    bottom: 0;
+    position: fixed;
+    left: 0;
+    right: 0;
+    text-align: center;
+    z-index: 999;
+    margin: 0;
+}
+
+footer p {
+    margin: 10px 0;
+}
+
+.field-error {
+    width: 100%;
+    text-align: left;
+    font-size: 11px;
+    color: var(--status-error);
+    margin: -2px 0 4px 2px;
+    min-height: 14px;
+    display: block;
+}
+
+.form-message {
+    width: 100%;
+    text-align: left;
+    font-size: 12px;
+    margin: 4px 0;
+    min-height: 14px;
+}
+
+.form-message.error { color: var(--status-error); }
+.form-message.success { color: var(--status-success); }
+
+button[disabled] {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.reset-overlay {
+    position: fixed;
+    inset: 0;
+    background: var(--overlay-tint);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.reset-overlay.active {
+    display: flex;
+}
+
+.reset-card {
+    background-color: var(--bg-light);
+    border-radius: 16px;
+    box-shadow: 14px 14px 28px var(--shadow-dark), -14px -14px 28px var(--shadow-light);
+    width: 360px;
+    max-width: 90%;
+    padding: 40px;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.reset-card h1 { font-size: 20px; }
+
+.reset-card .close-link {
+    align-self: flex-end;
+    margin: 0 0 10px;
+    cursor: pointer;
+}
+
+.dashboard {
+    display: none;
+    background-color: var(--bg-light);
+    border-radius: 16px;
+    box-shadow: 14px 14px 28px var(--shadow-dark), -14px -14px 28px var(--shadow-light);
+    width: 768px;
+    max-width: 100%;
+    min-height: 480px;
+    margin-top: 10px;
+    padding: 50px;
+    text-align: center;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+.dashboard.active {
+    display: flex;
+}
+
+.dashboard .avatar {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--accent-start), var(--accent-end));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--on-accent);
+    font-weight: 800;
+    font-size: 22px;
+    box-shadow: 6px 6px 12px var(--shadow-dark), -6px -6px 12px var(--shadow-light);
+    margin-bottom: 16px;
+}
+
+#appRoot.hidden {
+    display: none;
+}
+
+.switch-text {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin: 14px 0 0;
+    text-align: center;
+    width: 100%;
+}
+
+.switch-text .switch-link {
+    display: inline;
+    margin: 0;
+    color: var(--accent-end);
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: none;
+    transition: color 0.2s ease;
+}
+
+.switch-text .switch-link:hover {
+    color: var(--accent-start);
+    text-decoration: underline;
+}
+
+@media (max-width: 620px) {
+    html {
+        height: 100%;
+    }
+
+    body {
+        height: 100vh;
+        height: 100dvh;
+        overflow: hidden;
+        padding: 10px 12px;
+    }
+
+    h2 {
+        padding: 0 10px;
+        margin-bottom: 2px;
+    }
+
+    .container {
+        width: 100%;
+        height: calc(100vh - 34px);
+        height: clamp(440px, calc(100dvh - 34px), 760px);
+        min-height: 0;
+        margin-top: 6px;
+    }
+
+    form {
+        padding: 12px 22px 8px;
+        overflow-y: auto;
+    }
+
+    form h1 {
+        font-size: 18px;
+    }
+
+    .social-container {
+        margin: 8px 0;
+    }
+
+    .social-container a {
+        height: 34px;
+        width: 34px;
+        margin: 0 6px;
+    }
+
+    .social-container a i {
+        font-size: 14px;
+    }
+
+    span {
+        font-size: 10px;
+    }
+
+    input {
+        font-size: 16px;
+        padding: 9px 12px;
+        margin: 4px 0;
+    }
+
+    .field-error {
+        font-size: 10px;
+        min-height: 11px;
+        margin: -2px 0 2px 2px;
+    }
+
+    .form-message {
+        font-size: 11px;
+        min-height: 11px;
+        margin: 2px 0;
+    }
+
+    #forgotPasswordLink {
+        font-size: 12px;
+        margin: 6px 0;
+    }
+
+    button {
+        padding: 9px 34px;
+        font-size: 11px;
+    }
+
+    .switch-text {
+        font-size: 11px;
+        margin: 6px 0 0;
+    }
+
+    .dashboard {
+        width: 100%;
+        height: calc(100vh - 34px);
+        height: clamp(440px, calc(100dvh - 34px), 760px);
+        min-height: 0;
+        padding: 24px;
+        margin-top: 6px;
+    }
+
+    .reset-card {
+        padding: 26px;
+        max-height: 90vh;
+        max-height: 90dvh;
+        overflow-y: auto;
+    }
+
+    footer {
+        display: none;
+    }
+}
+
+.screen {
+    width: 100%;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+}
+
+.screen.fade-in {
+    opacity: 1;
+}
+
+.onboarding-card {
+    background-color: var(--bg-light);
+    border-radius: 16px;
+    box-shadow: 14px 14px 28px var(--shadow-dark), -14px -14px 28px var(--shadow-light);
+    width: 420px;
+    max-width: 100%;
+    padding: 48px 40px;
+    margin-top: 10px;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.app-logo {
+    width: 76px;
+    height: 76px;
+    border-radius: 22px;
+    background: linear-gradient(135deg, var(--accent-start), var(--accent-end));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--on-accent);
+    font-weight: 800;
+    font-size: 32px;
+    box-shadow: 6px 6px 12px var(--shadow-dark), -6px -6px 12px var(--shadow-light);
+    margin-bottom: 22px;
+}
+
+#getStartedScreen .app-logo {
+    width: 120px;
+    height: 120px;
+    border-radius: 50%;
+    background: var(--paper-soft);
+    border: 2.5px solid var(--border-color);
+    box-shadow: 0 10px 26px rgba(20,63,54,.16);
+    margin-bottom: 24px;
+    padding: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--accent-start);
+    font-size: 52px;
+}
+
+#getStartedScreen .app-name {
+    color: #143F36;
+    font-weight: 800;
+    letter-spacing: .2px;
+}
+
+#getStartedScreen .tagline {
+    color: #D98B2B;
+}
+
+.app-name {
+    font-size: 26px;
+    margin: 0 0 8px;
+}
+
+.tagline {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--accent-end);
+    letter-spacing: .3px;
+    margin: 0 0 10px;
+}
+
+.app-description {
+    font-size: 14px;
+    font-weight: 100;
+    line-height: 20px;
+    letter-spacing: .3px;
+    color: var(--text-muted);
+    margin: 0 0 30px;
+}
+
+#getStartedBtn {
+    margin-top: 4px;
+}
+
+.onboarding-card h1 {
+    font-size: 22px;
+    margin: 0 0 22px;
+}
+
+.lang-options {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin: 4px 0 26px;
+    max-height: 380px;
+    overflow-y: auto;
+    padding-right: 6px;
+    scrollbar-width: thin;
+}
+
+button.lang-card {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 18px;
+    border-radius: 14px;
+    background: var(--bg-light);
+    box-shadow: 5px 5px 10px var(--shadow-dark), -5px -5px 10px var(--shadow-light);
+    border: 2px solid transparent;
+    cursor: pointer;
+    text-transform: none;
+    letter-spacing: 0;
+    font-family: 'Montserrat', sans-serif;
+    transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+button.lang-card:active {
+    transform: none;
+}
+
+.lang-flag {
+    font-size: 22px;
+    line-height: 1;
+}
+
+.lang-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-main);
+}
+
+button.lang-card.selected {
+    border-color: var(--accent-end);
+    box-shadow: inset 3px 3px 6px var(--shadow-dark), inset -3px -3px 6px var(--shadow-light);
+    background: linear-gradient(135deg, rgba(31,93,80,0.08), rgba(20,63,54,0.08));
+}
+
+.lang-switcher {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    display: flex;
+    gap: 4px;
+    background: var(--bg-light);
+    padding: 5px;
+    border-radius: 999px;
+    box-shadow: 5px 5px 10px var(--shadow-dark), -5px -5px 10px var(--shadow-light);
+    z-index: 1001;
+    max-width: calc(100vw - 32px);
+    overflow-x: auto;
+}
+
+.lang-switcher button.lang-switch-btn {
+    border-radius: 999px;
+    padding: 6px 12px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .3px;
+    background: transparent;
+    color: var(--text-muted);
+    box-shadow: none;
+}
+
+.lang-switcher button.lang-switch-btn.selected {
+    background: linear-gradient(135deg, var(--accent-start), var(--accent-end));
+    color: var(--on-accent);
+}
+
+.lang-switcher button.lang-switch-btn:active {
+    transform: scale(0.95);
+}
+
+.onboarding-nav-row {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 4px;
+}
+
+.onboarding-nav-row button {
+    margin: 0;
+}
+
+button.back-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 12px 22px;
+    min-height: 44px;
+    text-transform: none;
+    letter-spacing: .3px;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+button.back-btn:hover {
+    box-shadow: 4px 4px 8px rgba(35, 41, 31, 0.14), -4px -4px 8px rgba(255,255,255,0.9);
+}
+
+button.back-btn:active {
+    transform: scale(0.95);
+    box-shadow: inset 3px 3px 6px rgba(35, 41, 31, 0.18), inset -3px -3px 6px rgba(255,255,255,0.7);
+}
+
+.main-back-btn {
+    position: fixed;
+    top: 16px;
+    left: 16px;
+    z-index: 1001;
+    padding: 10px 18px;
+}
+
+@media (max-width: 620px) {
+    .onboarding-nav-row {
+        gap: 8px;
+    }
+
+    button.back-btn {
+        padding: 10px 16px;
+        font-size: 11px;
+    }
+
+    .main-back-btn {
+        top: 8px;
+        left: 8px;
+        padding: 9px 14px;
+    }
+
+    .onboarding-card {
+        width: 100%;
+        padding: 30px 24px;
+    }
+
+    .app-logo {
+        width: 60px;
+        height: 60px;
+        font-size: 26px;
+        border-radius: 18px;
+        margin-bottom: 16px;
+    }
+
+    #getStartedScreen .app-logo {
+        width: 100px;
+        height: 100px;
+        font-size: 40px;
+        margin-bottom: 18px;
+    }
+
+    .app-name {
+        font-size: 20px;
+    }
+
+    .tagline {
+        font-size: 12px;
+    }
+
+    .app-description {
+        font-size: 12px;
+        margin-bottom: 22px;
+    }
+
+    .onboarding-card h1 {
+        font-size: 18px;
+        margin-bottom: 16px;
+    }
+
+    .lang-switcher {
+        top: 8px;
+        right: 8px;
+    }
+
+    .lang-switcher button.lang-switch-btn {
+        padding: 5px 9px;
+        font-size: 10px;
+    }
+}
+
+/* ============================================================
+   PASHU SAKHI — ROLE SELECTION STEP
+   Flowchart: Start -> Sign In / Sign Up -> Role Selection -> Dashboards
+   ============================================================ */
+#roleSelectionScreen {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    overflow-y: auto;
+    padding: 18px 24px;
+    background: #F5F1E6;
+    color: #23291F;
+}
+#roleSelectionScreen.active { display: flex; }
+
+.role-selection-shell {
+    width: min(840px, 100%);
+    margin: auto;
+}
+.role-selection-header {
+    text-align: center;
+    margin-bottom: 18px;
+}
+.role-selection-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    color: #143F36;
+    font-weight: 800;
+    font-size: 15px;
+    letter-spacing: .2px;
+}
+.role-selection-brand-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: #1F5D50;
+    color: #fff;
+    box-shadow: 0 7px 18px rgba(20,63,54,.18);
+}
+.role-selection-header h1 {
+    color: #143F36;
+    font-size: clamp(20px, 3.2vw, 30px);
+    line-height: 1.15;
+    margin: 0 0 6px;
+    font-weight: 800;
+}
+.role-selection-header p {
+    color: #5B6154;
+    margin: 0;
+    font-size: 13.5px;
+    line-height: 1.4;
+    font-weight: 600;
+}
+
+.role-cards {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-bottom: 12px;
+}
+.role-card {
+    appearance: none;
+    min-height: 220px;
+    padding: 20px 18px;
+    border: 2px solid #E3DCC8;
+    border-radius: 18px;
+    background: #FBF9F3;
+    color: #23291F;
+    box-shadow: 0 8px 18px rgba(20,63,54,.08);
+    text-align: left;
+    text-transform: none;
+    letter-spacing: 0;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease, background .2s ease;
+}
+.role-card:hover {
+    transform: translateY(-3px);
+    border-color: rgba(31,93,80,.48);
+    box-shadow: 0 14px 26px rgba(20,63,54,.14);
+}
+.role-card:focus-visible {
+    outline: 3px solid rgba(217,139,43,.45);
+    outline-offset: 3px;
+}
+.role-card.selected {
+    border-color: #1F5D50;
+    background: #DCEAE4;
+    box-shadow: 0 0 0 3px rgba(31,93,80,.18), 0 14px 26px rgba(20,63,54,.16);
+}
+.role-icon {
+    width: 46px;
+    height: 46px;
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #DCEAE4;
+    color: #1F5D50;
+    font-size: 22px;
+    margin-bottom: 12px;
+    transition: transform .2s ease, background .2s ease, color .2s ease;
+}
+.role-card:hover .role-icon { transform: scale(1.06); }
+.role-card.selected .role-icon {
+    background: #1F5D50;
+    color: #fff;
+}
+.role-card h2 {
+    text-align: left;
+    color: #143F36;
+    font-size: 17px;
+    font-weight: 800;
+    margin: 0 0 8px;
+}
+.role-card ul {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 12px;
+    display: grid;
+    gap: 6px;
+}
+.role-card li {
+    color: #5B6154;
+    font-size: 12.5px;
+    line-height: 1.4;
+    font-weight: 500;
+    padding-left: 20px;
+    position: relative;
+}
+.role-card li::before {
+    content: "\f00c";
+    font-family: "Font Awesome 6 Free";
+    font-weight: 900;
+    position: absolute;
+    left: 0;
+    top: 1px;
+    color: #1F5D50;
+    font-size: 11px;
+}
+.role-card.selected li::before { color: #D98B2B; }
+.role-selected-badge {
+    margin-top: auto;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: #1F5D50;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 800;
+    opacity: 0;
+    transition: opacity .2s ease;
+}
+.role-card.selected .role-selected-badge { opacity: 1; }
+
+.role-helpline-box {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 16px;
+    background: #FBF9F3;
+    border: 1.5px solid #E3DCC8;
+    border-radius: 12px;
+    margin: 10px 0 14px;
+    font-size: 13px;
+    color: var(--text-main);
+    flex-wrap: wrap;
+}
+.role-helpline-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 700;
+    color: #143F36;
+}
+.role-helpline-link {
+    color: #B3402A;
+    font-weight: 800;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.role-selection-message {
+    min-height: 18px;
+    text-align: center;
+    color: #B3402A;
+    font-size: 13px;
+    font-weight: 700;
+    margin: 4px 0 8px;
+}
+.role-selection-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-top: 8px;
+}
+.role-selection-actions button {
+    min-width: 130px;
+    min-height: 44px;
+}
+.role-selection-actions .role-back {
+    background: #FBF9F3;
+    color: #143F36;
+    border: 1.5px solid rgba(31,93,80,.25);
+    box-shadow: 0 6px 14px rgba(20,63,54,.08);
+    text-transform: none;
+    letter-spacing: 0;
+}
+.role-selection-actions .role-continue {
+    background: #1F5D50;
+    color: #fff;
+    box-shadow: 0 10px 22px rgba(31,93,80,.24);
+    text-transform: none;
+    letter-spacing: .2px;
+}
+.role-selection-actions .role-continue:hover:not(:disabled) {
+    background: #143F36;
+    transform: translateY(-2px);
+}
+.role-selection-actions button:disabled {
+    background: #B8C7C1;
+    color: #EEF3F0;
+    border-color: transparent;
+    box-shadow: none;
+    cursor: not-allowed;
+}
+
+@media (max-width: 800px) {
+    .role-cards { grid-template-columns: 1fr; gap: 12px; }
+    .role-card { min-height: auto; padding: 16px 18px; }
+}
+@media (max-width: 480px) {
+    #roleSelectionScreen { padding: 14px 12px; align-items: flex-start; }
+    .role-selection-header h1 { font-size: 21px; }
+    .role-selection-header p { font-size: 12.5px; }
+    .role-selection-brand { margin-bottom: 4px; }
+    .role-selection-actions { position: sticky; bottom: 0; padding: 10px 0 4px; background: linear-gradient(transparent, #F5F1E6 25%); }
+    .role-selection-actions button { min-width: 0; flex: 1; }
+}
+</style>
+</head>
+<body>
+
+<!-- ============================================================
+     Onboarding: Get Started screen (first screen shown).
+     ============================================================ -->
+<section id="getStartedScreen" class="screen">
+	<div class="onboarding-card">
+		<div class="app-logo">
+			<i class="fas fa-paw"></i>
+		</div>
+		<h1 class="app-name" data-i18n="appName">PashuSakhi</h1>
+		<p class="tagline" data-i18n="tagline">AI Livestock Care</p>
+		<p class="app-description" data-i18n="appDescription">Your one safe place to sign in and manage your livestock healthcare workspace.</p>
+		<button id="getStartedBtn" type="button" data-i18n="getStarted">Get Started</button>
+	</div>
+</section>
+
+<!-- ============================================================
+     Onboarding: Language Selection screen.
+     ============================================================ -->
+<section id="languageScreen" class="screen">
+	<div class="onboarding-card">
+		<h1 data-i18n="chooseLanguageHeading">Choose Your Language</h1>
+		<div class="lang-options">
+			<button type="button" class="lang-card selected" data-lang="en">
+				<span class="lang-flag">🇬🇧</span><span class="lang-name">English</span>
+			</button>
+			<button type="button" class="lang-card" data-lang="hi">
+				<span class="lang-flag">🇮🇳</span><span class="lang-name">हिंदी (Hindi)</span>
+			</button>
+			<button type="button" class="lang-card" data-lang="mr">
+				<span class="lang-flag">🇮🇳</span><span class="lang-name">मराठी (Marathi)</span>
+			</button>
+			<button type="button" class="lang-card" data-lang="varhadi">
+				<span class="lang-flag">🌾</span><span class="lang-name">वऱ्हाडी (Varhadi)</span>
+			</button>
+			<button type="button" class="lang-card" data-lang="malvani">
+				<span class="lang-flag">🌴</span><span class="lang-name">मालवणी (Malvani)</span>
+			</button>
+			<button type="button" class="lang-card" data-lang="ahirani">
+				<span class="lang-flag">🌻</span><span class="lang-name">अहिराणी (Ahirani)</span>
+			</button>
+			<button type="button" class="lang-card" data-lang="zadi_boli">
+				<span class="lang-flag">🌳</span><span class="lang-name">झाडीबोली (Zadi Boli)</span>
+			</button>
+		</div>
+		<div class="onboarding-nav-row">
+			<button id="languageBackBtn" type="button" class="ghost back-btn" data-i18n="backBtn">← Back</button>
+			<button id="languageContinueBtn" type="button" data-i18n="continueBtn">Continue</button>
+		</div>
+	</div>
+</section>
+
+<!-- ============================================================
+     Pashu Sakhi Role Selection Screen
+     Shown after login/sign up according to the flowchart:
+     Start -> Sign In/Sign Up -> Role Selection -> Dashboards
+     ============================================================ -->
+<section id="roleSelectionScreen" aria-labelledby="roleSelectionTitle">
+  <div class="role-selection-shell">
+    <div class="role-selection-header">
+      <div class="role-selection-brand">
+        <span class="role-selection-brand-icon"><i class="fas fa-paw"></i></span>
+        <span>Pashu Sakhi</span>
+      </div>
+      <h1 id="roleSelectionTitle" data-i18n="roleSelectionTitle">How will you use Pashu Sakhi?</h1>
+      <p data-i18n="roleSelectionSubtitle">Select your role to access your dedicated dashboard</p>
+    </div>
+
+    <div class="role-cards" role="radiogroup" aria-labelledby="roleSelectionTitle">
+      <!-- Role 1: Farmer -->
+      <button type="button" class="role-card" data-role="farmer" role="radio" aria-checked="false">
+        <div class="role-icon" aria-hidden="true">🧑‍🌾</div>
+        <h2 data-i18n="roleFarmer">Farmer</h2>
+        <ul>
+          <li data-i18n="farmerDesc1">Manage your livestock & health records</li>
+          <li data-i18n="farmerDesc2">AI symptom screening & disease detection</li>
+          <li data-i18n="farmerDesc3">Connect with vets & Pashu Sanjivini (1962)</li>
+        </ul>
+        <div class="role-selected-badge" data-i18n="roleSelected">Selected</div>
+      </button>
+
+      <!-- Role 2: Veterinarian -->
+      <button type="button" class="role-card" data-role="veterinarian" role="radio" aria-checked="false">
+        <div class="role-icon" aria-hidden="true">🩺</div>
+        <h2 data-i18n="roleVeterinarian">Veterinarian</h2>
+        <ul>
+          <li data-i18n="vetDesc1">Review AI reports & farmer consultations</li>
+          <li data-i18n="vetDesc2">Disease Heat Map & regional surveillance</li>
+          <li data-i18n="vetDesc3">Emergency dispatch & 1962 response network</li>
+        </ul>
+        <div class="role-selected-badge" data-i18n="roleSelected">Selected</div>
+      </button>
+
+      <!-- Role 3: Admin -->
+      <button type="button" class="role-card" data-role="admin" role="radio" aria-checked="false">
+        <div class="role-icon" aria-hidden="true">🛡️</div>
+        <h2 data-i18n="roleAdmin">Admin</h2>
+        <ul>
+          <li data-i18n="adminDesc1">Platform oversight, users & cases monitoring</li>
+          <li data-i18n="adminDesc2">Epidemiological analytics & cluster alerts</li>
+          <li data-i18n="adminDesc3">National 1962 helpline & system management</li>
+        </ul>
+        <div class="role-selected-badge" data-i18n="roleSelected">Selected</div>
+      </button>
+    </div>
+
+    <!-- Pashu Sanjivini 1962 connection banner -->
+    <div class="role-helpline-box">
+      <div class="role-helpline-tag">
+        <i class="fas fa-phone-volume" style="color: #1F5D50;"></i>
+        <span>Pashu Sanjivini Emergency Helpline:</span>
+      </div>
+      <a href="tel:1962" class="role-helpline-link">
+        <i class="fas fa-truck-medical"></i> Call 1962 (Toll Free · 24x7)
+      </a>
+    </div>
+
+    <div id="roleSelectionMessage" class="role-selection-message" aria-live="polite"></div>
+
+    <div class="role-selection-actions">
+      <button type="button" id="roleBackBtn" class="role-back" data-i18n="backBtn">← Back</button>
+      <button type="button" id="roleContinueBtn" class="role-continue" disabled data-i18n="roleContinueBtn">Continue →</button>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     Main application wrapper: Sign In / Sign Up Card
+     ============================================================ -->
+<div id="mainAppWrapper" class="screen">
+<button type="button" id="mainBackBtn" class="ghost back-btn main-back-btn" data-i18n="backBtn">← Back</button>
+<div class="lang-switcher" id="langSwitcher">
+	<button type="button" class="lang-switch-btn selected" data-lang="en">EN</button>
+	<button type="button" class="lang-switch-btn" data-lang="hi">हि</button>
+	<button type="button" class="lang-switch-btn" data-lang="mr">मर</button>
+	<button type="button" class="lang-switch-btn" data-lang="varhadi" title="Varhadi">वऱ्ह</button>
+	<button type="button" class="lang-switch-btn" data-lang="malvani" title="Malvani">माल</button>
+	<button type="button" class="lang-switch-btn" data-lang="ahirani" title="Ahirani">अहि</button>
+	<button type="button" class="lang-switch-btn" data-lang="zadi_boli" title="Zadi Boli">झाडी</button>
+</div>
+<div id="appRoot">
+<h2 data-i18n="appHeaderTitle">Pashu Sakhi — Portal Sign In</h2>
+<div class="container" id="container">
+	<div class="form-container sign-up-container">
+		<form id="signUpForm" novalidate>
+			<h1 data-i18n="createAccountTitle">Create Account</h1>
+			<div class="social-container">
+				<a href="#" class="social" data-provider="Facebook"><i class="fab fa-facebook-f"></i></a>
+				<a href="#" class="social" data-provider="Google"><i class="fab fa-google-plus-g"></i></a>
+				<a href="#" class="social" data-provider="LinkedIn"><i class="fab fa-linkedin-in"></i></a>
+			</div>
+			<span data-i18n="orUseEmailReg">or use your email for registration</span>
+			<input id="suName" type="text" placeholder="Full Name" data-i18n-placeholder="placeholderName" />
+			<span class="field-error" id="suNameError"></span>
+			<input id="suEmail" type="email" placeholder="Email address" data-i18n-placeholder="placeholderEmail" />
+			<span class="field-error" id="suEmailError"></span>
+			<input id="suPassword" type="password" placeholder="Password (min 6 characters)" data-i18n-placeholder="placeholderPassword" />
+			<span class="field-error" id="suPasswordError"></span>
+
+			<div class="signup-role-group">
+				<label class="signup-role-label">Select Account Role:</label>
+				<div class="role-pills-row">
+					<label class="role-radio-pill selected" id="suPillFarmer">
+						<input type="radio" name="suRole" value="farmer" checked />
+						<span>🧑‍🌾 Farmer</span>
+					</label>
+					<label class="role-radio-pill" id="suPillVet">
+						<input type="radio" name="suRole" value="veterinarian" />
+						<span>🩺 Vet</span>
+					</label>
+					<label class="role-radio-pill" id="suPillAdmin">
+						<input type="radio" name="suRole" value="admin" />
+						<span>🛡️ Admin</span>
+					</label>
+				</div>
+			</div>
+
+			<div class="form-message" id="suFormMessage"></div>
+			<button type="submit" id="suSubmitBtn" data-i18n="signUpBtn">Sign Up</button>
+			<p class="switch-text"><span data-i18n="switchToSignInText">Already have an account?</span> <a href="#" class="switch-link" id="goToSignIn" data-i18n="signInLink">Sign In</a></p>
+		</form>
+	</div>
+	<div class="form-container sign-in-container">
+		<form id="signInForm" novalidate>
+			<h1 data-i18n="signInTitle">Sign in</h1>
+
+			<!-- Quick Demo Account Switcher -->
+			<div class="demo-login-box">
+				<div class="demo-login-header">
+					<span>⚡ Demo Accounts:</span>
+					<span class="demo-subtext">Click to autofill</span>
+				</div>
+				<div class="demo-login-chips">
+					<button type="button" class="demo-chip active" id="chipFarmer" title="Farmer: farmer@pashusakhi.in">🧑‍🌾 Farmer</button>
+					<button type="button" class="demo-chip" id="chipVet" title="Vet: vet@pashusakhi.in">🩺 Vet</button>
+					<button type="button" class="demo-chip" id="chipAdmin" title="Admin: admin@pashusakhi.in">🛡️ Admin</button>
+				</div>
+			</div>
+
+			<span data-i18n="orUseAccount">or sign in with email / username</span>
+			<input id="siEmail" type="text" placeholder="Email, username or mobile" data-i18n-placeholder="placeholderEmail" value="farmer@pashusakhi.in" />
+			<span class="field-error" id="siEmailError"></span>
+			<input id="siPassword" type="password" placeholder="Password" data-i18n-placeholder="placeholderPassword" value="farmer123" />
+			<span class="field-error" id="siPasswordError"></span>
+			<a href="#" id="forgotPasswordLink" data-i18n="forgotPassword">Forgot your password?</a>
+			<div class="form-message" id="siFormMessage"></div>
+			<button type="submit" id="siSubmitBtn" data-i18n="signInBtn">Sign In</button>
+			<p class="switch-text"><span data-i18n="switchToSignUpText">Don't have an account?</span> <a href="#" class="switch-link" id="goToSignUp" data-i18n="signUpLink">Make an Account</a></p>
+		</form>
+	</div>
+</div>
+
+<!-- Fallback container for session feedback -->
+<div class="dashboard" id="dashboard">
+	<div class="avatar" id="dashAvatar">?</div>
+	<h1 id="dashGreeting">Welcome!</h1>
+	<p id="dashEmail"></p>
+	<button id="logoutBtn" type="button" data-i18n="logoutBtn">Log Out</button>
+</div>
+</div>
+
+<!-- Forgot password panel -->
+<div class="reset-overlay" id="resetOverlay">
+	<div class="reset-card">
+		<span class="close-link" id="resetCloseBtn" data-i18n="closeText">&times; close</span>
+		<h1 data-i18n="resetTitle">Reset Password</h1>
+		<p data-i18n="resetDescription">Enter your account email and a new password to reset it.</p>
+		<form id="resetForm" novalidate style="padding:0; width:100%;">
+			<input id="rpEmail" type="email" placeholder="Email" data-i18n-placeholder="placeholderEmail" />
+			<span class="field-error" id="rpEmailError"></span>
+			<input id="rpNewPassword" type="password" placeholder="New Password" data-i18n-placeholder="placeholderNewPassword" />
+			<span class="field-error" id="rpPasswordError"></span>
+			<div class="form-message" id="rpFormMessage"></div>
+			<button type="submit" id="rpSubmitBtn" data-i18n="resetBtn">Reset Password</button>
+		</form>
+	</div>
+</div>
+
+<footer>
+	<p data-i18n="footerText">Pashu Sakhi · Integrated Livestock Healthcare System · Helpline 1962</p>
+</footer>
+</div><!-- /#mainAppWrapper -->
+
+<!-- PashuSakhi Shared API & Bridge -->
+<script src="pashusakhi_api.js"></script>
+<script>
+(function() {
+  const _tabId = 'tab_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now();
+  const _listeners = new Set();
+
+  function _get(key, defaultVal) {
+    try {
+      const v = localStorage.getItem(key);
+      return v ? JSON.parse(v) : defaultVal;
+    } catch (e) {
+      return defaultVal;
+    }
+  }
+
+  function _set(key, val) {
+    try {
+      localStorage.setItem(key, JSON.stringify(val));
+    } catch (e) {
+      console.warn('PashuSakhiBridge storage write failed:', e);
+    }
+  }
+
+  function broadcast(event, data) {
+    const payload = { event, data, timestamp: Date.now(), sourceId: _tabId };
+    try {
+      localStorage.setItem('psk_bridge_event', JSON.stringify(payload));
+    } catch (e) {}
+    _listeners.forEach(fn => {
+      try { fn(event, data); } catch (err) { console.error('PashuSakhiBridge listener error:', err); }
+    });
+  }
+
+  window.addEventListener('storage', function(e) {
+    if (e.key === 'psk_bridge_event' && e.newValue) {
+      try {
+        const payload = JSON.parse(e.newValue);
+        if (payload && payload.sourceId !== _tabId) {
+          _listeners.forEach(fn => {
+            try { fn(payload.event, payload.data); } catch (err) { console.error('PashuSakhiBridge cross-tab listener error:', err); }
+          });
+        }
+      } catch (err) {}
+    }
+  });
+
+  window.PashuSakhiBridge = {
+    tabId: _tabId,
+
+    setSession: function(sessionObj) {
+      _set('psk_session', sessionObj);
+      if (sessionObj && sessionObj.language) {
+        try {
+          localStorage.setItem('psk_language', sessionObj.language);
+          localStorage.setItem('lumen_selected_language', sessionObj.language);
+        } catch (e) {}
+      }
+      broadcast('psk:session:updated', sessionObj);
+    },
+
+    getSession: function() {
+      return _get('psk_session', null);
+    },
+
+    clearSession: function() {
+      try {
+        localStorage.removeItem('psk_session');
+        localStorage.removeItem('session:current');
+        localStorage.removeItem('pashusakhi_user');
+      } catch (e) {}
+      broadcast('psk:session:cleared', {});
+    },
+
+    getReports: function(filter) {
+      const all = _get('psk_shared_reports', []);
+      if (!filter || filter === 'All') return all;
+      return all.filter(r => (r.status || '').toLowerCase() === filter.toLowerCase());
+    },
+
+    addReport: function(report) {
+      const reports = _get('psk_shared_reports', []);
+      const newRep = {
+        id: report.id || ('rep_' + Date.now()),
+        type: report.type || 'screening',
+        animalId: report.animalId || 'a1',
+        animalName: report.animalName || 'Livestock',
+        farmerName: report.farmerName || 'Suresh Patil',
+        date: report.date || new Date().toISOString().split('T')[0],
+        condition: report.condition || 'Suspected condition',
+        severity: report.severity || 'attention',
+        confidence: report.confidence || 85,
+        status: report.status || 'New',
+        details: report.details || {}
+      };
+      reports.unshift(newRep);
+      _set('psk_shared_reports', reports);
+      broadcast('psk:report:added', newRep);
+      return newRep;
+    },
+
+    updateReportStatus: function(id, status) {
+      const reports = _get('psk_shared_reports', []);
+      let updated = null;
+      const next = reports.map(r => {
+        if (r.id === id) {
+          updated = { ...r, status };
+          return updated;
+        }
+        return r;
+      });
+      _set('psk_shared_reports', next);
+      if (updated) broadcast('psk:report:updated', updated);
+      return updated;
+    },
+
+    getEmergencies: function(filter) {
+      const all = _get('psk_shared_emergencies', []);
+      if (!filter || filter === 'All') return all;
+      return all.filter(e => (e.status || '').toLowerCase() === filter.toLowerCase());
+    },
+
+    addEmergency: function(emergency) {
+      const emergencies = _get('psk_shared_emergencies', []);
+      const newEmg = {
+        id: emergency.id || ('emg_' + Date.now()),
+        animalId: emergency.animalId || 'a1',
+        animalName: emergency.animalName || 'Livestock',
+        farmerName: emergency.farmerName || 'Suresh Patil',
+        village: emergency.village || 'Wagholi, Pune',
+        contact: emergency.contact || '+91 98765 43210',
+        severity: emergency.severity || 'critical',
+        status: emergency.status || 'new',
+        title: emergency.title || 'Emergency Case',
+        time: emergency.time || 'Just now',
+        assignedVet: emergency.assignedVet || null
+      };
+      emergencies.unshift(newEmg);
+      _set('psk_shared_emergencies', emergencies);
+      broadcast('psk:emergency:added', newEmg);
+      return newEmg;
+    },
+
+    updateEmergencyStatus: function(id, status, vetName) {
+      const emergencies = _get('psk_shared_emergencies', []);
+      let updated = null;
+      const next = emergencies.map(e => {
+        if (e.id === id) {
+          updated = {
+            ...e,
+            status,
+            assignedVet: vetName || e.assignedVet || 'Dr. Kavita Rao'
+          };
+          return updated;
+        }
+        return e;
+      });
+      _set('psk_shared_emergencies', next);
+      if (updated) broadcast('psk:emergency:updated', updated);
+      return updated;
+    },
+
+    getChats: function(animalId) {
+      const chats = _get('psk_shared_chats', {});
+      return animalId ? (chats[animalId] || []) : chats;
+    },
+
+    sendChat: function(animalId, msg) {
+      const chats = _get('psk_shared_chats', {});
+      if (!chats[animalId]) chats[animalId] = [];
+      const newMsg = {
+        id: msg.id || ('msg_' + Date.now()),
+        sender: msg.sender || 'farmer',
+        text: msg.text || '',
+        time: msg.time || 'Just now',
+        timestamp: Date.now(),
+        animalId: animalId
+      };
+      chats[animalId].push(newMsg);
+      _set('psk_shared_chats', chats);
+      broadcast('psk:chat:message', { animalId, message: newMsg });
+      return newMsg;
+    },
+
+    getAnimals: function() {
+      return _get('psk_shared_animals', null);
+    },
+
+    addTreatment: function(animalId, treatmentObj) {
+      const animalsData = _get('psk_shared_animals', {});
+      if (!animalsData[animalId]) animalsData[animalId] = { treatments: [] };
+      if (!animalsData[animalId].treatments) animalsData[animalId].treatments = [];
+      const entry = {
+        id: 'trt_' + Date.now(),
+        date: treatmentObj.date || new Date().toISOString().split('T')[0],
+        condition: treatmentObj.condition || 'Clinical Treatment',
+        medicine: treatmentObj.medicine || 'Prescribed Drug',
+        dosage: treatmentObj.dosage || 'Standard dose',
+        route: treatmentObj.route || 'Oral',
+        duration: treatmentObj.duration || '3 days',
+        notes: treatmentObj.notes || 'Recorded by veterinarian',
+        vetName: treatmentObj.vetName || 'Dr. Kavita Rao'
+      };
+      animalsData[animalId].treatments.unshift(entry);
+      _set('psk_shared_animals', animalsData);
+      broadcast('psk:treatment:added', { animalId, treatment: entry });
+      return entry;
+    },
+
+    updateUserStatus: function(userId, status) {
+      const users = _get('psk_shared_users', {});
+      users[userId] = { status, updatedAt: Date.now() };
+      _set('psk_shared_users', users);
+      broadcast('psk:user:updated', { userId, status });
+    },
+
+    updateCase: function(caseId, updates) {
+      const cases = _get('psk_shared_cases', {});
+      cases[caseId] = { ...(cases[caseId] || {}), ...updates, updatedAt: Date.now() };
+      _set('psk_shared_cases', cases);
+      broadcast('psk:case:updated', { caseId, updates });
+    },
+
+    updateComplaint: function(id, status) {
+      const complaints = _get('psk_shared_complaints', {});
+      complaints[id] = { status, updatedAt: Date.now() };
+      _set('psk_shared_complaints', complaints);
+      broadcast('psk:complaint:updated', { id, status });
+    },
+
+    onEvent: function(fn) {
+      if (typeof fn === 'function') _listeners.add(fn);
+    },
+
+    offEvent: function(fn) {
+      _listeners.delete(fn);
+    },
+
+    seedDefaultData: function() {
+      if (!localStorage.getItem('psk_shared_reports')) {
+        const defaultReports = [
+          { id: "rep_101", type: "detection", animalId: "a1", animalName: "Gauri (Cow)", farmerName: "Suresh Patil", date: new Date().toISOString().split('T')[0], condition: "Suspected Bovine Dermatitis", severity: "attention", confidence: 87, status: "Under Review", details: { title: "Suspected Bovine Dermatitis / Cutaneous Lesions" } },
+          { id: "rep_102", type: "detection", animalId: "a2", animalName: "Raju (Bullock)", farmerName: "Suresh Patil", date: new Date().toISOString().split('T')[0], condition: "Suspected Nodular Skin Lesions", severity: "urgent", confidence: 91, status: "New", details: { title: "Suspected Nodular Skin Lesions" } },
+          { id: "rep_103", type: "screening", animalId: "a3", animalName: "Lakshmi (Buffalo)", farmerName: "Suresh Patil", date: new Date().toISOString().split('T')[0], condition: "Mild Bloat & Lethargy", severity: "attention", confidence: 82, status: "Resolved", details: { title: "Mild Bloat" } }
+        ];
+        _set('psk_shared_reports', defaultReports);
+      }
+
+      if (!localStorage.getItem('psk_shared_emergencies')) {
+        const defaultEmergencies = [
+          { id: "emg_101", animalId: "a2", animalName: "Raju (Bullock)", farmerName: "Suresh Patil", village: "Wagholi, Pune", contact: "+91 98765 43210", severity: "critical", status: "new", title: "Severe colic & unable to stand", time: "14 min ago", assignedVet: null },
+          { id: "emg_102", animalId: "a1", animalName: "Gauri (Cow)", farmerName: "Suresh Patil", village: "Wagholi, Pune", contact: "+91 98765 43210", severity: "high", status: "accepted", title: "Sudden high fever & respiratory distress", time: "35 min ago", assignedVet: "Dr. Kavita Rao" }
+        ];
+        _set('psk_shared_emergencies', defaultEmergencies);
+      }
+    }
+  };
+})();
+</script>
+
+<script>
+(function () {
+	// ---------- i18n: translations ----------
+	const translations = {
+		en: {
+			appName: "PashuSakhi",
+			tagline: "AI Livestock Care",
+			appDescription: "Your one safe place to sign in and access your livestock healthcare workspace.",
+			getStarted: "Get Started",
+			chooseLanguageHeading: "Choose Your Language",
+			continueBtn: "Continue",
+			roleContinueBtn: "Continue →",
+			roleSelectionTitle: "How will you use Pashu Sakhi?",
+			roleSelectionSubtitle: "Select your role to access your dedicated dashboard",
+			roleFarmer: "Farmer",
+			roleVeterinarian: "Veterinarian",
+			roleAdmin: "Admin",
+			farmerDesc1: "Manage your livestock & health records",
+			farmerDesc2: "AI symptom screening & disease detection",
+			farmerDesc3: "Connect with vets & Pashu Sanjivini (1962)",
+			vetDesc1: "Review AI reports & farmer consultations",
+			vetDesc2: "Disease Heat Map & regional surveillance",
+			vetDesc3: "Emergency dispatch & 1962 response network",
+			adminDesc1: "Platform oversight, users & cases monitoring",
+			adminDesc2: "Epidemiological analytics & cluster alerts",
+			adminDesc3: "National 1962 helpline & system management",
+			roleSelected: "Selected",
+			pleaseSelectRole: "Please select a role to proceed",
+			backBtn: "← Back",
+			appHeaderTitle: "Pashu Sakhi — Portal Sign In",
+			createAccountTitle: "Create Account",
+			signInTitle: "Sign in",
+			orUseEmailReg: "or use your email for registration",
+			orUseAccount: "or use your account",
+			placeholderName: "Name",
+			placeholderEmail: "Email",
+			placeholderPassword: "Password",
+			placeholderNewPassword: "New Password",
+			forgotPassword: "Forgot your password?",
+			signUpBtn: "Sign Up",
+			signInBtn: "Sign In",
+			switchToSignInText: "Already have an account?",
+			signInLink: "Sign In",
+			switchToSignUpText: "Don't have an account?",
+			signUpLink: "Make an Account",
+			resetTitle: "Reset Password",
+			resetDescription: "Enter your account email and a new password to reset it.",
+			resetBtn: "Reset Password",
+			closeText: "× close",
+			logoutBtn: "Log Out",
+			welcomeMessage: "Welcome, {name}!",
+			footerText: "Pashu Sakhi · Integrated Livestock Healthcare System · Helpline 1962",
+			errNameRequired: "Name is required.",
+			errEmailInvalid: "Enter a valid email.",
+			errPasswordMin: "Password must be at least 6 characters.",
+			errPasswordRequired: "Password is required.",
+			msgAccountExists: "An account with this email already exists.",
+			msgAccountCreated: "Account created successfully!",
+			msgSomethingWrong: "Something went wrong. Please try again.",
+			msgNoAccount: "No account found with this email.",
+			msgIncorrectPassword: "Incorrect password.",
+			msgSocialNotConfigured: "{provider} login is a demonstration feature in this release.",
+			msgPasswordResetSuccess: "Password reset! You can sign in now."
+		},
+		hi: {
+			appName: "PashuSakhi",
+			tagline: "AI Livestock Care",
+			appDescription: "साइन इन करने और अपने पशु स्वास्थ्य कार्यक्षेत्र तक पहुँचने के लिए एक सुरक्षित मंच।",
+			getStarted: "शुरू करें",
+			chooseLanguageHeading: "अपनी भाषा चुनें",
+			continueBtn: "जारी रखें",
+			roleContinueBtn: "जारी रखें →",
+			roleSelectionTitle: "आप Pashu Sakhi का उपयोग कैसे करेंगे?",
+			roleSelectionSubtitle: "अपने समर्पित डैशबोर्ड तक पहुँचने के लिए अपनी भूमिका चुनें",
+			roleFarmer: "किसान",
+			roleVeterinarian: "पशु चिकित्सक",
+			roleAdmin: "एडमिन",
+			farmerDesc1: "पशुओं और स्वास्थ्य रिकॉर्ड का प्रबंधन करें",
+			farmerDesc2: "AI लक्षण जांच और रोग पहचान",
+			farmerDesc3: "पशु चिकित्सकों और पशु संजीवनी (1962) से जुड़ें",
+			vetDesc1: "AI रिपोर्ट और किसान परामर्श की समीक्षा करें",
+			vetDesc2: "रोग हीट मैप और क्षेत्रीय निगरानी",
+			vetDesc3: "आपातकालीन प्रेषण और 1962 नेटवर्क",
+			adminDesc1: "प्लेटफ़ॉर्म निरीक्षण, उपयोगकर्ता और केस निगरानी",
+			adminDesc2: "महामारी विज्ञान विश्लेषण और क्लस्टर अलर्ट",
+			adminDesc3: "राष्ट्रीय 1962 हेल्पलाइन और सिस्टम प्रबंधन",
+			roleSelected: "चयनित",
+			pleaseSelectRole: "कृपया आगे बढ़ने के लिए एक भूमिका चुनें",
+			backBtn: "← वापस",
+			appHeaderTitle: "पशु सखी — पोर्टल साइन इन",
+			createAccountTitle: "खाता बनाएं",
+			signInTitle: "साइन इन करें",
+			orUseEmailReg: "या पंजीकरण के लिए अपना ईमेल उपयोग करें",
+			orUseAccount: "या अपने खाते का उपयोग करें",
+			placeholderName: "नाम",
+			placeholderEmail: "ईमेल",
+			placeholderPassword: "पासवर्ड",
+			placeholderNewPassword: "नया पासवर्ड",
+			forgotPassword: "पासवर्ड भूल गए?",
+			signUpBtn: "साइन अप करें",
+			signInBtn: "साइन इन करें",
+			switchToSignInText: "पहले से ही खाता है?",
+			signInLink: "साइन इन करें",
+			switchToSignUpText: "खाता नहीं है?",
+			signUpLink: "खाता बनाएं",
+			resetTitle: "पासवर्ड रीसेट करें",
+			resetDescription: "रीसेट करने के लिए अपना खाता ईमेल और नया पासवर्ड दर्ज करें।",
+			resetBtn: "पासवर्ड रीसेट करें",
+			closeText: "× बंद करें",
+			logoutBtn: "लॉग आउट",
+			welcomeMessage: "स्वागत है, {name}!",
+			footerText: "पशु सखी · एकीकृत पशुधन स्वास्थ्य देखभाल प्रणाली · हेल्पलाइन 1962",
+			errNameRequired: "नाम आवश्यक है।",
+			errEmailInvalid: "एक मान्य ईमेल दर्ज करें।",
+			errPasswordMin: "पासवर्ड कम से कम 6 अक्षरों का होना चाहिए।",
+			errPasswordRequired: "पासवर्ड आवश्यक है।",
+			msgAccountExists: "इस ईमेल से पहले से ही एक खाता मौजूद है।",
+			msgAccountCreated: "खाता सफलतापूर्वक बन गया!",
+			msgSomethingWrong: "कुछ गड़बड़ हो गई। कृपया पुनः प्रयास करें।",
+			msgNoAccount: "इस ईमेल से कोई खाता नहीं मिला।",
+			msgIncorrectPassword: "गलत पासवर्ड।",
+			msgSocialNotConfigured: "{provider} लॉगिन इस संस्करण में एक प्रदर्शन सुविधा है।",
+			msgPasswordResetSuccess: "पासवर्ड रीसेट हो गया! अब आप साइन इन कर सकते हैं।"
+		},
+		mr: {
+			appName: "PashuSakhi",
+			tagline: "AI Livestock Care",
+			appDescription: "साइन इन करण्यासाठी आणि आपल्या पशु आरोग्य कार्यक्षेत्रात प्रवेश करण्यासाठी सुरक्षित जागा.",
+			getStarted: "सुरू करा",
+			chooseLanguageHeading: "तुमची भाषा निवडा",
+			continueBtn: "पुढे जा",
+			roleContinueBtn: "पुढे जा →",
+			roleSelectionTitle: "तुम्ही Pashu Sakhi चा वापर कसा कराल?",
+			roleSelectionSubtitle: "आपल्या समर्पित डॅशबोर्डवर जाण्यासाठी आपली भूमिका निवडा",
+			roleFarmer: "शेतकरी",
+			roleVeterinarian: "पशुवैद्य",
+			roleAdmin: "अॅडमिन",
+			farmerDesc1: "जनावरे आणि आरोग्य नोंदी व्यवस्थापित करा",
+			farmerDesc2: "AI लक्षण तपासणी आणि रोग ओळख",
+			farmerDesc3: "पशुवैद्य आणि पशु संजीवनी (1962) शी संपर्क साधा",
+			vetDesc1: "AI अहवाल आणि शेतकरी सल्लामसलत तपासा",
+			vetDesc2: "रोग हीट मॅप आणि प्रादेशिक पाळत",
+			vetDesc3: "तातडीची मदत आणि 1962 प्रतिसाद नेटवर्क",
+			adminDesc1: "प्लॅटफॉर्म देखरेख, वापरकर्ते आणि प्रकरणे देखरेख",
+			adminDesc2: "रोग विश्लेषण आणि क्लस्टर सूचना",
+			adminDesc3: "राष्ट्रीय 1962 हेल्पलाइन आणि प्रणाली व्यवस्थापन",
+			roleSelected: "निवडले",
+			pleaseSelectRole: "कृपया पुढे जाण्यासाठी भूमिका निवडा",
+			backBtn: "← मागे",
+			appHeaderTitle: "पशु सखी — पोर्टल साइन इन",
+			createAccountTitle: "खाते तयार करा",
+			signInTitle: "साइन इन करा",
+			orUseEmailReg: "किंवा नोंदणीसाठी तुमचा ईमेल वापरा",
+			orUseAccount: "किंवा तुमचे खाते वापरा",
+			placeholderName: "नाव",
+			placeholderEmail: "ईमेल",
+			placeholderPassword: "पासवर्ड",
+			placeholderNewPassword: "नवीन पासवर्ड",
+			forgotPassword: "पासवर्ड विसरलात?",
+			signUpBtn: "साइन अप करा",
+			signInBtn: "साइन इन करा",
+			switchToSignInText: "आधीच खाते आहे?",
+			signInLink: "साइन इन करा",
+			switchToSignUpText: "खाते नाही?",
+			signUpLink: "खाते तयार करा",
+			resetTitle: "पासवर्ड रीसेट करा",
+			resetDescription: "रीसेट करण्यासाठी तुमचा खाते ईमेल आणि नवीन पासवर्ड टाका.",
+			resetBtn: "पासवर्ड रीसेट करा",
+			closeText: "× बंद करा",
+			logoutBtn: "लॉग आउट",
+			welcomeMessage: "स्वागत आहे, {name}!",
+			footerText: "पशु सखी · एकात्मिक पशुधन आरोग्य सेवा प्रणाली · हेल्पलाइन 1962",
+			errNameRequired: "नाव आवश्यक आहे.",
+			errEmailInvalid: "वैध ईमेल टाका.",
+			errPasswordMin: "पासवर्ड किमान 6 अक्षरांचा असावा.",
+			errPasswordRequired: "पासवर्ड आवश्यक आहे.",
+			msgAccountExists: "या ईमेलने आधीच एक खाते अस्तित्वात आहे.",
+			msgAccountCreated: "खाते यशस्वीरित्या तयार झाले!",
+			msgSomethingWrong: "काहीतरी चूक झाली. कृपया पुन्हा प्रयत्न करा.",
+			msgNoAccount: "या ईमेलने कोणतेही खाते सापडले नाही.",
+			msgIncorrectPassword: "चुकीचा पासवर्ड.",
+			msgSocialNotConfigured: "{provider} लॉगिन या आवृत्तीत केवळ प्रात्यक्षिक वैशिष्ट्य आहे.",
+			msgPasswordResetSuccess: "पासवर्ड रीसेट झाला! तुम्ही आता साइन इन करू शकता."
+		},
+		varhadi: {
+			appName: "PashuSakhi",
+			tagline: "AI Livestock Care",
+			appDescription: "साइन इन करण्यासाठी अन आपल्या पशु आरोग्य कार्यक्षेत्रात प्रवेश करण्यासाठी सुरक्षित जागा.",
+			getStarted: "सुरू करा",
+			chooseLanguageHeading: "तुमची भाषा निवडा",
+			continueBtn: "पुढे जा",
+			roleContinueBtn: "पुढे जा →",
+			roleSelectionTitle: "तुम्ही Pashu Sakhi चा वापर कसं करशाल?",
+			roleSelectionSubtitle: "आपल्या समर्पित डॅशबोर्डवर जाण्यासाठी आपली भूमिका निवडा",
+			roleFarmer: "शेतकरी (कास्तकार)",
+			roleVeterinarian: "पशुवैद्य",
+			roleAdmin: "अॅडमिन",
+			farmerDesc1: "जनावरं अन तब्येतीची नोंद सांभाळा",
+			farmerDesc2: "AI लक्षण तपासणी अन आजार ओळख",
+			farmerDesc3: "पशुवैद्य अन पशु संजीवनी (1962) शी संपर्क साधा",
+			vetDesc1: "AI अहवाल आणि शेतकरी सल्लामसलत तपासा",
+			vetDesc2: "रोग हीट मॅप आणि प्रादेशिक पाळत",
+			vetDesc3: "तातडीची मदत आणि 1962 प्रतिसाद नेटवर्क",
+			adminDesc1: "प्लॅटफॉर्म देखरेख, वापरकर्ते आणि प्रकरणे देखरेख",
+			adminDesc2: "रोग विश्लेषण आणि क्लस्टर सूचना",
+			adminDesc3: "राष्ट्रीय 1962 हेल्पलाइन आणि प्रणाली व्यवस्थापन",
+			roleSelected: "निवडलं",
+			pleaseSelectRole: "कृपया पुढे जाण्यासाठी भूमिका निवडा",
+			backBtn: "← मागे",
+			appHeaderTitle: "पशु सखी — पोर्टल साइन इन",
+			createAccountTitle: "खातं तयार करा",
+			signInTitle: "साइन इन करा",
+			orUseEmailReg: "किंवा नोंदणीसाठी तुमचा ईमेल वापरा",
+			orUseAccount: "किंवा तुमचं खातं वापरा",
+			placeholderName: "नाव",
+			placeholderEmail: "ईमेल",
+			placeholderPassword: "पासवर्ड",
+			placeholderNewPassword: "नवीन पासवर्ड",
+			forgotPassword: "पासवर्ड विसरलात?",
+			signUpBtn: "साइन अप करा",
+			signInBtn: "साइन इन करा",
+			switchToSignInText: "आधीच खातं आहे?",
+			signInLink: "साइन इन करा",
+			switchToSignUpText: "खातं नाही?",
+			signUpLink: "खातं तयार करा",
+			resetTitle: "पासवर्ड रीसेट करा",
+			resetDescription: "रीसेट करण्यासाठी तुमचा खाते ईमेल आणि नवीन पासवर्ड टाका.",
+			resetBtn: "पासवर्ड रीसेट करा",
+			closeText: "× बंद करा",
+			logoutBtn: "लॉग आउट",
+			welcomeMessage: "राम राम, {name}!",
+			footerText: "पशु सखी · एकात्मिक पशुधन आरोग्य सेवा प्रणाली · हेल्पलाइन 1962",
+			errNameRequired: "नाव आवश्यक आहे.",
+			errEmailInvalid: "वैध ईमेल टाका.",
+			errPasswordMin: "पासवर्ड किमान 6 अक्षरांचा असावा.",
+			errPasswordRequired: "पासवर्ड आवश्यक आहे.",
+			msgAccountExists: "या ईमेलने आधीच एक खाते अस्तित्वात आहे.",
+			msgAccountCreated: "खाते यशस्वीरित्या तयार झाले!",
+			msgSomethingWrong: "काहीतरी चूक झाली. कृपया पुन्हा प्रयत्न करा.",
+			msgNoAccount: "या ईमेलने कोणतेही खाते सापडले नाही.",
+			msgIncorrectPassword: "चुकीचा पासवर्ड.",
+			msgSocialNotConfigured: "{provider} लॉगिन या आवृत्तीत केवळ प्रात्यक्षिक वैशिष्ट्य आहे.",
+			msgPasswordResetSuccess: "पासवर्ड रीसेट झाला! तुम्ही आता साइन इन करू शकता."
+		},
+		malvani: {
+			appName: "PashuSakhi",
+			tagline: "AI Livestock Care",
+			appDescription: "साइन इन करूंक आनी आपल्या पशु भलायकी कार्यक्षेत्रात प्रवेश करूंक सुरक्षित जागो.",
+			getStarted: "सुरू करा",
+			chooseLanguageHeading: "तुमची भाषा निवडा",
+			continueBtn: "पुढे चला",
+			roleContinueBtn: "पुढे चला →",
+			roleSelectionTitle: "तुम्ही Pashu Sakhi चो वापर कसो करतलात?",
+			roleSelectionSubtitle: "आपल्या समर्पित डॅशबोर्डार वचूक आपली भूमिका निवडा",
+			roleFarmer: "शेतकरी",
+			roleVeterinarian: "पशुवैद्य",
+			roleAdmin: "अॅडमिन",
+			farmerDesc1: "जनावरां आनी भलायकी नोंदी सांबाळा",
+			farmerDesc2: "AI लक्षण तपासणी आनी दूख वळख",
+			farmerDesc3: "पशुवैद्य आनी पशु संजीवनी (1962) कडेन संपर्क करा",
+			vetDesc1: "AI अहवाल आनी शेतकरी सल्लामसलत तपासा",
+			vetDesc2: "रोग हीट मॅप आनी प्रादेशिक पाळत",
+			vetDesc3: "तातडीची मदत आनी 1962 प्रतिसाद नेटवर्क",
+			adminDesc1: "प्लॅटफॉर्म देखरेख, वापरकर्ते आनी प्रकरणां देखरेख",
+			adminDesc2: "रोग विश्लेषण आनी क्लस्टर सूचना",
+			adminDesc3: "राष्ट्रीय 1962 हेल्पलाइन आनी प्रणाली व्यवस्थापन",
+			roleSelected: "निवडलो",
+			pleaseSelectRole: "कृपया पुढे वचूक भूमिका निवडा",
+			backBtn: "← फाटीं",
+			appHeaderTitle: "पशु सखी — पोर्टल साइन इन",
+			createAccountTitle: "खातें तयार करा",
+			signInTitle: "साइन इन करा",
+			orUseEmailReg: "किंवा नोंदणी खातीर तुमचो ईमेल वापरा",
+			orUseAccount: "किंवा तुमचें खातें वापरा",
+			placeholderName: "नाव",
+			placeholderEmail: "ईमेल",
+			placeholderPassword: "पासवर्ड",
+			placeholderNewPassword: "नवीन पासवर्ड",
+			forgotPassword: "पासवर्ड विसरलात?",
+			signUpBtn: "साइन अप करा",
+			signInBtn: "साइन इन करा",
+			switchToSignInText: "पयलींच खातें आसा?",
+			signInLink: "साइन इन करा",
+			switchToSignUpText: "खातें ना?",
+			signUpLink: "खातें तयार करा",
+			resetTitle: "पासवर्ड रीसेट करा",
+			resetDescription: "रीसेट करूंक तुमचो खाते ईमेल आनी नवो पासवर्ड टाका.",
+			resetBtn: "पासवर्ड रीसेट करा",
+			closeText: "× बंद करा",
+			logoutBtn: "लॉग आउट",
+			welcomeMessage: "नमस्कार, {name}!",
+			footerText: "पशु सखी · एकात्मिक पशुधन आरोग्य सेवा प्रणाली · हेल्पलाइन 1962",
+			errNameRequired: "नाव जायच.",
+			errEmailInvalid: "वैध ईमेल टाका.",
+			errPasswordMin: "पासवर्ड किमान 6 अक्षरांचो आसूंक जाय.",
+			errPasswordRequired: "पासवर्ड आवश्यक आसा.",
+			msgAccountExists: "ह्या ईमेलान पयलींच एक खातें आसा.",
+			msgAccountCreated: "खातें यशस्वीपणान तयार जालें!",
+			msgSomethingWrong: "काहीतरी चूक जाली. परतून प्रयत्न करा.",
+			msgNoAccount: "ह्या ईमेलान कोणतेंय खातें मेळ्ळें ना.",
+			msgIncorrectPassword: "चुकीचो पासवर्ड.",
+			msgSocialNotConfigured: "{provider} लॉगिन ह्या आवृत्तीत फकत प्रात्यक्षिक आसा.",
+			msgPasswordResetSuccess: "पासवर्ड रीसेट जालो! तुम्ही आतां साइन इन करू शकता."
+		},
+		ahirani: {
+			appName: "PashuSakhi",
+			tagline: "AI Livestock Care",
+			appDescription: "साइन इन कराले आन मना ढोरंना आरोग्य कार्यक्षेत्रात जावाले सुरक्षित जागा.",
+			getStarted: "सुरू करा",
+			chooseLanguageHeading: "तुमनी भाषा निवडा",
+			continueBtn: "पुढे व्हा",
+			roleContinueBtn: "पुढे व्हा →",
+			roleSelectionTitle: "तुम्ही Pashu Sakhi ना उपयोग कसा करशात?",
+			roleSelectionSubtitle: "मना समर्पित डॅशबोर्डवर जावाले आपली भूमिका निवडा",
+			roleFarmer: "शेतकरी (कास्तकार)",
+			roleVeterinarian: "पशुवैद्य",
+			roleAdmin: "अॅडमिन",
+			farmerDesc1: "ढोरं आन आरोग्य नोंदी सांबाळा",
+			farmerDesc2: "AI लक्षण तपासणी आन आजार पारखा",
+			farmerDesc3: "पशुवैद्य आन पशु संजीवनी (1962) शी संपर्क साधा",
+			vetDesc1: "AI अहवाल आन शेतकरी सल्लामसलत तपासा",
+			vetDesc2: "रोग हीट मॅप आन प्रादेशिक पाळत",
+			vetDesc3: "तातडीनी मदत आन 1962 प्रतिसाद नेटवर्क",
+			adminDesc1: "प्लॅटफॉर्म देखरेख, वापरकर्ते आन प्रकरणं देखरेख",
+			adminDesc2: "रोग विश्लेषण आन क्लस्टर सूचना",
+			adminDesc3: "राष्ट्रीय 1962 हेल्पलाइन आन प्रणाली व्यवस्थापन",
+			roleSelected: "निवडणा",
+			pleaseSelectRole: "कृपया पुढे व्हावाले भूमिका निवडा",
+			backBtn: "← पाठी",
+			appHeaderTitle: "पशु सखी — पोर्टल साइन इन",
+			createAccountTitle: "खातं तयार करा",
+			signInTitle: "साइन इन करा",
+			orUseEmailReg: "किंवा नोंदणी साठे तुमना ईमेल वापरा",
+			orUseAccount: "किंवा तुमना खातं वापरा",
+			placeholderName: "नाव",
+			placeholderEmail: "ईमेल",
+			placeholderPassword: "पासवर्ड",
+			placeholderNewPassword: "नवीन पासवर्ड",
+			forgotPassword: "पासवर्ड विसरा का?",
+			signUpBtn: "साइन अप करा",
+			signInBtn: "साइन इन करा",
+			switchToSignInText: "पयलेच खातं शे का?",
+			signInLink: "साइन इन करा",
+			switchToSignUpText: "खातं नई शे?",
+			signUpLink: "खातं तयार करा",
+			resetTitle: "पासवर्ड रीसेट करा",
+			resetDescription: "रीसेट कराले तुमना खाते ईमेल आन नवीन पासवर्ड टाका.",
+			resetBtn: "पासवर्ड रीसेट करा",
+			closeText: "× बंद करा",
+			logoutBtn: "लॉग आउट",
+			welcomeMessage: "राम राम, {name}!",
+			footerText: "पशु सखी · एकात्मिक पशुधन आरोग्य सेवा प्रणाली · हेल्पलाइन 1962",
+			errNameRequired: "नाव आवश्यक शे.",
+			errEmailInvalid: "वैध ईमेल टाका.",
+			errPasswordMin: "पासवर्ड किमान 6 अक्षरांना व्हवा.",
+			errPasswordRequired: "पासवर्ड आवश्यक शे.",
+			msgAccountExists: "या ईमेलने पयलेच एक खातं शे.",
+			msgAccountCreated: "खातं यशस्वीरित्या तयार व्हयना!",
+			msgSomethingWrong: "काहीतरी चूक व्हई. पुन्हा प्रयत्न करा.",
+			msgNoAccount: "या ईमेलने कोणतबी खातं नई सापडणा.",
+			msgIncorrectPassword: "चुकीचा पासवर्ड.",
+			msgSocialNotConfigured: "{provider} लॉगिन या आवृत्तीत केवळ प्रात्यक्षिक वैशिष्ट्य शे.",
+			msgPasswordResetSuccess: "पासवर्ड रीसेट व्हयना! तुम्ही आता साइन इन करू शकता."
+		},
+		zadi_boli: {
+			appName: "PashuSakhi",
+			tagline: "AI Livestock Care",
+			appDescription: "साइन इन करण्यासाठी अन आपल्या ढोरांच्या आरोग्य कार्यक्षेत्रात प्रवेश करण्यासाठी सुरक्षित जागा.",
+			getStarted: "सुरू करा",
+			chooseLanguageHeading: "तुमची भाषा निवडा",
+			continueBtn: "पुढे चला",
+			roleContinueBtn: "पुढे चला →",
+			roleSelectionTitle: "तुम्ही Pashu Sakhi चा वापर कसा करशाल?",
+			roleSelectionSubtitle: "आपल्या समर्पित डॅशबोर्डवर जाण्यासाठी आपली भूमिका निवडा",
+			roleFarmer: "शेतकरी",
+			roleVeterinarian: "पशुवैद्य",
+			roleAdmin: "अॅडमिन",
+			farmerDesc1: "ढोरं अन आरोग्य नोंदी सांभाळा",
+			farmerDesc2: "AI लक्षण तपासणी अन आजार ओळख",
+			farmerDesc3: "पशुवैद्य अन पशु संजीवनी (1962) शी संपर्क साधा",
+			vetDesc1: "AI अहवाल अन शेतकरी सल्लामसलत तपासा",
+			vetDesc2: "रोग हीट मॅप अन प्रादेशिक पाळत",
+			vetDesc3: "तातडीची मदत अन 1962 प्रतिसाद नेटवर्क",
+			adminDesc1: "प्लॅटफॉर्म देखरेख, वापरकर्ते अन प्रकरणे देखरेख",
+			adminDesc2: "रोग विश्लेषण अन क्लस्टर सूचना",
+			adminDesc3: "राष्ट्रीय 1962 हेल्पलाइन अन प्रणाली व्यवस्थापन",
+			roleSelected: "निवडलं",
+			pleaseSelectRole: "कृपया पुढे जाण्यासाठी भूमिका निवडा",
+			backBtn: "← मागे",
+			appHeaderTitle: "पशु सखी — पोर्टल साइन इन",
+			createAccountTitle: "खातं तयार करा",
+			signInTitle: "साइन इन करा",
+			orUseEmailReg: "किंवा नोंदणीसाठी तुमचा ईमेल वापरा",
+			orUseAccount: "किंवा तुमचं खातं वापरा",
+			placeholderName: "नाव",
+			placeholderEmail: "ईमेल",
+			placeholderPassword: "पासवर्ड",
+			placeholderNewPassword: "नवीन पासवर्ड",
+			forgotPassword: "पासवर्ड विसरलात?",
+			signUpBtn: "साइन अप करा",
+			signInBtn: "साइन इन करा",
+			switchToSignInText: "आधीच खातं आहे?",
+			signInLink: "साइन इन करा",
+			switchToSignUpText: "खातं नाही?",
+			signUpLink: "खातं तयार करा",
+			resetTitle: "पासवर्ड रीसेट करा",
+			resetDescription: "रीसेट करण्यासाठी तुमचा खाते ईमेल आणि नवीन पासवर्ड टाका.",
+			resetBtn: "पासवर्ड रीसेट करा",
+			closeText: "× बंद करा",
+			logoutBtn: "लॉग आउट",
+			welcomeMessage: "राम राम, {name}!",
+			footerText: "पशु सखी · एकात्मिक पशुधन आरोग्य सेवा प्रणाली · हेल्पलाइन 1962",
+			errNameRequired: "नाव आवश्यक आहे.",
+			errEmailInvalid: "वैध ईमेल टाका.",
+			errPasswordMin: "पासवर्ड किमान 6 अक्षरांचा असावा.",
+			errPasswordRequired: "पासवर्ड आवश्यक आहे.",
+			msgAccountExists: "या ईमेलने आधीच एक खाते अस्तित्वात आहे.",
+			msgAccountCreated: "खाते यशस्वीरित्या तयार झाले!",
+			msgSomethingWrong: "काहीतरी चूक झाली. कृपया पुन्हा प्रयत्न करा.",
+			msgNoAccount: "या ईमेलने कोणतेही खाते सापडले नाही.",
+			msgIncorrectPassword: "चुकीचा पासवर्ड.",
+			msgSocialNotConfigured: "{provider} लॉगिन या आवृत्तीत केवळ प्रात्यक्षिक वैशिष्ट्य आहे.",
+			msgPasswordResetSuccess: "पासवर्ड रीसेट झाला! तुम्ही आता साइन इन करू शकता."
+		}
+	};
+
+	const LANG_STORAGE_KEY = 'lumen_selected_language';
+	let currentLang = 'en';
+	let selectedRole = null;
+	let pendingSignup = null;
+	let activeUser = null;
+
+	function t(key) {
+		return (translations[currentLang] && translations[currentLang][key])
+			|| translations.en[key]
+			|| key;
+	}
+
+	function tf(key, params) {
+		let str = t(key);
+		if (params) {
+			Object.keys(params).forEach((k) => {
+				str = str.split('{' + k + '}').join(params[k]);
+			});
+		}
+		return str;
+	}
+
+	function applyLanguage(lang) {
+		currentLang = translations[lang] ? lang : 'en';
+		document.documentElement.setAttribute('lang', currentLang);
+
+		document.querySelectorAll('[data-i18n]').forEach((el) => {
+			el.textContent = t(el.getAttribute('data-i18n'));
+		});
+		document.querySelectorAll('[data-i18n-placeholder]').forEach((el) => {
+			el.placeholder = t(el.getAttribute('data-i18n-placeholder'));
+		});
+		document.querySelectorAll('.lang-card').forEach((el) => {
+			el.classList.toggle('selected', el.getAttribute('data-lang') === currentLang);
+		});
+		document.querySelectorAll('.lang-switch-btn').forEach((el) => {
+			el.classList.toggle('selected', el.getAttribute('data-lang') === currentLang);
+		});
+	}
+
+	// ---------- onboarding screen flow ----------
+	const getStartedScreen = document.getElementById('getStartedScreen');
+	const languageScreen = document.getElementById('languageScreen');
+	const mainAppWrapper = document.getElementById('mainAppWrapper');
+	const roleSelectionScreen = document.getElementById('roleSelectionScreen');
+
+	const SCREEN_GET_STARTED = 'get-started';
+	const SCREEN_LANGUAGE = 'language';
+	const SCREEN_MAIN = 'main';
+	const screenEls = {
+		[SCREEN_GET_STARTED]: getStartedScreen,
+		[SCREEN_LANGUAGE]: languageScreen,
+		[SCREEN_MAIN]: mainAppWrapper
+	};
+	let currentScreenKey = null;
+
+	function showScreen(el) {
+		el.style.display = 'flex';
+		requestAnimationFrame(() => {
+			requestAnimationFrame(() => el.classList.add('fade-in'));
+		});
+	}
+
+	function hideScreen(el) {
+		el.classList.remove('fade-in');
+		setTimeout(() => { el.style.display = 'none'; }, 380);
+	}
+
+	function goToScreenKey(screenKey, options) {
+		const push = !options || options.push !== false;
+		const toEl = screenEls[screenKey];
+		if (!toEl) return;
+
+		if (currentScreenKey && currentScreenKey !== screenKey) {
+			hideScreen(screenEls[currentScreenKey]);
+			setTimeout(() => showScreen(toEl), 200);
+		} else {
+			showScreen(toEl);
+		}
+		currentScreenKey = screenKey;
+
+		if (push) {
+			history.pushState({ screen: screenKey }, '', '#' + screenKey);
+		}
+	}
+
+	window.addEventListener('popstate', (e) => {
+		const screenKey = (e.state && e.state.screen) || SCREEN_GET_STARTED;
+		goToScreenKey(screenKey, { push: false });
+	});
+
+	document.getElementById('getStartedBtn').addEventListener('click', () => {
+		goToScreenKey(SCREEN_LANGUAGE);
+	});
+
+	document.getElementById('languageBackBtn').addEventListener('click', () => {
+		goToScreenKey(SCREEN_GET_STARTED);
+	});
+
+	document.querySelectorAll('#languageScreen .lang-card').forEach((card) => {
+		card.addEventListener('click', () => {
+			applyLanguage(card.getAttribute('data-lang'));
+		});
+	});
+
+	document.getElementById('languageContinueBtn').addEventListener('click', () => {
+		localStorage.setItem(LANG_STORAGE_KEY, currentLang);
+		try { localStorage.setItem('psk_language', currentLang); } catch (e) {}
+		goToScreenKey(SCREEN_MAIN);
+	});
+
+	document.getElementById('mainBackBtn').addEventListener('click', () => {
+		goToScreenKey(SCREEN_LANGUAGE);
+	});
+
+	document.querySelectorAll('.lang-switch-btn').forEach((btn) => {
+		btn.addEventListener('click', () => {
+			applyLanguage(btn.getAttribute('data-lang'));
+			localStorage.setItem(LANG_STORAGE_KEY, currentLang);
+			try { localStorage.setItem('psk_language', currentLang); } catch (e) {}
+		});
+	});
+
+	// Load language
+	const savedLang = localStorage.getItem(LANG_STORAGE_KEY) || localStorage.getItem('psk_language');
+	if (savedLang && translations[savedLang]) {
+		applyLanguage(savedLang);
+	} else {
+		applyLanguage('en');
+	}
+	const initialScreenKey = SCREEN_GET_STARTED;
+	currentScreenKey = initialScreenKey;
+	showScreen(screenEls[initialScreenKey]);
+	history.replaceState({ screen: initialScreenKey }, '', '#' + initialScreenKey);
+
+	// ---------- UI panel toggle ----------
+	const container = document.getElementById('container');
+	const goToSignUpLink = document.getElementById('goToSignUp');
+	const goToSignInLink = document.getElementById('goToSignIn');
+
+	if (goToSignUpLink) {
+		goToSignUpLink.addEventListener('click', (e) => {
+			e.preventDefault();
+			container.classList.add('right-panel-active');
+		});
+	}
+
+	if (goToSignInLink) {
+		goToSignInLink.addEventListener('click', (e) => {
+			e.preventDefault();
+			pendingSignup = null;
+			container.classList.remove('right-panel-active');
+		});
+	}
+
+	// ---------- LocalStorage / Browser Storage Helper ----------
+	// Works directly in standalone file:/// environments with no localhost/server!
+	const storage = {
+		async get(key) {
+			try {
+				if (typeof window.storage !== 'undefined' && window.storage.get) {
+					const res = await window.storage.get(key);
+					if (res && res.value !== undefined) return JSON.parse(res.value);
+				}
+			} catch (e) {}
+			try {
+				const item = localStorage.getItem(key);
+				return item ? JSON.parse(item) : null;
+			} catch (e) {
+				return null;
+			}
+		},
+		async set(key, value) {
+			const str = JSON.stringify(value);
+			try {
+				if (typeof window.storage !== 'undefined' && window.storage.set) {
+					await window.storage.set(key, str, false);
+				}
+			} catch (e) {}
+			try {
+				localStorage.setItem(key, str);
+			} catch (e) {}
+		},
+		async remove(key) {
+			try {
+				if (typeof window.storage !== 'undefined' && window.storage.delete) {
+					await window.storage.delete(key, false);
+				}
+			} catch (e) {}
+			try {
+				localStorage.removeItem(key);
+			} catch (e) {}
+		}
+	};
+
+	async function hashPassword(password) {
+		if (typeof password !== 'string') password = String(password || '');
+		try {
+			if (window.crypto && window.crypto.subtle && typeof window.crypto.subtle.digest === 'function') {
+				const enc = new TextEncoder().encode(password);
+				const buf = await window.crypto.subtle.digest('SHA-256', enc);
+				return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+			}
+		} catch (e) {}
+
+		// Pure-JS SHA-256 fallback for non-secure / file:// environments
+		function sha256(ascii) {
+			function rightRotate(value, amount) { return (value>>>amount) | (value<<(32 - amount)); }
+			var mathPow = Math.pow;
+			var maxWord = mathPow(2, 32);
+			var lengthProperty = 'length';
+			var i, j;
+			var result = '';
+			var words = [];
+			var asciiBitLength = ascii[lengthProperty] * 8;
+			var hash = sha256.h = sha256.h || [];
+			var k = sha256.k = sha256.k || [];
+			var primeCounter = k[lengthProperty];
+			var isComposite = {};
+			for (var candidate = 2; primeCounter < 64; candidate++) {
+				if (!isComposite[candidate]) {
+					for (i = 0; i < 313; i += candidate) isComposite[i] = candidate;
+					hash[primeCounter] = (mathPow(candidate, .5)*maxWord)|0;
+					k[primeCounter++] = (mathPow(candidate, 1/3)*maxWord)|0;
+				}
+			}
+			ascii += '\x80';
+			while (ascii[lengthProperty]%64 - 56) ascii += '\x00';
+			for (i = 0; i < ascii[lengthProperty]; i++) {
+				j = ascii.charCodeAt(i);
+				if (j>>8) return;
+				words[i>>2] |= j << ((3 - i)%4)*8;
+			}
+			words[words[lengthProperty]] = ((asciiBitLength/maxWord)|0);
+			words[words[lengthProperty]] = (asciiBitLength);
+			for (j = 0; j < words[lengthProperty];) {
+				var w = words.slice(j, j += 16);
+				var oldHash = hash;
+				hash = hash.slice(0, 8);
+				for (i = 0; i < 64; i++) {
+					var i2 = i + j;
+					var w15 = w[i - 15], w2 = w[i - 2];
+					var a = hash[0], e = hash[4];
+					var temp1 = hash[7]
+						+ (rightRotate(e, 6) ^ rightRotate(e, 11) ^ rightRotate(e, 25))
+						+ ((e & hash[5]) ^ ((~e) & hash[6]))
+						+ k[i]
+						+ (w[i] = (i < 16) ? w[i] : (
+								w[i - 16]
+								+ (rightRotate(w15, 7) ^ rightRotate(w15, 18) ^ (w15>>>3))
+								+ w[i - 7]
+								+ (rightRotate(w2, 17) ^ rightRotate(w2, 19) ^ (w2>>>10))
+							)|0
+						);
+					var temp2 = (rightRotate(a, 2) ^ rightRotate(a, 13) ^ rightRotate(a, 22))
+						+ ((a & hash[1]) ^ (a & hash[2]) ^ (hash[1] & hash[2]));
+					hash = [(temp1 + temp2)|0].concat(hash);
+					hash[4] = (hash[4] + temp1)|0;
+				}
+				for (i = 0; i < 8; i++) hash[i] = (hash[i] + oldHash[i])|0;
+			}
+			for (i = 0; i < 8; i++) {
+				for (i2 = 3; i2 >= 0; i2--) {
+					var b = (hash[i]>>(i2*8))&255;
+					result += ((b < 16) ? 0 : '') + b.toString(16);
+				}
+			}
+			return result;
+		}
+		return sha256(password);
+	}
+
+	function isValidEmail(email) {
+		return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+	}
+
+	function isValidIdentifier(val) {
+		if (!val || typeof val !== 'string') return false;
+		const s = val.trim().toLowerCase();
+		if (['farmer', 'vet', 'veterinarian', 'admin', 'suresh', 'suresh patil', 'kavita', 'aditi'].includes(s)) return true;
+		if (/^\+?[0-9\s\-]{7,15}$/.test(s)) return true;
+		if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s)) return true;
+		return s.length >= 3;
+	}
+
+	function resolveIdentifier(val) {
+		if (!val) return '';
+		const s = val.trim().toLowerCase();
+		if (s === 'farmer' || s === 'suresh' || s === 'suresh patil') return 'farmer@pashusakhi.in';
+		if (s === 'vet' || s === 'veterinarian' || s === 'aditi' || s === 'dr aditi' || s === 'dr aditi kulkarni') return 'vet@pashusakhi.in';
+		if (s === 'admin' || s === 'superadmin') return 'admin@pashusakhi.in';
+		const digits = s.replace(/[^0-9]/g, '');
+		if (digits.endsWith('9876543210')) return 'farmer@pashusakhi.in';
+		if (digits.endsWith('9823012345')) return 'vet@pashusakhi.in';
+		if (digits.endsWith('9800000000')) return 'admin@pashusakhi.in';
+		return s;
+	}
+
+	function setError(id, msg) {
+		const el = document.getElementById(id);
+		if (el) el.textContent = msg || '';
+	}
+
+	function setMessage(id, msg, type) {
+		const el = document.getElementById(id);
+		if (!el) return;
+		el.textContent = msg || '';
+		el.className = 'form-message' + (type ? ' ' + type : '');
+	}
+
+	function clearFormErrors(ids) {
+		ids.forEach(id => setError(id, ''));
+	}
+
+	// ---------- Pre-seed standard demo accounts ----------
+	(async function seedAccounts() {
+		const demoUsers = [
+			{ name: "Suresh Patil", email: "farmer@pashusakhi.in", role: "farmer", pass: "farmer123", phone: "+91 98765 43210" },
+			{ name: "Dr. Aditi Kulkarni", email: "vet@pashusakhi.in", role: "veterinarian", pass: "vet12345", phone: "+91 98230 12345" },
+			{ name: "Super Admin", email: "admin@pashusakhi.in", role: "admin", pass: "admin123", phone: "+91 98000 00000" },
+			{ name: "Super Admin", email: "admin@pashucare.in", role: "admin", pass: "admin123", phone: "+91 98000 00000" }
+		];
+		for (const u of demoUsers) {
+			const key = 'users:' + u.email.toLowerCase();
+			const passwordHash = await hashPassword(u.pass);
+			const existing = await storage.get(key);
+			if (!existing || !existing.passwordHash) {
+				await storage.set(key, { name: u.name, email: u.email.toLowerCase(), passwordHash, role: u.role, phone: u.phone });
+			}
+		}
+	})();
+
+	// ---------- Demo Account Autofill Chips ----------
+	const chipFarmer = document.getElementById('chipFarmer');
+	const chipVet = document.getElementById('chipVet');
+	const chipAdmin = document.getElementById('chipAdmin');
+	const demoChips = [chipFarmer, chipVet, chipAdmin].filter(Boolean);
+
+	function fillDemoAccount(chip, email, pass, roleTitle) {
+		demoChips.forEach(c => c.classList.remove('active'));
+		if (chip) chip.classList.add('active');
+		const emailEl = document.getElementById('siEmail');
+		const passEl = document.getElementById('siPassword');
+		if (emailEl) emailEl.value = email;
+		if (passEl) passEl.value = pass;
+		clearFormErrors(['siEmailError', 'siPasswordError']);
+		setMessage('siFormMessage', `Autofilled ${roleTitle} credentials (${email})`, 'success');
+	}
+
+	if (chipFarmer) {
+		chipFarmer.addEventListener('click', () => fillDemoAccount(chipFarmer, 'farmer@pashusakhi.in', 'farmer123', 'Farmer'));
+	}
+	if (chipVet) {
+		chipVet.addEventListener('click', () => fillDemoAccount(chipVet, 'vet@pashusakhi.in', 'vet12345', 'Veterinarian'));
+	}
+	if (chipAdmin) {
+		chipAdmin.addEventListener('click', () => fillDemoAccount(chipAdmin, 'admin@pashusakhi.in', 'admin123', 'Admin'));
+	}
+
+	// ---------- Sign Up Role Pills Selection ----------
+	const rolePills = document.querySelectorAll('.role-radio-pill');
+	rolePills.forEach(pill => {
+		pill.addEventListener('click', () => {
+			rolePills.forEach(p => p.classList.remove('selected'));
+			pill.classList.add('selected');
+			const radio = pill.querySelector('input[type="radio"]');
+			if (radio) radio.checked = true;
+		});
+	});
+
+	// ---------- Dashboard File Mappings (Direct relative file paths) ----------
+	const DASHBOARD_URLS = {
+		farmer: "Farmer (4).html",
+		veterinarian: "Vet_Fixed (2).html",
+		admin: "PashuSakhi_Admin_Dashboard_Final.html"
+	};
+
+	function navigateToDashboard(role) {
+		const normRole = (role === 'vet' ? 'veterinarian' : (role || 'farmer')).toLowerCase();
+		const targetUrl = DASHBOARD_URLS[normRole] || DASHBOARD_URLS.farmer;
+		const u = activeUser || pendingSignup || {
+			name: normRole === 'veterinarian' ? 'Dr. Aditi Kulkarni' : normRole === 'admin' ? 'Super Admin' : 'Suresh Patil',
+			email: `${normRole === 'veterinarian' ? 'vet' : normRole}@pashusakhi.in`,
+			role: normRole
+		};
+		const sessionPayload = {
+			name: u.name || 'Suresh Patil',
+			email: u.email || `${normRole}@pashusakhi.in`,
+			role: normRole,
+			language: currentLang
+		};
+
+		if (window.PashuSakhiBridge) {
+			window.PashuSakhiBridge.setSession(sessionPayload);
+		}
+		try {
+			localStorage.setItem('psk_session', JSON.stringify(sessionPayload));
+			localStorage.setItem('pashusakhi_user', JSON.stringify(u));
+			localStorage.setItem('session:current', JSON.stringify(sessionPayload));
+			localStorage.setItem('psk_profile', JSON.stringify({
+				name: u.name,
+				email: u.email,
+				role: normRole,
+				mobile: u.phone || u.mobile || '+91 98765 43210',
+				village: u.village || 'Wagholi, Pune'
+			}));
+		} catch (e) {}
+
+		window.location.href = targetUrl;
+	}
+
+	// ---------- Optional Full-Screen Role Selection Screen ----------
+	const roleCards = document.querySelectorAll('.role-card');
+	const roleContinueBtn = document.getElementById('roleContinueBtn');
+	const roleBackBtn = document.getElementById('roleBackBtn');
+	const roleSelectionMessage = document.getElementById('roleSelectionMessage');
+
+	function showRoleSelection(preselectRole) {
+		selectedRole = preselectRole || null;
+		roleSelectionMessage.textContent = '';
+		roleCards.forEach(card => {
+			const roleVal = card.getAttribute('data-role');
+			const isMatch = preselectRole && (roleVal === preselectRole);
+			card.classList.toggle('selected', Boolean(isMatch));
+			card.setAttribute('aria-checked', String(Boolean(isMatch)));
+		});
+		roleContinueBtn.disabled = !selectedRole;
+		roleSelectionScreen.classList.add('active');
+	}
+
+	function hideRoleSelection() {
+		roleSelectionScreen.classList.remove('active');
+		roleSelectionMessage.textContent = '';
+	}
+
+	roleCards.forEach(card => {
+		card.addEventListener('click', () => {
+			selectedRole = card.getAttribute('data-role');
+			roleCards.forEach(c => {
+				const isSelected = (c === card);
+				c.classList.toggle('selected', isSelected);
+				c.setAttribute('aria-checked', String(isSelected));
+			});
+			roleSelectionMessage.textContent = '';
+			roleContinueBtn.disabled = false;
+		});
+
+		card.addEventListener('dblclick', () => {
+			if (selectedRole) {
+				roleContinueBtn.click();
+			}
+		});
+	});
+
+	roleBackBtn.addEventListener('click', () => {
+		hideRoleSelection();
+		if (pendingSignup) {
+			container.classList.add('right-panel-active');
+		} else {
+			container.classList.remove('right-panel-active');
+		}
+	});
+
+	roleContinueBtn.addEventListener('click', async () => {
+		if (!selectedRole) {
+			roleSelectionMessage.textContent = t('pleaseSelectRole');
+			return;
+		}
+		roleContinueBtn.disabled = true;
+		navigateToDashboard(selectedRole);
+	});
+
+	// ---------- Sign Up Form Submit ----------
+	const signUpForm = document.getElementById('signUpForm');
+	signUpForm.addEventListener('submit', async (e) => {
+		e.preventDefault();
+		clearFormErrors(['suNameError', 'suEmailError', 'suPasswordError']);
+		setMessage('suFormMessage', '', '');
+
+		const name = document.getElementById('suName').value.trim();
+		const email = document.getElementById('suEmail').value.trim();
+		const password = document.getElementById('suPassword').value;
+		const cleanEmail = email.toLowerCase().trim();
+		const chosenRoleRadio = document.querySelector('input[name="suRole"]:checked');
+		const chosenRole = (chosenRoleRadio ? chosenRoleRadio.value : 'farmer').toLowerCase();
+
+		let hasError = false;
+		if (!name) { setError('suNameError', t('errNameRequired')); hasError = true; }
+		if (!email || !isValidEmail(email)) { setError('suEmailError', t('errEmailInvalid')); hasError = true; }
+		if (!password || password.length < 6) { setError('suPasswordError', t('errPasswordMin')); hasError = true; }
+		if (hasError) return;
+
+		const btn = document.getElementById('suSubmitBtn');
+		btn.disabled = true;
+		setMessage('suFormMessage', `Creating your ${chosenRole} account...`, '');
+
+		try {
+			let backendSuccess = false;
+			let userToken = null;
+			let backendUser = null;
+
+			// 1. Attempt live backend registration
+			if (window.PashuSakhiApi) {
+				try {
+					const regRes = await window.PashuSakhiApi.register({
+						name,
+						email: cleanEmail,
+						password,
+						role: chosenRole
+					});
+					if (regRes && regRes.success && regRes.data) {
+						backendSuccess = true;
+						userToken = regRes.data.token || null;
+						backendUser = regRes.data.user || null;
+						if (userToken) window.PashuSakhiApi.setToken(userToken);
+					} else if (regRes && (regRes.statusCode === 409 || (regRes.message && regRes.message.includes('already exists')))) {
+						setMessage('suFormMessage', t('msgAccountExists') + ' Try signing in instead.', 'error');
+						const siEmailInput = document.getElementById('siEmail');
+						if (siEmailInput) siEmailInput.value = cleanEmail;
+						btn.disabled = false;
+						return;
+					}
+				} catch (apiErr) {
+					console.warn('Live backend registration fallback to local:', apiErr);
+				}
+			}
+
+			// 2. Persist in local storage
+			const passwordHash = await hashPassword(password);
+			const newUser = {
+				id: (backendUser && backendUser.id) || ('usr_' + Date.now()),
+				name,
+				email: cleanEmail,
+				passwordHash,
+				role: chosenRole,
+				phone: (backendUser && (backendUser.mobile || backendUser.phone)) || ''
+			};
+			await storage.set('users:' + cleanEmail, newUser);
+			await storage.set('session:current', { email: cleanEmail, name, role: chosenRole });
+			await storage.set('pashusakhi_user', newUser);
+
+			activeUser = newUser;
+			pendingSignup = null;
+
+			if (window.PashuSakhiBridge) {
+				window.PashuSakhiBridge.setSession({
+					email: cleanEmail,
+					name: name,
+					role: chosenRole,
+					language: currentLang
+				});
+			}
+
+			setMessage('suFormMessage', t('msgAccountCreated') + ' Opening dashboard...', 'success');
+			signUpForm.reset();
+			setTimeout(() => {
+				navigateToDashboard(chosenRole);
+			}, 500);
+		} catch (err) {
+			console.error('Sign up error:', err);
+			setMessage('suFormMessage', t('msgSomethingWrong'), 'error');
+			btn.disabled = false;
+		}
+	});
+
+	// ---------- Sign In Form Submit ----------
+	const signInForm = document.getElementById('signInForm');
+	signInForm.addEventListener('submit', async (e) => {
+		e.preventDefault();
+		clearFormErrors(['siEmailError', 'siPasswordError']);
+		setMessage('siFormMessage', '', '');
+
+		const identifier = document.getElementById('siEmail').value.trim();
+		const password = document.getElementById('siPassword').value;
+
+		let hasError = false;
+		if (!identifier || !isValidIdentifier(identifier)) {
+			setError('siEmailError', 'Enter a valid email, username (e.g. farmer) or mobile number.');
+			hasError = true;
+		}
+		if (!password) { setError('siPasswordError', t('errPasswordRequired')); hasError = true; }
+		if (hasError) return;
+
+		const resolvedEmail = resolveIdentifier(identifier);
+		const btn = document.getElementById('siSubmitBtn');
+		btn.disabled = true;
+		setMessage('siFormMessage', 'Signing in...', '');
+
+		try {
+			// Demo accounts dictionary with alternate passwords support
+			const DEMO_ACCOUNTS = {
+				'farmer@pashusakhi.in': {
+					validPasswords: ['farmer123', 'farmer', 'password', '123456'],
+					name: 'Suresh Patil',
+					role: 'farmer',
+					phone: '+91 98765 43210'
+				},
+				'vet@pashusakhi.in': {
+					validPasswords: ['vet12345', 'vet', 'password', '123456'],
+					name: 'Dr. Aditi Kulkarni',
+					role: 'veterinarian',
+					phone: '+91 98230 12345'
+				},
+				'admin@pashusakhi.in': {
+					validPasswords: ['admin123', 'admin', 'password', '123456'],
+					name: 'Super Admin',
+					role: 'admin',
+					phone: '+91 98000 00000'
+				},
+				'admin@pashucare.in': {
+					validPasswords: ['admin123', 'admin', 'password', '123456'],
+					name: 'Super Admin',
+					role: 'admin',
+					phone: '+91 98000 00000'
+				}
+			};
+
+			let backendUser = null;
+			let userToken = null;
+
+			// 1. Live Backend Login
+			if (window.PashuSakhiApi) {
+				try {
+					// Try with raw identifier or resolved email
+					const res = await window.PashuSakhiApi.login(identifier, password);
+					if (res && res.success && res.data) {
+						backendUser = res.data.user;
+						userToken = res.data.token;
+						if (userToken) {
+							window.PashuSakhiApi.setToken(userToken);
+						}
+					}
+				} catch (apiErr) {
+					console.warn('Live backend login error, proceeding to local check:', apiErr);
+				}
+			}
+
+			let user = null;
+			const pHash = await hashPassword(password);
+
+			if (backendUser) {
+				user = {
+					name: backendUser.name,
+					email: (backendUser.email || resolvedEmail).toLowerCase(),
+					role: (backendUser.role || 'farmer').toLowerCase(),
+					phone: backendUser.mobile || backendUser.phone || '',
+					id: backendUser.id,
+					passwordHash: pHash
+				};
+				await storage.set('users:' + user.email, user);
+			} else {
+				// Check Demo accounts map
+				const demo = DEMO_ACCOUNTS[resolvedEmail];
+				if (demo && demo.validPasswords.includes(password)) {
+					user = {
+						name: demo.name,
+						email: resolvedEmail,
+						role: demo.role,
+						phone: demo.phone,
+						passwordHash: pHash
+					};
+					await storage.set('users:' + resolvedEmail, user);
+				} else {
+					// Check locally registered accounts
+					user = await storage.get('users:' + resolvedEmail);
+					if (!user) {
+						user = await storage.get('users:' + identifier.toLowerCase());
+					}
+					if (!user) {
+						setMessage('siFormMessage', t('msgNoAccount'), 'error');
+						btn.disabled = false;
+						return;
+					}
+					// Verify password
+					if (user.passwordHash && user.passwordHash !== pHash && user.password !== password) {
+						setMessage('siFormMessage', t('msgIncorrectPassword'), 'error');
+						btn.disabled = false;
+						return;
+					}
+				}
+			}
+
+			// Validated login successful
+			const userRole = (user.role || 'farmer').toLowerCase();
+			activeUser = user;
+			pendingSignup = null;
+
+			await storage.set('session:current', { email: user.email, name: user.name, role: userRole });
+			await storage.set('pashusakhi_user', user);
+			if (window.PashuSakhiBridge) {
+				window.PashuSakhiBridge.setSession({
+					email: user.email,
+					name: user.name,
+					role: userRole,
+					language: currentLang
+				});
+			}
+
+			setMessage('siFormMessage', `Welcome back, ${user.name}! Opening dashboard...`, 'success');
+			signInForm.reset();
+			setTimeout(() => {
+				navigateToDashboard(userRole);
+			}, 350);
+		} catch (err) {
+			console.error('Sign in error:', err);
+			setMessage('siFormMessage', t('msgSomethingWrong'), 'error');
+		} finally {
+			btn.disabled = false;
+		}
+	});
+
+	// ---------- Forgot Password ----------
+	const resetOverlay = document.getElementById('resetOverlay');
+	document.getElementById('forgotPasswordLink').addEventListener('click', (e) => {
+		e.preventDefault();
+		setMessage('rpFormMessage', '', '');
+		clearFormErrors(['rpEmailError', 'rpPasswordError']);
+		document.getElementById('resetForm').reset();
+		resetOverlay.classList.add('active');
+	});
+	document.getElementById('resetCloseBtn').addEventListener('click', () => {
+		resetOverlay.classList.remove('active');
+	});
+
+	document.getElementById('resetForm').addEventListener('submit', async (e) => {
+		e.preventDefault();
+		clearFormErrors(['rpEmailError', 'rpPasswordError']);
+		setMessage('rpFormMessage', '', '');
+
+		const email = document.getElementById('rpEmail').value.trim();
+		const newPassword = document.getElementById('rpNewPassword').value;
+
+		let hasError = false;
+		if (!email || !isValidEmail(email)) { setError('rpEmailError', t('errEmailInvalid')); hasError = true; }
+		if (!newPassword || newPassword.length < 6) { setError('rpPasswordError', t('errPasswordMin')); hasError = true; }
+		if (hasError) return;
+
+		const btn = document.getElementById('rpSubmitBtn');
+		btn.disabled = true;
+		try {
+			const user = await storage.get('users:' + email.toLowerCase());
+			if (!user) {
+				setMessage('rpFormMessage', t('msgNoAccount'), 'error');
+				return;
+			}
+			user.passwordHash = await hashPassword(newPassword);
+			await storage.set('users:' + email.toLowerCase(), user);
+			setMessage('rpFormMessage', t('msgPasswordResetSuccess'), 'success');
+			setTimeout(() => { resetOverlay.classList.remove('active'); }, 1200);
+		} catch (err) {
+			setMessage('rpFormMessage', t('msgSomethingWrong'), 'error');
+		} finally {
+			btn.disabled = false;
+		}
+	});
+
+	// ---------- Social Buttons Feedback ----------
+	document.querySelectorAll('.social').forEach(el => {
+		el.addEventListener('click', (e) => {
+			e.preventDefault();
+			const provider = el.getAttribute('data-provider');
+			const formMsgId = el.closest('#signUpForm') ? 'suFormMessage' : 'siFormMessage';
+			setMessage(formMsgId, tf('msgSocialNotConfigured', { provider: provider }), 'error');
+		});
+	});
+
+	// ---------- Fallback Logout (within auth container) ----------
+	const logoutBtn = document.getElementById('logoutBtn');
+	if (logoutBtn) {
+		logoutBtn.addEventListener('click', async () => {
+			await storage.remove('session:current');
+			await storage.remove('pashusakhi_user');
+			container.classList.remove('right-panel-active');
+			document.getElementById('dashboard').classList.remove('active');
+			document.getElementById('appRoot').classList.remove('hidden');
+		});
+	}
+
+	// Check if redirected with ?role=... or ?logout=true
+	const urlParams = new URLSearchParams(window.location.search);
+	if (urlParams.get('logout') === 'true') {
+		storage.remove('session:current');
+		storage.remove('pashusakhi_user');
+		if (window.PashuSakhiBridge) window.PashuSakhiBridge.clearSession();
+		const siMsg = document.getElementById('siFormMessage');
+		if (siMsg) {
+			siMsg.className = 'form-message success';
+			siMsg.textContent = 'You have been successfully logged out.';
+		}
+	}
+
+	// Initialize Bridge seed data
+	if (window.PashuSakhiBridge) {
+		window.PashuSakhiBridge.seedDefaultData();
+	}
+})();
+</script>
+
+</body>
+</html>
