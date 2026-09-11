@@ -245,12 +245,7 @@
 
     seedDefaultData: function() {
       if (!localStorage.getItem('psk_shared_reports')) {
-        const defaultReports = [
-          { id: "rep_101", type: "detection", animalId: "a1", animalName: "Gauri (Cow)", farmerName: "Suresh Patil", date: new Date().toISOString().split('T')[0], condition: "Suspected Bovine Dermatitis", severity: "attention", confidence: 87, status: "Under Review", details: { title: "Suspected Bovine Dermatitis / Cutaneous Lesions" } },
-          { id: "rep_102", type: "detection", animalId: "a2", animalName: "Raju (Bullock)", farmerName: "Suresh Patil", date: new Date().toISOString().split('T')[0], condition: "Suspected Nodular Skin Lesions", severity: "urgent", confidence: 91, status: "New", details: { title: "Suspected Nodular Skin Lesions" } },
-          { id: "rep_103", type: "screening", animalId: "a3", animalName: "Lakshmi (Buffalo)", farmerName: "Suresh Patil", date: new Date().toISOString().split('T')[0], condition: "Mild Bloat & Lethargy", severity: "attention", confidence: 82, status: "Resolved", details: { title: "Mild Bloat" } }
-        ];
-        _set('psk_shared_reports', defaultReports);
+        _set('psk_shared_reports', []);
       }
 
       if (!localStorage.getItem('psk_shared_emergencies')) {

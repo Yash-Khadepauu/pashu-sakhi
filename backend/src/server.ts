@@ -20,6 +20,13 @@ const server = app.listen(PORT, async () => {
     console.warn(`⚠️ PostgreSQL Database: Not reachable on ${env.DATABASE_URL}.`);
     console.warn(`💡 Check database credentials in .env if running local migrations.`);
   }
+
+  const geminiKey = process.env.GEMINI_API_KEY || env.GEMINI_API_KEY;
+  if (geminiKey) {
+    console.log(`🤖 Gemini AI: Active (Key length: ${geminiKey.length}, Primary: ${env.GEMINI_PRIMARY_MODEL}, Fallback: ${env.GEMINI_FALLBACK_MODEL})`);
+  } else {
+    console.error(`❌ Gemini AI: GEMINI_API_KEY is MISSING in .env!`);
+  }
 });
 
 // Graceful Shutdown
