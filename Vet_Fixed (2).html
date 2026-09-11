@@ -1268,7 +1268,24 @@ function DiseaseHeatmapDashboard({ showToast }) {
     filteredHotspots.forEach(h => {
       const total = h.affectedAnimals + h.affectedFarms;
       if (showRiskZones) {
-        heatData.push([h.lat || 19.0, h.lng || 75.0, Math.min(1.0, total/100)]);
+        // Procedurally generate a dense cluster of heatmap points for a realistic SIH demo
+        const pointCount = Math.max(10, Math.min(150, (h.affectedAnimals || 0) + (h.affectedFarms || 0)));
+        // Spread radius roughly 0.05 to 0.15 degrees
+        const spread = (h.radius || 40) / 400; 
+        
+        // Push the epicenter
+        heatData.push([h.lat || 19.0, h.lng || 75.0, 1.0]);
+        
+        for (let i = 0; i < pointCount; i++) {
+          // Generate normally-distributed random offset
+          const r = spread * Math.sqrt(Math.random());
+          const theta = Math.random() * 2 * Math.PI;
+          const latOffset = r * Math.cos(theta);
+          const lngOffset = r * Math.sin(theta);
+          // Intensity decays slightly from center
+          const intensity = 0.4 + (Math.random() * 0.4);
+          heatData.push([(h.lat || 19.0) + latOffset, (h.lng || 75.0) + lngOffset, intensity]);
+        }
       }
 
       const isSelected = selectedHotspotId === h.id;
@@ -1455,11 +1472,9 @@ function DiseaseHeatmapDashboard({ showToast }) {
             <span className="live-pulsing-dot" />
             LIVE SURVEILLANCE FEED
           </div>
-          <h1 className="hm-title">Veterinary Disease Monitoring & Hotspot Map</h1>
-          <p className="hm-sub">
-            Real-time geospatial epidemiological surveillance across Western Maharashtra livestock basins.
-            Connected with veterinary stations, outbreak containment rings, and mobile dispatch units.
-          </p>
+          <h1 className="hm-title">{t("auto_veterinary_dise", "Veterinary Disease Monitoring & Hotspot Map")}</h1>
+          <p className="hm-sub">{t("auto_real_time_geosp", "Real-time geospatial epidemiological surveillance across Western Maharashtra livestock basins.
+            Connected with veterinary stations, outbreak containment rings, and mobile dispatch units.")}</p>
         </div>
 
         <div className="hm-header-actions">
@@ -1485,7 +1500,7 @@ function DiseaseHeatmapDashboard({ showToast }) {
             <span className="hm-stat-tag red">{stats.highRiskZones} High Risk</span>
           </div>
           <div className="hm-stat-num">{stats.totalCases}</div>
-          <div className="hm-stat-lbl">Affected Animals</div>
+          <div className="hm-stat-lbl">{t("auto_affected_animal", "Affected Animals")}</div>
           <div className="hm-stat-foot red-text">{stats.growthPercent} vs prev period</div>
         </div>
 
@@ -1495,27 +1510,27 @@ function DiseaseHeatmapDashboard({ showToast }) {
             <span className="hm-stat-tag orange">{filteredHotspots.length} Zones</span>
           </div>
           <div className="hm-stat-num">{stats.activeHotspotsCount}</div>
-          <div className="hm-stat-lbl">Active Hotspots</div>
+          <div className="hm-stat-lbl">{t("auto_active_hotspots", "Active Hotspots")}</div>
           <div className="hm-stat-foot">{stats.mediumRiskZones} Medium · {stats.lowRiskZones} Low</div>
         </div>
 
         <div className="hm-stat-box">
           <div className="hm-stat-top">
             <span className="hm-stat-icon red"><ShieldAlert size={16} /></span>
-            <span className="hm-stat-tag red">Urgent</span>
+            <span className="hm-stat-tag red">{t("auto_urgent", "Urgent")}</span>
           </div>
           <div className="hm-stat-num">{stats.highRiskZones}</div>
-          <div className="hm-stat-lbl">High-Risk Zones</div>
-          <div className="hm-stat-foot red-text">Require immediate containment</div>
+          <div className="hm-stat-lbl">{t("auto_high_risk_zones", "High-Risk Zones")}</div>
+          <div className="hm-stat-foot red-text">{t("auto_require_immedia", "Require immediate containment")}</div>
         </div>
 
         <div className="hm-stat-box">
           <div className="hm-stat-top">
             <span className="hm-stat-icon teal"><Building2 size={16} /></span>
-            <span className="hm-stat-tag teal">Farms</span>
+            <span className="hm-stat-tag teal">{t("auto_farms", "Farms")}</span>
           </div>
           <div className="hm-stat-num">{stats.totalFarms}</div>
-          <div className="hm-stat-lbl">Affected Farms</div>
+          <div className="hm-stat-lbl">{t("auto_affected_farms", "Affected Farms")}</div>
           <div className="hm-stat-foot">Across {districtOptions.length - 1} districts monitored</div>
         </div>
       </div>
@@ -1525,7 +1540,7 @@ function DiseaseHeatmapDashboard({ showToast }) {
         <div className="hm-filter-top">
           <div className="hm-filter-title">
             <SlidersHorizontal size={17} style={{ color: "var(--brand)" }} />
-            <span>Surveillance Filters & Sorting</span>
+            <span>{t("auto_surveillance_fi", "Surveillance Filters & Sorting")}</span>
             {filteredHotspots.length < INITIAL_HOTSPOTS.length && (
               <span className="badge badge-info" style={{ marginLeft: 8 }}>
                 {filteredHotspots.length} of {INITIAL_HOTSPOTS.length} shown
@@ -1541,7 +1556,7 @@ function DiseaseHeatmapDashboard({ showToast }) {
         <div className="hm-filter-grid">
           {/* Disease Filter */}
           <div className="hm-control-group">
-            <label className="hm-control-label">Disease Type</label>
+            <label className="hm-control-label">{t("auto_disease_type", "Disease Type")}</label>
             <select
               className="hm-select"
               value={selectedDisease}
@@ -1555,7 +1570,7 @@ function DiseaseHeatmapDashboard({ showToast }) {
 
           {/* District Filter */}
           <div className="hm-control-group">
-            <label className="hm-control-label">District / Region</label>
+            <label className="hm-control-label">{t("auto_district___regi", "District / Region")}</label>
             <select
               className="hm-select"
               value={selectedDistrict}
@@ -1569,7 +1584,7 @@ function DiseaseHeatmapDashboard({ showToast }) {
 
           {/* Risk Level Filter */}
           <div className="hm-control-group">
-            <label className="hm-control-label">Risk Level</label>
+            <label className="hm-control-label">{t("auto_risk_level", "Risk Level")}</label>
             <select
               className="hm-select"
               value={selectedRisk}
@@ -1584,7 +1599,7 @@ function DiseaseHeatmapDashboard({ showToast }) {
 
           {/* Date Range Filter */}
           <div className="hm-control-group">
-            <label className="hm-control-label">Date Window</label>
+            <label className="hm-control-label">{t("auto_date_window", "Date Window")}</label>
             <select
               className="hm-select"
               value={dateRange}
@@ -1599,7 +1614,7 @@ function DiseaseHeatmapDashboard({ showToast }) {
 
           {/* Sorting (simplified to Risk only) */}
           <div className="hm-control-group">
-            <label className="hm-control-label">Sort By</label>
+            <label className="hm-control-label">{t("auto_sort_by", "Sort By")}</label>
             <select className="hm-select" value="risk" disabled>
               <option value="risk">Risk (High to Low)</option>
             </select>
@@ -1633,8 +1648,8 @@ function DiseaseHeatmapDashboard({ showToast }) {
             <div className="hm-map-header">
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <MapPinned size={18} style={{ color: "var(--brand)" }} />
-                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Interactive Hotspot Map</h3>
-                <span className="badge badge-info" style={{ fontSize: 11 }}>Maharashtra Livestock Belt</span>
+                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>{t("auto_interactive_hot", "Interactive Hotspot Map")}</h3>
+                <span className="badge badge-info" style={{ fontSize: 11 }}>{t("auto_maharashtra_liv", "Maharashtra Livestock Belt")}</span>
               </div>
 
               <div className="hm-layer-switches">
@@ -1674,31 +1689,31 @@ function DiseaseHeatmapDashboard({ showToast }) {
 
               {/* Floating Map Legend Overlay */}
               <div className="hm-map-legend">
-                <div className="hm-legend-title">Surveillance Key</div>
+                <div className="hm-legend-title">{t("auto_surveillance_ke", "Surveillance Key")}</div>
                 <div className="hm-legend-item">
                   <span className="hm-legend-dot red" />
-                  <span>High Risk Zone (&gt;35 cases)</span>
+                  <span>{t("auto_high_risk_zone_", "High Risk Zone (&gt;35 cases)")}</span>
                 </div>
                 <div className="hm-legend-item">
                   <span className="hm-legend-dot orange" />
-                  <span>Medium Risk (15-35 cases)</span>
+                  <span>{t("auto_medium_risk__15", "Medium Risk (15-35 cases)")}</span>
                 </div>
                 <div className="hm-legend-item">
                   <span className="hm-legend-dot green" />
-                  <span>Low / Controlled (&lt;15 cases)</span>
+                  <span>{t("auto_low___controlle", "Low / Controlled (&lt;15 cases)")}</span>
                 </div>
                 <div className="hm-legend-divider" />
                 <div className="hm-legend-item">
                   <span className="hm-legend-shape solid" />
-                  <span>Confirmed Outbreak</span>
+                  <span>{t("auto_confirmed_outbr", "Confirmed Outbreak")}</span>
                 </div>
                 <div className="hm-legend-item">
                   <span className="hm-legend-shape dashed" />
-                  <span>Suspected / Investigating</span>
+                  <span>{t("auto_suspected___inv", "Suspected / Investigating")}</span>
                 </div>
                 <div className="hm-legend-item">
                   <span className="hm-legend-icon-tag"><Stethoscope size={11} /></span>
-                  <span>Veterinary Support Depot</span>
+                  <span>{t("auto_veterinary_supp", "Veterinary Support Depot")}</span>
                 </div>
               </div>
             </div>
@@ -1731,17 +1746,17 @@ function DiseaseHeatmapDashboard({ showToast }) {
             <div className="hm-impact-grid">
               <div className="hm-impact-cell">
                 <span className="hm-impact-val red">{selectedHotspot.affectedAnimals}</span>
-                <span className="hm-impact-lbl">Animals Affected</span>
+                <span className="hm-impact-lbl">{t("auto_animals_affecte", "Animals Affected")}</span>
                 <span className="hm-impact-sub">{selectedHotspot.species}</span>
               </div>
               <div className="hm-impact-cell">
                 <span className="hm-impact-val">{selectedHotspot.affectedFarms}</span>
-                <span className="hm-impact-lbl">Farms Impacted</span>
+                <span className="hm-impact-lbl">{t("auto_farms_impacted", "Farms Impacted")}</span>
                 <span className="hm-impact-sub">{selectedHotspot.recentIncrease} 7-day trend</span>
               </div>
               <div className="hm-impact-cell">
                 <span className="hm-impact-val">{selectedHotspot.date.split(" ")[0]} {selectedHotspot.date.split(" ")[1]}</span>
-                <span className="hm-impact-lbl">First Reported</span>
+                <span className="hm-impact-lbl">{t("auto_first_reported", "First Reported")}</span>
                 <span className="hm-impact-sub">{selectedHotspot.daysAgo === 0 ? "Today" : `${selectedHotspot.daysAgo}d ago`}</span>
               </div>
             </div>
@@ -1750,7 +1765,7 @@ function DiseaseHeatmapDashboard({ showToast }) {
             <div className="hm-info-block">
               <div className="hm-info-heading">
                 <Flame size={14} style={{ color: "var(--urgent)" }} />
-                <span>Spread Dynamics & Pattern</span>
+                <span>{t("auto_spread_dynamics", "Spread Dynamics & Pattern")}</span>
               </div>
               <p className="hm-info-text">{selectedHotspot.spreadSummary}</p>
             </div>
@@ -1758,7 +1773,7 @@ function DiseaseHeatmapDashboard({ showToast }) {
             <div className="hm-info-block" style={{ borderLeftColor: "var(--brand)" }}>
               <div className="hm-info-heading">
                 <ShieldCheck size={14} style={{ color: "var(--brand)" }} />
-                <span>Recommended Veterinary Protocol</span>
+                <span>{t("auto_recommended_vet", "Recommended Veterinary Protocol")}</span>
               </div>
               <p className="hm-info-text">{selectedHotspot.advisory}</p>
             </div>
@@ -1766,7 +1781,7 @@ function DiseaseHeatmapDashboard({ showToast }) {
             {/* Mini Outbreak Trend Sparkline */}
             <div className="hm-spark-wrap">
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--ink-soft)" }}>7-Day Progression Sparkline</span>
+                <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--ink-soft)" }}>{t("auto_7_day_progressi", "7-Day Progression Sparkline")}</span>
                 <span style={{ fontSize: 12, fontWeight: 700, color: "var(--urgent)" }}>{selectedHotspot.recentIncrease}</span>
               </div>
               <div className="hm-spark-bars">
@@ -1818,15 +1833,13 @@ function DiseaseHeatmapDashboard({ showToast }) {
           <Card className="hm-trend-chart-card">
             <div className="hm-chart-header">
               <div>
-                <h4 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>
-                  Affected Animals — Last 7 Days
-                </h4>
+                <h4 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>{t("auto_affected_animal", "Affected Animals — Last 7 Days")}</h4>
                 <p style={{ margin: "2px 0 0", fontSize: 12.5, color: "var(--ink-soft)" }}>
                   Aggregated case reports across {filteredHotspots.length} monitoring clusters
                 </p>
               </div>
               <div className="hm-chart-legend">
-                <span className="legend-item"><span className="legend-line red" /> Affected Animals</span>
+                <span className="legend-item"><span className="legend-line red" />{t("auto_affected_animal", "Affected Animals")}</span>
               </div>
             </div>
 
@@ -1890,7 +1903,7 @@ function DiseaseHeatmapDashboard({ showToast }) {
           <Card className="hm-increasing-card">
             <div className="hm-card-subheading">
               <TrendingUp size={16} style={{ color: "var(--urgent)" }} />
-              <span>Fastest Escalating Areas</span>
+              <span>{t("auto_fastest_escalat", "Fastest Escalating Areas")}</span>
             </div>
 
             <div className="hm-growth-list">
@@ -1910,7 +1923,7 @@ function DiseaseHeatmapDashboard({ showToast }) {
                   </div>
                   <div className="hm-growth-stat">
                     <span className="hm-growth-pct">{h.recentIncrease}</span>
-                    <span className="hm-growth-period">last 7 days</span>
+                    <span className="hm-growth-period">{t("auto_last_7_days", "last 7 days")}</span>
                   </div>
                 </div>
               ))}
@@ -1943,12 +1956,17 @@ function VetApp() {
   const [notifications, setNotifications] = useState(initialNotifications);
 
   const [profile, setProfile] = useState(VET_PROFILE);
-  const [appLanguage, setAppLanguage] = useState("English");
+  const [appLanguage, setAppLanguage] = useState(localStorage.getItem('psk_language') || "English");
   const [textSize, setTextSize] = useState("Medium");
   const [theme, setTheme] = useState("Light");
   const [highContrast, setHighContrast] = useState(false);
   const [notificationPreferences, setNotificationPreferences] = useState(true);
-  const [reminderTiming, setReminderTiming] = useState("30 minutes before");
+  const [reminderTiming, setReminderTiming] = useState("At scheduled time");
+
+  useEffect(() => {
+    localStorage.setItem('psk_language', appLanguage);
+  }, [appLanguage]);
+
   const [selectedPatientId, setSelectedPatientId] = useState("gauri");
   const [patientSearch, setPatientSearch] = useState("");
   const [reportFilter, setReportFilter] = useState("All");
@@ -2529,7 +2547,7 @@ function VetApp() {
         <div className="sidebar-brand">
           <div className="mark"><PawPrint size={20} color="#2A1B04" /></div>
           <div>
-            <div className="name">Pashu Sakhi</div>
+            <div className="name">{t("auto_pashu_sakhi", "Pashu Sakhi")}</div>
             <div className="tag">{t("brand_tagline", "Veterinarian workspace")}</div>
           </div>
         </div>
@@ -2575,7 +2593,7 @@ function VetApp() {
             title="Log out of Veterinarian workspace"
           >
             <LogOut size={16} />
-            <span>Log Out</span>
+            <span>{t("auto_log_out", "Log Out")}</span>
           </button>
         </div>
       </aside>
@@ -2633,7 +2651,7 @@ function VetApp() {
         ) : view === "reports" ? (
           <div className="workspace-page">
             <div className="page-head">
-              <div><h2>AI Reports</h2><p>Review AI-generated livestock screening reports before confirming the clinical assessment.</p></div>
+              <div><h2>{t("auto_ai_reports", "AI Reports")}</h2><p>{t("auto_review_ai_gener", "Review AI-generated livestock screening reports before confirming the clinical assessment.")}</p></div>
               <div className="filter-row">
                 {["All","New","Under Review","Resolved"].map(f => (
                   <button key={f} className={`filter-chip ${reportFilter === f ? "active" : ""}`} onClick={() => setReportFilter(f)}>{f}</button>
@@ -2641,10 +2659,10 @@ function VetApp() {
               </div>
             </div>
             <div className="stat-grid">
-              <div className="stat-card"><p className="stat-value">{reports.length}</p><p className="stat-label">Total Reports</p></div>
-              <div className="stat-card"><p className="stat-value">{reports.filter(r=>r.status==="New").length}</p><p className="stat-label">New</p></div>
-              <div className="stat-card"><p className="stat-value">{reports.filter(r=>r.status==="Under Review").length}</p><p className="stat-label">Under Review</p></div>
-              <div className="stat-card"><p className="stat-value">{reports.filter(r=>r.status==="Resolved").length}</p><p className="stat-label">Resolved</p></div>
+              <div className="stat-card"><p className="stat-value">{reports.length}</p><p className="stat-label">{t("auto_total_reports", "Total Reports")}</p></div>
+              <div className="stat-card"><p className="stat-value">{reports.filter(r=>r.status==="New").length}</p><p className="stat-label">{t("auto_new", "New")}</p></div>
+              <div className="stat-card"><p className="stat-value">{reports.filter(r=>r.status==="Under Review").length}</p><p className="stat-label">{t("auto_under_review", "Under Review")}</p></div>
+              <div className="stat-card"><p className="stat-value">{reports.filter(r=>r.status==="Resolved").length}</p><p className="stat-label">{t("auto_resolved", "Resolved")}</p></div>
             </div>
             <Card>
               {filteredReports.map(r => (
@@ -2663,13 +2681,13 @@ function VetApp() {
                   </div>
                 </div>
               ))}
-              {!filteredReports.length && <div className="empty-state">No AI reports match this filter.</div>}
+              {!filteredReports.length && <div className="empty-state">{t("auto_no_ai_reports_m", "No AI reports match this filter.")}</div>}
             </Card>
           </div>
         ) : view === "emergency" ? (
           <div className="workspace-page">
             <div className="page-head">
-              <div><h2>Emergency Cases</h2><p>Prioritise critical cases, assign a veterinarian and track resolution.</p></div>
+              <div><h2>{t("auto_emergency_cases", "Emergency Cases")}</h2><p>{t("auto_prioritise_crit", "Prioritise critical cases, assign a veterinarian and track resolution.")}</p></div>
               <div className="filter-row">
                 {["All","New","Accepted","In Treatment","Resolved"].map(f => (
                   <button key={f} className={`filter-chip ${emergencyFilter === f ? "active" : ""}`} onClick={() => setEmergencyFilter(f)}>{f}</button>
@@ -2694,13 +2712,13 @@ function VetApp() {
                   </div>
                 </div>
               ))}
-              {!filteredEmergencies.length && <div className="empty-state">No emergency cases match this filter.</div>}
+              {!filteredEmergencies.length && <div className="empty-state">{t("auto_no_emergency_ca", "No emergency cases match this filter.")}</div>}
             </Card>
           </div>
         ) : view === "patients" ? (
           <div className="workspace-page">
             <div className="page-head">
-              <div><h2>Patient Records</h2><p>Search livestock records and view their complete clinical profile and treatment history.</p></div>
+              <div><h2>{t("auto_patient_records", "Patient Records")}</h2><p>{t("auto_search_livestoc", "Search livestock records and view their complete clinical profile and treatment history.")}</p></div>
               <div className="search-box"><Search size={16}/><input value={patientSearch} onChange={e=>setPatientSearch(e.target.value)} placeholder="Search animal, ear-tag, farmer, breed..."/></div>
             </div>
             <div className="patient-layout">
@@ -2721,8 +2739,8 @@ function VetApp() {
                     <RiskPill risk={p.healthStatus === "urgent" ? "High" : p.healthStatus === "attention" ? "Medium" : "Low"}/>
                   </div>
                   <div className="detail-grid">
-                    <div><span>Owner</span><strong>{p.owner}</strong></div><div><span>Location</span><strong>{p.location}</strong></div>
-                    <div><span>Consultations</span><strong>{p.consultations}</strong></div><div><span>Images</span><strong>{p.images}</strong></div>
+                    <div><span>{t("auto_owner", "Owner")}</span><strong>{p.owner}</strong></div><div><span>{t("auto_location", "Location")}</span><strong>{p.location}</strong></div>
+                    <div><span>{t("auto_consultations", "Consultations")}</span><strong>{p.consultations}</strong></div><div><span>{t("auto_images", "Images")}</span><strong>{p.images}</strong></div>
                   </div>
                   
                   <div>
@@ -2741,7 +2759,7 @@ function VetApp() {
                       <button className="btn-primary btn-sm" onClick={()=>addTreatment(p.id)}><PlusCircle size={14}/> New Treatment</button>
                     </div>
                     {history.length ? <div className="history-table">
-                      {history.map((h,i)=><div className="history-card" key={i}><div className="history-date">{h.date}</div><div><strong>{h.condition}</strong><div className="record-sub">{h.notes}</div></div><div><span>Medicine</span><strong>{h.medicine}</strong></div><div><span>Dosage / Route</span><strong>{h.dosage} · {h.route}</strong></div><div><span>Duration</span><strong>{h.duration}</strong></div><div><span>Follow-up</span><strong>{h.followUp}</strong></div></div>)}
+                      {history.map((h,i)=><div className="history-card" key={i}><div className="history-date">{h.date}</div><div><strong>{h.condition}</strong><div className="record-sub">{h.notes}</div></div><div><span>{t("auto_medicine", "Medicine")}</span><strong>{h.medicine}</strong></div><div><span>{t("auto_dosage___route", "Dosage / Route")}</span><strong>{h.dosage} · {h.route}</strong></div><div><span>{t("auto_duration", "Duration")}</span><strong>{h.duration}</strong></div><div><span>{t("auto_follow_up", "Follow-up")}</span><strong>{h.followUp}</strong></div></div>)}
                     </div> : <div className="empty-state">No treatment history recorded yet for {p.name}. Use “New Treatment” to add an entry.</div>}
                   </div>
 
@@ -2754,32 +2772,32 @@ function VetApp() {
           </div>
         ) : view === "settings" ? (
           <div className="workspace-page">
-            <div className="page-head"><div><h2>Settings</h2><p>Manage veterinarian account, accessibility, notifications and privacy preferences.</p></div><button className="btn-primary btn-sm" onClick={()=>showToast("Settings saved successfully.")}><Save size={14}/> Save changes</button></div>
+            <div className="page-head"><div><h2>{t("auto_settings", "Settings")}</h2><p>{t("auto_manage_veterina", "Manage veterinarian account, accessibility, notifications and privacy preferences.")}</p></div><button className="btn-primary btn-sm" onClick={()=>showToast("Settings saved successfully.")}><Save size={14}/> Save changes</button></div>
             <div className="settings-grid">
               <Card><SectionTitle>Account</SectionTitle>
-                <div className="setting-row"><div><strong>Veterinarian</strong><span>{profile.name} · {profile.qualification}</span></div><button className="btn-outline btn-sm" onClick={()=>showToast("Profile editor opened.")}>Manage Profile</button></div>
-                <div className="setting-row"><div><strong>Availability</strong><span>Controls whether new consultations can be assigned.</span></div><select value={availability} onChange={e=>setAvailability(e.target.value)}><option value="available">Available</option><option value="busy">Busy</option><option value="emergencyOnly">Emergency Only</option><option value="offline">Offline</option><option value="leave">On Leave</option></select></div>
+                <div className="setting-row"><div><strong>{t("auto_veterinarian", "Veterinarian")}</strong><span>{profile.name} · {profile.qualification}</span></div><button className="btn-outline btn-sm" onClick={()=>showToast("Profile editor opened.")}>Manage Profile</button></div>
+                <div className="setting-row"><div><strong>{t("auto_availability", "Availability")}</strong><span>{t("auto_controls_whethe", "Controls whether new consultations can be assigned.")}</span></div><select value={availability} onChange={e=>setAvailability(e.target.value)}><option value="available">Available</option><option value="busy">Busy</option><option value="emergencyOnly">Emergency Only</option><option value="offline">Offline</option><option value="leave">On Leave</option></select></div>
               </Card>
               <Card><SectionTitle>Language & Accessibility</SectionTitle>
-                <div className="setting-row"><div><strong>App Language</strong><span>Current: {appLanguage}</span></div><select value={appLanguage} onChange={e=>{setAppLanguage(e.target.value);showToast(`Language set to ${e.target.value}.`)}}><option>English</option><option>Hindi</option><option>Marathi</option><option>Gujarati</option><option>Punjabi</option></select></div>
-                <div className="setting-row"><div><strong>Text Size</strong><span>Adjust the dashboard reading size.</span></div><select value={textSize} onChange={e=>setTextSize(e.target.value)}><option>Small</option><option>Medium</option><option>Large</option></select></div>
-                <div className="setting-row"><div><strong>Theme</strong><span>Switch between light, dark and system-style presentation.</span></div><select value={theme} onChange={e=>{setTheme(e.target.value);showToast(`Theme changed to ${e.target.value}.`)}}><option>Light</option><option>Dark</option><option>System</option></select></div>
-                <div className="setting-row"><div><strong>High Contrast Mode</strong><span>Increase border and text contrast.</span></div><button className={`toggle ${highContrast?"on":""}`} onClick={()=>setHighContrast(v=>!v)}>{highContrast?"ON":"OFF"}</button></div>
+                <div className="setting-row"><div><strong>{t("auto_app_language", "App Language")}</strong><span>Current: {appLanguage}</span></div><select value={appLanguage} onChange={e=>{setAppLanguage(e.target.value);showToast(`Language set to ${e.target.value}.`)}}><option>English</option><option>Hindi</option><option>Marathi</option><option>Gujarati</option><option>Punjabi</option></select></div>
+                <div className="setting-row"><div><strong>{t("auto_text_size", "Text Size")}</strong><span>{t("auto_adjust_the_dash", "Adjust the dashboard reading size.")}</span></div><select value={textSize} onChange={e=>setTextSize(e.target.value)}><option>Small</option><option>Medium</option><option>Large</option></select></div>
+                <div className="setting-row"><div><strong>{t("auto_theme", "Theme")}</strong><span>{t("auto_switch_between_", "Switch between light, dark and system-style presentation.")}</span></div><select value={theme} onChange={e=>{setTheme(e.target.value);showToast(`Theme changed to ${e.target.value}.`)}}><option>Light</option><option>Dark</option><option>System</option></select></div>
+                <div className="setting-row"><div><strong>{t("auto_high_contrast_m", "High Contrast Mode")}</strong><span>{t("auto_increase_border", "Increase border and text contrast.")}</span></div><button className={`toggle ${highContrast?"on":""}`} onClick={()=>setHighContrast(v=>!v)}>{highContrast?"ON":"OFF"}</button></div>
               </Card>
               <Card><SectionTitle>Notifications</SectionTitle>
-                <div className="setting-row"><div><strong>Notification Preferences</strong><span>Emergency, consultation and system alerts.</span></div><button className={`toggle ${notificationPreferences?"on":""}`} onClick={()=>setNotificationPreferences(v=>!v)}>{notificationPreferences?"ON":"OFF"}</button></div>
-                <div className="setting-row"><div><strong>Reminder Timing</strong><span>When follow-up reminders should appear.</span></div><select value={reminderTiming} onChange={e=>setReminderTiming(e.target.value)}><option>At scheduled time</option><option>15 minutes before</option><option>30 minutes before</option><option>1 hour before</option></select></div>
+                <div className="setting-row"><div><strong>{t("auto_notification_pr", "Notification Preferences")}</strong><span>{t("auto_emergency__cons", "Emergency, consultation and system alerts.")}</span></div><button className={`toggle ${notificationPreferences?"on":""}`} onClick={()=>setNotificationPreferences(v=>!v)}>{notificationPreferences?"ON":"OFF"}</button></div>
+                <div className="setting-row"><div><strong>{t("auto_reminder_timing", "Reminder Timing")}</strong><span>{t("auto_when_follow_up_", "When follow-up reminders should appear.")}</span></div><select value={reminderTiming} onChange={e=>setReminderTiming(e.target.value)}><option>At scheduled time</option><option>15 minutes before</option><option>30 minutes before</option><option>1 hour before</option></select></div>
               </Card>
               <Card><SectionTitle>Privacy & Support</SectionTitle>
-                <div className="setting-row"><div><strong>App Permissions</strong><span>Camera, notifications and location permissions.</span></div><button className="btn-outline btn-sm" onClick={()=>showToast("App permissions panel opened.")}>Manage</button></div>
-                <div className="setting-row"><div><strong>Help & Support</strong><span>FAQs, Help Center and report a problem.</span></div><button className="btn-outline btn-sm" onClick={()=>showToast("Support options opened.")}>Open Support</button></div>
-                <div className="setting-row"><div><strong>About Pashu Sakhi</strong><span>Veterinarian workspace · prototype build</span></div><button className="btn-outline btn-sm" onClick={()=>showToast("Pashu Sakhi veterinarian workspace.")}>About</button></div>
+                <div className="setting-row"><div><strong>{t("auto_app_permissions", "App Permissions")}</strong><span>{t("auto_camera__notific", "Camera, notifications and location permissions.")}</span></div><button className="btn-outline btn-sm" onClick={()=>showToast("App permissions panel opened.")}>Manage</button></div>
+                <div className="setting-row"><div><strong>{t("auto_help___support", "Help & Support")}</strong><span>{t("auto_faqs__help_cent", "FAQs, Help Center and report a problem.")}</span></div><button className="btn-outline btn-sm" onClick={()=>showToast("Support options opened.")}>Open Support</button></div>
+                <div className="setting-row"><div><strong>{t("auto_about_pashu_sak", "About Pashu Sakhi")}</strong><span>{t("auto_veterinarian_wo", "Veterinarian workspace · prototype build")}</span></div><button className="btn-outline btn-sm" onClick={()=>showToast("Pashu Sakhi veterinarian workspace.")}>About</button></div>
               </Card>
             </div>
           </div>
         ) : view === "requests" ? (
           <div className="workspace-page">
-            <div className="page-head"><div><h2>Chat Requests</h2><p>Consultation requests from farmers, with status, priority, and direct reply advice.</p></div></div>
+            <div className="page-head"><div><h2>{t("auto_chat_requests", "Chat Requests")}</h2><p>{t("auto_consultation_re", "Consultation requests from farmers, with status, priority, and direct reply advice.")}</p></div></div>
             <Card>
               {requests.map(r => (
                 <div className="record-row" key={r.id} style={{ flexDirection: "column", alignItems: "stretch", gap: 10 }}>
@@ -2868,27 +2886,27 @@ function VetApp() {
               <div className="stat-card" onClick={() => setView("requests")}>
                 <div className="stat-card-top"><div className="stat-icon" style={{ background: "var(--brand-soft)", color: "var(--brand-dark-contrast)" }}><MessageCircle size={16} /></div></div>
                 <p className="stat-value">{unreadRequestsCount}</p>
-                <p className="stat-label">Unread Requests</p>
+                <p className="stat-label">{t("auto_unread_requests", "Unread Requests")}</p>
               </div>
               <div className="stat-card" onClick={() => setView("patients")}>
                 <div className="stat-card-top"><div className="stat-icon" style={{ background: "var(--healthy-soft)", color: "var(--healthy)" }}><CalendarClock size={16} /></div></div>
                 <p className="stat-value">{followUpsToday}</p>
-                <p className="stat-label">Follow-ups Today</p>
+                <p className="stat-label">{t("auto_follow_ups_toda", "Follow-ups Today")}</p>
               </div>
               <div className="stat-card" onClick={() => setView("emergency")}>
                 <div className="stat-card-top"><div className="stat-icon" style={{ background: "var(--urgent-soft)", color: "var(--urgent)" }}><Siren size={16} /></div></div>
                 <p className="stat-value">{emergencyCount}</p>
-                <p className="stat-label">Emergency Cases</p>
+                <p className="stat-label">{t("auto_emergency_cases", "Emergency Cases")}</p>
               </div>
               <div className="stat-card" onClick={() => setView("requests")}>
                 <div className="stat-card-top"><div className="stat-icon" style={{ background: "var(--attention-soft)", color: "var(--attention)" }}><Activity size={16} /></div></div>
                 <p className="stat-value">{requests.filter((r) => r.status !== "resolved").length}</p>
-                <p className="stat-label">Active Cases</p>
+                <p className="stat-label">{t("auto_active_cases", "Active Cases")}</p>
               </div>
               <div className="stat-card" onClick={() => setView("heatmap")}>
                 <div className="stat-card-top"><div className="stat-icon" style={{ background: "var(--urgent-soft)", color: "var(--urgent)" }}><Flame size={16} /></div></div>
                 <p className="stat-value">{INITIAL_HOTSPOTS.length}</p>
-                <p className="stat-label">Disease Hotspots</p>
+                <p className="stat-label">{t("auto_disease_hotspot", "Disease Hotspots")}</p>
               </div>
             </div>
 
@@ -2899,8 +2917,8 @@ function VetApp() {
                     <Flame size={12} color="#D98B2B" />
                     REGIONAL EPIDEMIOLOGY ALERT
                   </div>
-                  <h3 style={{ margin: "0 0 4px", fontSize: 18, fontFamily: "Fraunces, serif" }}>Active Hotspots Detected in Nashik & Pune Districts</h3>
-                  <p style={{ margin: 0, fontSize: 13.5, opacity: 0.9 }}>Lumpy Skin Disease (LSD) and FMD containment rings currently active. View geographical risk mapping and mobile units.</p>
+                  <h3 style={{ margin: "0 0 4px", fontSize: 18, fontFamily: "Fraunces, serif" }}>{t("auto_active_hotspots", "Active Hotspots Detected in Nashik & Pune Districts")}</h3>
+                  <p style={{ margin: 0, fontSize: 13.5, opacity: 0.9 }}>{t("auto_lumpy_skin_dise", "Lumpy Skin Disease (LSD) and FMD containment rings currently active. View geographical risk mapping and mobile units.")}</p>
                 </div>
                 <button className="btn-primary" style={{ background: "var(--accent)", color: "#2A1B04" }} onClick={() => setView("heatmap")}><MapPinned size={16}/> Open Heat Map Dashboard</button>
               </div>
