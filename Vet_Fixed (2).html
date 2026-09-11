@@ -13,6 +13,9 @@
   }
 }
 </script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script src="https://cdn.jsdelivr.net/npm/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
 <script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
 <style>
   *, *::before, *::after { box-sizing: border-box; }
@@ -523,8 +526,8 @@ const INITIAL_HOTSPOTS = [
     risk: "High",
     status: "Confirmed",
     statusDetail: "Active Cluster",
-    x: 38,
-    y: 36,
+    lat: 19.8456,
+    lng: 73.9922,
     radius: 42,
     affectedAnimals: 64,
     affectedFarms: 19,
@@ -546,8 +549,8 @@ const INITIAL_HOTSPOTS = [
     risk: "High",
     status: "Confirmed",
     statusDetail: "Active Outbreak",
-    x: 62,
-    y: 74,
+    lat: 18.1500,
+    lng: 74.5800,
     radius: 46,
     affectedAnimals: 88,
     affectedFarms: 27,
@@ -569,8 +572,8 @@ const INITIAL_HOTSPOTS = [
     risk: "High",
     status: "Confirmed",
     statusDetail: "Critical Severity",
-    x: 48,
-    y: 50,
+    lat: 19.5772,
+    lng: 74.2094,
     radius: 38,
     affectedAnimals: 39,
     affectedFarms: 14,
@@ -592,8 +595,8 @@ const INITIAL_HOTSPOTS = [
     risk: "Medium",
     status: "Suspected",
     statusDetail: "Laboratory Verification",
-    x: 32,
-    y: 22,
+    lat: 20.5500,
+    lng: 74.5300,
     radius: 32,
     affectedAnimals: 42,
     affectedFarms: 11,
@@ -615,8 +618,8 @@ const INITIAL_HOTSPOTS = [
     risk: "Medium",
     status: "Confirmed",
     statusDetail: "Under Containment",
-    x: 52,
-    y: 40,
+    lat: 19.7900,
+    lng: 74.4700,
     radius: 28,
     affectedAnimals: 18,
     affectedFarms: 8,
@@ -638,8 +641,8 @@ const INITIAL_HOTSPOTS = [
     risk: "Low",
     status: "Suspected",
     statusDetail: "Screening Alert",
-    x: 52,
-    y: 64,
+    lat: 18.8286,
+    lng: 74.3752,
     radius: 24,
     affectedAnimals: 11,
     affectedFarms: 4,
@@ -661,8 +664,8 @@ const INITIAL_HOTSPOTS = [
     risk: "Medium",
     status: "Confirmed",
     statusDetail: "Vector Surge",
-    x: 58,
-    y: 20,
+    lat: 20.4600,
+    lng: 75.0100,
     radius: 30,
     affectedAnimals: 26,
     affectedFarms: 9,
@@ -684,8 +687,8 @@ const INITIAL_HOTSPOTS = [
     risk: "Low",
     status: "Suspected",
     statusDetail: "Monitoring",
-    x: 64,
-    y: 86,
+    lat: 17.2800,
+    lng: 74.1800,
     radius: 22,
     affectedAnimals: 14,
     affectedFarms: 5,
@@ -1160,6 +1163,12 @@ function DiseaseHeatmapDashboard({ showToast }) {
   // Quick Action State
   const [dispatchedUnits, setDispatchedUnits] = useState({});
 
+  // Leaflet Map Refs
+  const mapRef = React.useRef(null);
+  const mapInstanceRef = React.useRef(null);
+  const heatLayerRef = React.useRef(null);
+  const markerLayerRef = React.useRef(null);
+
   // Distinct options
   const diseaseOptions = [
     { value: "all", label: "All Diseases" },
@@ -1215,6 +1224,80 @@ function DiseaseHeatmapDashboard({ showToast }) {
       INITIAL_HOTSPOTS[0]
     );
   }, [filteredHotspots, selectedHotspotId]);
+
+  // Leaflet Map Initialization and Update
+  useEffect(() => {
+    if (!mapRef.current) return;
+    
+    // Initialize map if it doesn't exist
+    if (!mapInstanceRef.current) {
+      const map = L.map(mapRef.current).setView([19.0, 75.0], 6);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors'
+      }).addTo(map);
+      mapInstanceRef.current = map;
+    }
+
+    const map = mapInstanceRef.current;
+
+    // Clear old layers
+    if (heatLayerRef.current) map.removeLayer(heatLayerRef.current);
+    if (markerLayerRef.current) map.removeLayer(markerLayerRef.current);
+
+    const newMarkerLayer = L.layerGroup().addTo(map);
+    markerLayerRef.current = newMarkerLayer;
+
+    const heatData = [];
+
+    // Add Vet Markers
+    if (showVetMarkers) {
+      const nearbySupport = Array.from({ length: 7 }, (_, i) => ({
+        id: `vs-${i+1}`,
+        lat: [19.8, 18.2, 19.5, 20.5, 19.8, 18.8, 20.4][i] || 19.0,
+        lng: [73.9, 74.5, 74.2, 74.5, 74.4, 74.3, 75.0][i] || 75.0,
+        name: `Mobile Unit ${i+1}`
+      }));
+      nearbySupport.forEach(v => {
+        L.circleMarker([v.lat, v.lng], {
+          radius: 6, fillColor: '#1F5D50', color: '#fff', weight: 1.5, fillOpacity: 1
+        }).bindTooltip(`${v.name}`).addTo(newMarkerLayer);
+      });
+    }
+
+    // Add Hotspot Markers and Heatmap Data
+    filteredHotspots.forEach(h => {
+      const total = h.affectedAnimals + h.affectedFarms;
+      if (showRiskZones) {
+        heatData.push([h.lat || 19.0, h.lng || 75.0, Math.min(1.0, total/100)]);
+      }
+
+      const isSelected = selectedHotspotId === h.id;
+      const isHigh = h.risk === "High";
+      const pinColor = isHigh ? "#B3402A" : h.risk === "Medium" ? "#D98B2B" : "#2F7A4F";
+
+      const circle = L.circleMarker([h.lat || 19.0, h.lng || 75.0], {
+        radius: isSelected ? 12 : 8,
+        fillColor: pinColor,
+        color: isSelected ? '#143F36' : '#fff',
+        weight: isSelected ? 3 : 2,
+        fillOpacity: 0.85
+      }).bindTooltip(`${h.shortName} (${h.affectedAnimals})`)
+        .on('click', () => setSelectedHotspotId(h.id))
+        .addTo(newMarkerLayer);
+
+      if (isSelected) {
+        // Optional: center map smoothly on selected
+        map.flyTo([h.lat || 19.0, h.lng || 75.0], 8, { duration: 0.5 });
+      }
+    });
+
+    if (showRiskZones && heatData.length > 0) {
+      heatLayerRef.current = L.heatLayer(heatData, {
+        radius: 35, blur: 20, maxZoom: 10,
+        gradient: {0.2: '#2F7A4F', 0.5: '#B9791F', 0.8: '#B3402A'}
+      }).addTo(map);
+    }
+  }, [filteredHotspots, selectedHotspotId, showRiskZones, showVetMarkers]);
 
   // Priority response ranking: computed dynamically
   const rankedAreas = useMemo(() => {
@@ -1587,242 +1670,7 @@ function DiseaseHeatmapDashboard({ showToast }) {
 
             {/* Interactive Cartographic Canvas */}
             <div className="hm-canvas-wrapper">
-              <svg className="hm-svg-map" viewBox="0 0 1000 650" preserveAspectRatio="xMidYMid meet">
-                <defs>
-                  {/* Radial Heat Gradients */}
-                  <radialGradient id="grad-high-risk" cx="50%" cy="50%" r="50%">
-                    <stop offset="0%" stopColor="#B3402A" stopOpacity="0.55" />
-                    <stop offset="55%" stopColor="#D98B2B" stopOpacity="0.25" />
-                    <stop offset="100%" stopColor="#B3402A" stopOpacity="0" />
-                  </radialGradient>
-                  <radialGradient id="grad-med-risk" cx="50%" cy="50%" r="50%">
-                    <stop offset="0%" stopColor="#D98B2B" stopOpacity="0.50" />
-                    <stop offset="65%" stopColor="#B9791F" stopOpacity="0.20" />
-                    <stop offset="100%" stopColor="#D98B2B" stopOpacity="0" />
-                  </radialGradient>
-                  <radialGradient id="grad-low-risk" cx="50%" cy="50%" r="50%">
-                    <stop offset="0%" stopColor="#2F7A4F" stopOpacity="0.45" />
-                    <stop offset="70%" stopColor="#2F7A4F" stopOpacity="0.15" />
-                    <stop offset="100%" stopColor="#2F7A4F" stopOpacity="0" />
-                  </radialGradient>
-
-                  <filter id="glow-drop" x="-20%" y="-20%" width="140%" height="140%">
-                    <feDropShadow dx="0" dy="2" stdDeviation="3" floodOpacity="0.25" />
-                  </filter>
-                </defs>
-
-                {/* Map Regional Background */}
-                <rect width="1000" height="650" fill="#EFE8D8" rx="14" />
-
-                {/* Regional Contour Polygons */}
-                <g className="map-districts" opacity="0.85">
-                  {/* Nashik District */}
-                  <path
-                    d="M 180,90 L 460,70 L 510,210 L 400,280 L 220,290 L 150,180 Z"
-                    fill="#F7F3E7"
-                    stroke="#D6CCA9"
-                    strokeWidth="2"
-                    strokeDasharray="4 2"
-                  />
-                  <text x="290" y="160" fill="#99917B" fontSize="15" fontWeight="700" letterSpacing="1.5">NASHIK DISTRICT</text>
-
-                  {/* Ahmednagar District */}
-                  <path
-                    d="M 400,280 L 510,210 L 760,220 L 720,440 L 480,450 L 370,350 Z"
-                    fill="#FAF6ED"
-                    stroke="#D6CCA9"
-                    strokeWidth="2"
-                    strokeDasharray="4 2"
-                  />
-                  <text x="530" y="330" fill="#99917B" fontSize="15" fontWeight="700" letterSpacing="1.5">AHMEDNAGAR</text>
-
-                  {/* Pune District */}
-                  <path
-                    d="M 370,350 L 480,450 L 720,440 L 790,560 L 550,620 L 380,550 Z"
-                    fill="#F7F3E7"
-                    stroke="#D6CCA9"
-                    strokeWidth="2"
-                    strokeDasharray="4 2"
-                  />
-                  <text x="520" y="520" fill="#99917B" fontSize="15" fontWeight="700" letterSpacing="1.5">PUNE DISTRICT</text>
-
-                  {/* Jalgaon Border Region */}
-                  <path
-                    d="M 510,70 L 780,50 L 850,190 L 760,220 L 510,210 Z"
-                    fill="#F4EFE0"
-                    stroke="#D6CCA9"
-                    strokeWidth="1.5"
-                  />
-                  <text x="630" y="130" fill="#99917B" fontSize="13" fontWeight="600">JALGAON BORDER</text>
-
-                  {/* Satara Region */}
-                  <path
-                    d="M 550,620 L 790,560 L 820,640 L 580,645 Z"
-                    fill="#F4EFE0"
-                    stroke="#D6CCA9"
-                    strokeWidth="1.5"
-                  />
-                  <text x="660" y="615" fill="#99917B" fontSize="13" fontWeight="600">SATARA NORTH</text>
-
-                  {/* Rivers */}
-                  <path
-                    d="M 190,140 Q 320,180 460,230 T 730,260"
-                    fill="none"
-                    stroke="#B4D0C5"
-                    strokeWidth="4.5"
-                    strokeLinecap="round"
-                    opacity="0.8"
-                  />
-                  <text x="350" y="195" fill="#1F5D50" opacity="0.6" fontSize="11" fontStyle="italic">Godavari River Grazing Basin</text>
-
-                  <path
-                    d="M 390,490 Q 520,480 680,530 T 820,570"
-                    fill="none"
-                    stroke="#B4D0C5"
-                    strokeWidth="4"
-                    strokeLinecap="round"
-                    opacity="0.8"
-                  />
-                  <text x="570" y="495" fill="#1F5D50" opacity="0.6" fontSize="11" fontStyle="italic">Bhima Valley Livestock Corridor</text>
-                </g>
-
-                {/* Heat Map Risk Radii Zones */}
-                {showRiskZones && filteredHotspots.map((h) => {
-                  const pxX = (h.x / 100) * 1000;
-                  const pxY = (h.y / 100) * 650;
-                  const gradId = h.risk === "High" ? "grad-high-risk" : h.risk === "Medium" ? "grad-med-risk" : "grad-low-risk";
-                  const scaleR = h.radius * 2.2;
-                  const isSelected = selectedHotspot?.id === h.id;
-
-                  return (
-                    <g key={`zone-${h.id}`} className="risk-zone-group">
-                      {h.risk === "High" && (
-                        <circle
-                          cx={pxX}
-                          cy={pxY}
-                          r={scaleR * 1.3}
-                          fill="none"
-                          stroke="#B3402A"
-                          strokeWidth="1.5"
-                          strokeDasharray="6 4"
-                          opacity="0.5"
-                          className="pulse-ring"
-                        />
-                      )}
-                      <circle
-                        cx={pxX}
-                        cy={pxY}
-                        r={scaleR}
-                        fill={`url(#${gradId})`}
-                        className="heat-zone-circle"
-                      />
-                      {isSelected && (
-                        <circle
-                          cx={pxX}
-                          cy={pxY}
-                          r={scaleR * 1.15}
-                          fill="none"
-                          stroke="var(--brand)"
-                          strokeWidth="2.5"
-                          strokeDasharray="5 3"
-                        />
-                      )}
-                    </g>
-                  );
-                })}
-
-                {/* Support Facility Markers */}
-                {showVetMarkers && nearbySupport.map((v, i) => {
-                  const coords = [
-                    { x: 390, y: 250 },
-                    { x: 260, y: 150 },
-                    { x: 280, y: 170 },
-                    { x: 490, y: 340 },
-                    { x: 670, y: 510 },
-                    { x: 580, y: 460 },
-                    { x: 330, y: 130 },
-                  ][i] || { x: 450, y: 300 };
-
-                  return (
-                    <g
-                      key={v.id}
-                      className="vet-facility-marker"
-                      transform={`translate(${coords.x}, ${coords.y})`}
-                      onClick={() => showToast(`${v.name} (${v.type}) is active. Proximity: ${v.computedDistance} km.`)}
-                      style={{ cursor: "pointer" }}
-                    >
-                      <circle r="12" fill="#1F5D50" stroke="#FFFFFF" strokeWidth="2.5" />
-                      <path d="M -4 0 L 4 0 M 0 -4 L 0 4" stroke="#FFFFFF" strokeWidth="2" strokeLinecap="round" />
-                      <title>{v.name} - {v.type}</title>
-                    </g>
-                  );
-                })}
-
-                {/* Disease Hotspot Interactive Pins */}
-                {filteredHotspots.map((h) => {
-                  const pxX = (h.x / 100) * 1000;
-                  const pxY = (h.y / 100) * 650;
-                  const isSelected = selectedHotspot?.id === h.id;
-                  const isHigh = h.risk === "High";
-                  const pinColor = isHigh ? "#B3402A" : h.risk === "Medium" ? "#D98B2B" : "#2F7A4F";
-
-                  return (
-                    <g
-                      key={h.id}
-                      className={`hotspot-pin-group ${isSelected ? "selected" : ""}`}
-                      transform={`translate(${pxX}, ${pxY})`}
-                      onClick={() => setSelectedHotspotId(h.id)}
-                      style={{ cursor: "pointer" }}
-                    >
-                      {isSelected && (
-                        <circle
-                          r="28"
-                          fill="none"
-                          stroke="#143F36"
-                          strokeWidth="3"
-                          strokeDasharray="4 2"
-                        />
-                      )}
-
-                      <path
-                        d="M 0,-32 C -13,-32 -20,-22 -20,-11 C -20,6 0,22 0,22 C 0,22 20,6 20,-11 C 20,-22 13,-32 0,-32 Z"
-                        fill={pinColor}
-                        stroke="#FFFFFF"
-                        strokeWidth="2.5"
-                        filter="url(#glow-drop)"
-                      />
-
-                      {h.status === "Confirmed" ? (
-                        <circle cx="0" cy="-14" r="6" fill="#FFFFFF" />
-                      ) : (
-                        <circle cx="0" cy="-14" r="5" fill="none" stroke="#FFFFFF" strokeWidth="2.5" />
-                      )}
-
-                      <g transform="translate(0, 32)">
-                        <rect
-                          x="-48"
-                          y="0"
-                          width="96"
-                          height="22"
-                          rx="6"
-                          fill={isSelected ? "#143F36" : "#23291F"}
-                          opacity={isSelected ? "0.95" : "0.85"}
-                        />
-                        <text
-                          x="0"
-                          y="15"
-                          textAnchor="middle"
-                          fill="#FFFFFF"
-                          fontSize="11"
-                          fontWeight="700"
-                        >
-                          {h.shortName} · {h.affectedAnimals}
-                        </text>
-                      </g>
-                    </g>
-                  );
-                })}
-              </svg>
+              <div ref={mapRef} style={{ width: '100%', height: '100%', minHeight: '650px', background: '#EFE8D8' }} />
 
               {/* Floating Map Legend Overlay */}
               <div className="hm-map-legend">
@@ -2071,163 +1919,7 @@ function DiseaseHeatmapDashboard({ showToast }) {
         </div>
       </div>
 
-      {/* SECTION: OUTBREAK ALERTS STREAM */}
-      <div className="hm-section-block">
-        <SectionTitle
-          action={
-            <span className="badge badge-urgent" style={{ fontSize: 12 }}>
-              <Siren size={13} />
-              {alertsList.length} Active Field Alerts
-            </span>
-          }
-        >
-          Outbreak Alerts & Early Warnings
-        </SectionTitle>
 
-        <div className="hm-alerts-grid">
-          {alertsList.slice(0, 4).map((al) => (
-            <div key={`alert-${al.id}`} className="hm-alert-card">
-              <div className="hm-alert-top">
-                <div className="hm-alert-icon-box">
-                  <AlertOctagon size={18} color="#B3402A" />
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div className="hm-alert-badge-row">
-                    <RiskPill risk={al.risk} />
-                    <span className="hm-alert-time">{al.date} ({al.daysAgo === 0 ? "Today" : `${al.daysAgo}d ago`})</span>
-                  </div>
-                  <h4 className="hm-alert-disease">{al.disease}</h4>
-                  <p className="hm-alert-loc">{al.location} · {al.district}</p>
-                </div>
-              </div>
-
-              <div className="hm-alert-metrics">
-                <div className="hm-metric-pill">
-                  <strong>{al.affectedAnimals}</strong> Animals
-                </div>
-                <div className="hm-metric-pill">
-                  <strong>{al.affectedFarms}</strong> Farms
-                </div>
-                <div className="hm-metric-pill">
-                  Status: <strong>{al.status}</strong>
-                </div>
-              </div>
-
-              <p className="hm-alert-summary">{al.spreadSummary}</p>
-
-              <div className="hm-alert-actions">
-                <button
-                  className="btn-outline btn-sm"
-                  style={{ flex: 1 }}
-                  onClick={() => {
-                    setSelectedHotspotId(al.id);
-                    window.scrollTo({ top: 380, behavior: "smooth" });
-                    showToast(`Centered map on ${al.location} hotspot.`);
-                  }}
-                >
-                  <MapPin size={13} />
-                  Focus on Map
-                </button>
-                <button
-                  className="btn-primary btn-sm"
-                  onClick={() => showToast(`Quarantine advisory sent to dairy unions in ${al.district}!`)}
-                >
-                  <Send size={13} />
-                  Notify
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* SECTION: PRIORITY RESPONSE TABLE */}
-      <div className="hm-section-block">
-        <SectionTitle
-          action={
-            <span style={{ fontSize: 13, color: "var(--ink-soft)", fontWeight: 600 }}>
-              Ranked dynamically by severity, case density, and recent spread acceleration
-            </span>
-          }
-        >
-          Priority Response & Action Matrix
-        </SectionTitle>
-
-        <Card style={{ padding: 0, overflow: "hidden" }}>
-          <div className="hm-table-responsive">
-            <table className="hm-table">
-              <thead>
-                <tr>
-                  <th style={{ width: 60 }}>Rank</th>
-                  <th>District / Location</th>
-                  <th>Primary Disease</th>
-                  <th>Active Cases</th>
-                  <th>Impacted Farms</th>
-                  <th>7-Day Spread</th>
-                  <th>Risk Level</th>
-                  <th>Containment Status</th>
-                  <th style={{ textAlign: "right" }}>Intervention</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rankedAreas.map((area, idx) => (
-                  <tr
-                    key={area.id}
-                    className={`hm-table-row ${selectedHotspot?.id === area.id ? "row-selected" : ""}`}
-                    onClick={() => setSelectedHotspotId(area.id)}
-                  >
-                    <td>
-                      <span className={`rank-badge ${idx < 3 ? "rank-top" : ""}`}>
-                        #{idx + 1}
-                      </span>
-                    </td>
-                    <td>
-                      <div style={{ fontWeight: 700, color: "var(--ink)" }}>{area.location}</div>
-                      <div style={{ fontSize: 12, color: "var(--ink-soft)" }}>{area.district}</div>
-                    </td>
-                    <td>
-                      <div style={{ fontWeight: 600 }}>{area.disease}</div>
-                      <div style={{ fontSize: 11.5, color: "var(--ink-soft)" }}>{area.species}</div>
-                    </td>
-                    <td>
-                      <span style={{ fontWeight: 700, fontSize: 14 }}>{area.affectedAnimals}</span>
-                      <span style={{ fontSize: 12, color: "var(--ink-soft)", marginLeft: 4 }}>animals</span>
-                    </td>
-                    <td>
-                      <span style={{ fontWeight: 600 }}>{area.affectedFarms}</span>
-                      <span style={{ fontSize: 12, color: "var(--ink-soft)", marginLeft: 4 }}>farms</span>
-                    </td>
-                    <td>
-                      <span style={{ fontWeight: 700, color: area.recentIncrease.startsWith("+") ? "var(--urgent)" : "var(--healthy)" }}>
-                        {area.recentIncrease}
-                      </span>
-                    </td>
-                    <td>
-                      <RiskPill risk={area.risk} />
-                    </td>
-                    <td>
-                      <StatusPill status={area.status === "Confirmed" ? "resolved" : "attention"} />
-                    </td>
-                    <td style={{ textAlign: "right" }}>
-                      <button
-                        className="btn-outline btn-sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedHotspotId(area.id);
-                          const vet = nearbySupport[0];
-                          if (vet) handleDispatchSupport(vet.id, vet.name);
-                        }}
-                      >
-                        Deploy Mobile Vet
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-      </div>
 
     </div>
   );
@@ -2384,7 +2076,6 @@ function VetApp() {
     { id: "reports", label: t("nav_aiReports", "AI Reports"), Icon: FileText, badge: pendingReportsCount },
     { id: "emergency", label: t("nav_emergencyCases", "Emergency Cases"), Icon: Siren, badge: emergencyCount },
     { id: "patients", label: t("nav_patientRecords", "Patient Records"), Icon: PawPrint },
-    { id: "treatmentHistory", label: t("nav_treatmentHistory", "Treatment History"), Icon: HeartPulse },
     { id: "settings", label: t("nav_settings", "Settings"), Icon: Settings },
   ];
 
@@ -2902,12 +2593,29 @@ function VetApp() {
             </p>
           </div>
           <div className="topbar-actions">
+            <div className="avail-select" style={{ marginRight: '10px' }}>
+              <select
+                value={appLanguage}
+                onChange={(e) => {
+                  setAppLanguage(e.target.value);
+                  showToast(`Language set to ${e.target.value}.`);
+                }}
+                style={{ border: "none", background: "transparent", fontWeight: 700, fontSize: 13, color: "var(--ink)", cursor: "pointer" }}
+                title="Change Language"
+              >
+                <option value="English">English</option>
+                <option value="Hindi">हिंदी (Hindi)</option>
+                <option value="Marathi">मराठी (Marathi)</option>
+                <option value="Gujarati">ગુજરાતી (Gujarati)</option>
+                <option value="Punjabi">ਪੰਜਾਬੀ (Punjabi)</option>
+              </select>
+            </div>
             <div className="avail-select">
               <span className="avail-dot" style={{ background: "var(--healthy)" }} />
               <select
                 value={availability}
                 onChange={(e) => setAvailability(e.target.value)}
-                style={{ border: "none", background: "transparent", fontWeight: 700, fontSize: 13, color: "var(--ink)" }}
+                style={{ border: "none", background: "transparent", fontWeight: 700, fontSize: 13, color: "var(--ink)", cursor: "pointer" }}
               >
                 {AVAILABILITY_OPTIONS.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
               </select>
@@ -2992,7 +2700,7 @@ function VetApp() {
         ) : view === "patients" ? (
           <div className="workspace-page">
             <div className="page-head">
-              <div><h2>Patient Records</h2><p>Search livestock records and open the complete clinical profile.</p></div>
+              <div><h2>Patient Records</h2><p>Search livestock records and view their complete clinical profile and treatment history.</p></div>
               <div className="search-box"><Search size={16}/><input value={patientSearch} onChange={e=>setPatientSearch(e.target.value)} placeholder="Search animal, ear-tag, farmer, breed..."/></div>
             </div>
             <div className="patient-layout">
@@ -3006,7 +2714,8 @@ function VetApp() {
               </Card>
               {(() => {
                 const p = patients.find(x=>x.id===selectedPatientId) || patients[0];
-                return <Card className="patient-detail">
+                const history = treatmentHistory[p.id] || [];
+                return <Card className="patient-detail" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                   <div className="detail-head">
                     <div><div className="record-title">{p.name} <span>· {p.breed}</span></div><div className="record-sub">{p.earTag} · {p.species} · {p.age} years · {p.gender}</div></div>
                     <RiskPill risk={p.healthStatus === "urgent" ? "High" : p.healthStatus === "attention" ? "Medium" : "Low"}/>
@@ -3015,38 +2724,33 @@ function VetApp() {
                     <div><span>Owner</span><strong>{p.owner}</strong></div><div><span>Location</span><strong>{p.location}</strong></div>
                     <div><span>Consultations</span><strong>{p.consultations}</strong></div><div><span>Images</span><strong>{p.images}</strong></div>
                   </div>
-                  <SectionTitle>Vaccination & records</SectionTitle>
-                  <div className="mini-list">{p.vaccinations.map((v,i)=><div key={i}><strong>{v.name}</strong><span>{v.status}</span></div>)}</div>
-                  <SectionTitle>AI reports</SectionTitle>
-                  <div className="mini-list"><div><strong>{p.aiReports.length} linked report(s)</strong><button className="btn-outline btn-sm" onClick={()=>setView("reports")}>Open AI Reports</button></div></div>
-                  <div className="detail-actions">
-                    <button className="btn-primary btn-sm" onClick={()=>setView("treatmentHistory")}><HeartPulse size={14}/> Treatment History</button>
+                  
+                  <div>
+                    <SectionTitle>Vaccination & records</SectionTitle>
+                    <div className="mini-list">{p.vaccinations.map((v,i)=><div key={i}><strong>{v.name}</strong><span>{v.status}</span></div>)}</div>
+                  </div>
+                  
+                  <div>
+                    <SectionTitle>AI reports</SectionTitle>
+                    <div className="mini-list"><div><strong>{p.aiReports.length} linked report(s)</strong><button className="btn-outline btn-sm" onClick={()=>setView("reports")}>Open AI Reports</button></div></div>
+                  </div>
+
+                  <div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+                      <SectionTitle style={{ margin: 0 }}>Treatment History</SectionTitle>
+                      <button className="btn-primary btn-sm" onClick={()=>addTreatment(p.id)}><PlusCircle size={14}/> New Treatment</button>
+                    </div>
+                    {history.length ? <div className="history-table">
+                      {history.map((h,i)=><div className="history-card" key={i}><div className="history-date">{h.date}</div><div><strong>{h.condition}</strong><div className="record-sub">{h.notes}</div></div><div><span>Medicine</span><strong>{h.medicine}</strong></div><div><span>Dosage / Route</span><strong>{h.dosage} · {h.route}</strong></div><div><span>Duration</span><strong>{h.duration}</strong></div><div><span>Follow-up</span><strong>{h.followUp}</strong></div></div>)}
+                    </div> : <div className="empty-state">No treatment history recorded yet for {p.name}. Use “New Treatment” to add an entry.</div>}
+                  </div>
+
+                  <div className="detail-actions" style={{ marginTop: "auto", paddingTop: "16px", borderTop: "1px solid var(--line)" }}>
                     <button className="btn-outline btn-sm" onClick={()=>showToast(`Opening consultation history for ${p.name}.`)}><MessageCircle size={14}/> Consultations</button>
                   </div>
                 </Card>
               })()}
             </div>
-          </div>
-        ) : view === "treatmentHistory" ? (
-          <div className="workspace-page">
-            <div className="page-head">
-              <div><h2>Treatment History</h2><p>Complete treatment, medication, dosage, follow-up and attachment history by patient.</p></div>
-            </div>
-            <Card>
-              <div className="history-patient-tabs">
-                {patients.map(p=><button key={p.id} className={selectedPatientId===p.id?"active":""} onClick={()=>setSelectedPatientId(p.id)}>{p.name}</button>)}
-              </div>
-              {(() => {
-                const p = patients.find(x=>x.id===selectedPatientId) || patients[0];
-                const history = treatmentHistory[p.id] || [];
-                return <div>
-                  <div className="detail-head" style={{marginBottom:16}}><div><div className="record-title">{p.name} · Treatment History</div><div className="record-sub">{p.earTag} · {p.owner} · {p.location}</div></div><button className="btn-primary btn-sm" onClick={()=>addTreatment(p.id)}><PlusCircle size={14}/> New Treatment</button></div>
-                  {history.length ? <div className="history-table">
-                    {history.map((h,i)=><div className="history-card" key={i}><div className="history-date">{h.date}</div><div><strong>{h.condition}</strong><div className="record-sub">{h.notes}</div></div><div><span>Medicine</span><strong>{h.medicine}</strong></div><div><span>Dosage / Route</span><strong>{h.dosage} · {h.route}</strong></div><div><span>Duration</span><strong>{h.duration}</strong></div><div><span>Follow-up</span><strong>{h.followUp}</strong></div></div>)}
-                  </div> : <div className="empty-state">No treatment history recorded yet for {p.name}. Use “New Treatment” to add an entry.</div>}
-                </div>
-              })()}
-            </Card>
           </div>
         ) : view === "settings" ? (
           <div className="workspace-page">

@@ -264,6 +264,9 @@
   };
 })();
 </script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script src="https://cdn.jsdelivr.net/npm/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -642,7 +645,7 @@ body.high-contrast .form-input,body.high-contrast .form-select{border-width:2px}
 .hm-alert-strip .sa-actions{display:flex;align-items:center;gap:10px;flex-shrink:0}
 
 .hm-map-card{position:relative}
-.hm-map-wrap{position:relative;width:100%;border-radius:var(--radius-sm);overflow:hidden;background:linear-gradient(160deg,var(--accent-light),var(--bg));border:1px solid var(--border)}
+.hm-map-wrap{position:relative;width:100%;height:460px;border-radius:var(--radius-sm);overflow:hidden;background:linear-gradient(160deg,var(--accent-light),var(--bg));border:1px solid var(--border)}
 .hm-map-wrap svg{width:100%;height:auto;display:block}
 .hm-marker{cursor:pointer;transition:opacity .2s,transform .2s;transform-origin:center;transform-box:fill-box}
 .hm-marker:hover{transform:scale(1.12)}
@@ -727,9 +730,7 @@ body.high-contrast .form-input,body.high-contrast .form-select{border-width:2px}
     </div>
   </div>
   <div class="topbar-right">
-    <a href="tel:1962" class="topbar-badge" style="background:#B3402A;color:#fff;text-decoration:none;display:inline-flex;align-items:center;gap:4px">
-      📞 1962 Helpline
-    </a>
+
     <button class="icon-btn" id="dark-toggle" onclick="toggleDark()" title="Toggle dark mode">
       <svg id="dark-icon" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
     </button>
@@ -1174,9 +1175,22 @@ body.high-contrast .form-input,body.high-contrast .form-select{border-width:2px}
   <div class="hm-zone-grid" id="hm-zone-grid"></div>
 
   <!-- Disease spread trend -->
-  <div class="a-grid">
-    <div class="a-card"><div class="a-card-header"><h3>Disease Spread — Last 7 Days</h3><p>Confirmed vs. suspected cases across filtered hotspots</p></div><div class="a-chart" style="height:220px"><canvas id="cv-hm-trend7"></canvas></div></div>
-    <div class="a-card"><div class="a-card-header"><h3>Disease Spread — Last 30 Days</h3><p>Confirmed vs. suspected cases across filtered hotspots</p></div><div class="a-chart" style="height:220px"><canvas id="cv-hm-trend30"></canvas></div></div>
+  <div class="a-grid-1">
+    <div class="a-card">
+      <div class="a-card-header" style="display: flex; justify-content: space-between; align-items: flex-start;">
+        <div>
+          <h3>Disease Spread Trend</h3>
+          <p>Confirmed vs. suspected cases across filtered hotspots</p>
+        </div>
+        <select class="form-select" id="hm-trend-filter" onchange="applyHeatmapFilters()" style="width: auto; padding: 4px 10px; min-width: 130px;">
+          <option value="7">Last 7 Days</option>
+          <option value="30">Last 30 Days</option>
+        </select>
+      </div>
+      <div class="a-chart" style="height:260px">
+        <canvas id="cv-hm-trend"></canvas>
+      </div>
+    </div>
   </div>
 
   <!-- Priority response ranking -->
@@ -1224,12 +1238,6 @@ body.high-contrast .form-input,body.high-contrast .form-select{border-width:2px}
           <option value="en">English</option>
           <option value="hi">हिंदी (Hindi)</option>
           <option value="mr">मराठी (Marathi)</option>
-          <option value="gu">ગુજરાતી (Gujarati)</option>
-          <option value="pa">ਪੰਜਾਬੀ (Punjabi)</option>
-          <option value="bn">বাংলা (Bengali)</option>
-          <option value="ta">தமிழ் (Tamil)</option>
-          <option value="te">తెలుగు (Telugu)</option>
-          <option value="kn">ಕನ್ನಡ (Kannada)</option>
         </select>
       </div>
       <div class="form-row">
@@ -2060,16 +2068,16 @@ function updateChartTheme(){
 const HM_TODAY = new Date(2026,8,9);
 
 const HM_HOTSPOTS = [
-  { id:'nashik',    name:'Nashik',    x:330, y:120, diseaseCategory:'FMD',                 diseaseName:'Foot & Mouth Disease (FMD)',        risk:'critical', confirmed:52, suspected:32, farms:19, animals:214, status:'Active',               lastReported:'Sep 8, 2026', lastReportedDate:new Date(2026,8,8), isNew:true,  trend7:[40,46,55,61,70,78,84] },
-  { id:'aurangabad',name:'Aurangabad',x:430, y:190, diseaseCategory:'Mastitis',             diseaseName:'Mastitis',                          risk:'high',     confirmed:44, suspected:18, farms:14, animals:122, status:'Active',               lastReported:'Sep 8, 2026', lastReportedDate:new Date(2026,8,8), isNew:false, trend7:[38,40,45,50,55,58,62] },
-  { id:'thane',     name:'Thane',     x:230, y:180, diseaseCategory:'FMD',                 diseaseName:'Suspected FMD Cluster',              risk:'high',     confirmed:9,  suspected:21, farms:6,  animals:58,  status:'Under Investigation',  lastReported:'Sep 9, 2026', lastReportedDate:new Date(2026,8,9), isNew:true,  trend7:[2,3,5,9,14,22,30] },
-  { id:'pune',      name:'Pune',      x:300, y:230, diseaseCategory:'Respiratory Infection',diseaseName:'Respiratory Infection',             risk:'medium',   confirmed:30, suspected:18, farms:11, animals:96,  status:'Monitoring',           lastReported:'Sep 7, 2026', lastReportedDate:new Date(2026,8,7), isNew:false, trend7:[35,34,36,40,44,46,48] },
-  { id:'nagpur',    name:'Nagpur',    x:620, y:140, diseaseCategory:'Tick Infestation',      diseaseName:'Tick Infestation',                  risk:'medium',   confirmed:26, suspected:15, farms:9,  animals:77,  status:'Monitoring',           lastReported:'Sep 7, 2026', lastReportedDate:new Date(2026,8,7), isNew:false, trend7:[30,29,31,34,37,39,41] },
-  { id:'satara',    name:'Satara',    x:310, y:290, diseaseCategory:'Bloat',                 diseaseName:'Bloat',                             risk:'medium',   confirmed:18, suspected:9,  farms:5,  animals:41,  status:'Contained',            lastReported:'Sep 6, 2026', lastReportedDate:new Date(2026,8,6), isNew:false, trend7:[20,19,20,22,23,24,25] },
-  { id:'solapur',   name:'Solapur',   x:400, y:300, diseaseCategory:'Bloat',                 diseaseName:'Bloat',                             risk:'low',      confirmed:20, suspected:6,  farms:7,  animals:52,  status:'Contained',            lastReported:'Sep 6, 2026', lastReportedDate:new Date(2026,8,6), isNew:false, trend7:[38,37,36,35,34,35,34] },
-  { id:'kolhapur',  name:'Kolhapur',  x:270, y:360, diseaseCategory:'Diarrhea',              diseaseName:'Diarrhea',                          risk:'low',      confirmed:16, suspected:8,  farms:6,  animals:44,  status:'Resolved',             lastReported:'Sep 5, 2026', lastReportedDate:new Date(2026,8,5), isNew:false, trend7:[32,30,29,28,27,28,28] },
-  { id:'amravati',  name:'Amravati',  x:520, y:110, diseaseCategory:'PPR',                   diseaseName:'PPR (Peste des Petits Ruminants)',  risk:'low',      confirmed:12, suspected:4,  farms:4,  animals:29,  status:'Resolved',             lastReported:'Sep 4, 2026', lastReportedDate:new Date(2026,8,4), isNew:false, trend7:[22,21,20,19,19,18,19] },
-  { id:'jalgaon',   name:'Jalgaon',   x:380, y:90,  diseaseCategory:'Diarrhea',              diseaseName:'Diarrhea',                          risk:'low',      confirmed:9,  suspected:3,  farms:3,  animals:21,  status:'Resolved',             lastReported:'Sep 3, 2026', lastReportedDate:new Date(2026,8,3), isNew:false, trend7:[15,14,13,12,12,11,12] }
+  { id:'nashik',    name:'Nashik',    lat:19.9975, lng:73.7898, diseaseCategory:'FMD',                 diseaseName:'Foot & Mouth Disease (FMD)',        risk:'critical', confirmed:52, suspected:32, farms:19, animals:214, status:'Active',               lastReported:'Sep 8, 2026', lastReportedDate:new Date(2026,8,8), isNew:true,  trend7:[40,46,55,61,70,78,84] },
+  { id:'aurangabad',name:'Aurangabad',lat:19.8762, lng:75.3433, diseaseCategory:'Mastitis',             diseaseName:'Mastitis',                          risk:'high',     confirmed:44, suspected:18, farms:14, animals:122, status:'Active',               lastReported:'Sep 8, 2026', lastReportedDate:new Date(2026,8,8), isNew:false, trend7:[38,40,45,50,55,58,62] },
+  { id:'thane',     name:'Thane',     lat:19.2183, lng:72.9781, diseaseCategory:'FMD',                 diseaseName:'Suspected FMD Cluster',              risk:'high',     confirmed:9,  suspected:21, farms:6,  animals:58,  status:'Under Investigation',  lastReported:'Sep 9, 2026', lastReportedDate:new Date(2026,8,9), isNew:true,  trend7:[2,3,5,9,14,22,30] },
+  { id:'pune',      name:'Pune',      lat:18.5204, lng:73.8567, diseaseCategory:'Respiratory Infection',diseaseName:'Respiratory Infection',             risk:'medium',   confirmed:30, suspected:18, farms:11, animals:96,  status:'Monitoring',           lastReported:'Sep 7, 2026', lastReportedDate:new Date(2026,8,7), isNew:false, trend7:[35,34,36,40,44,46,48] },
+  { id:'nagpur',    name:'Nagpur',    lat:21.1458, lng:79.0882, diseaseCategory:'Tick Infestation',      diseaseName:'Tick Infestation',                  risk:'medium',   confirmed:26, suspected:15, farms:9,  animals:77,  status:'Monitoring',           lastReported:'Sep 7, 2026', lastReportedDate:new Date(2026,8,7), isNew:false, trend7:[30,29,31,34,37,39,41] },
+  { id:'satara',    name:'Satara',    lat:17.6805, lng:73.9966, diseaseCategory:'Bloat',                 diseaseName:'Bloat',                             risk:'medium',   confirmed:18, suspected:9,  farms:5,  animals:41,  status:'Contained',            lastReported:'Sep 6, 2026', lastReportedDate:new Date(2026,8,6), isNew:false, trend7:[20,19,20,22,23,24,25] },
+  { id:'solapur',   name:'Solapur',   lat:17.6599, lng:75.9064, diseaseCategory:'Bloat',                 diseaseName:'Bloat',                             risk:'low',      confirmed:20, suspected:6,  farms:7,  animals:52,  status:'Contained',            lastReported:'Sep 6, 2026', lastReportedDate:new Date(2026,8,6), isNew:false, trend7:[38,37,36,35,34,35,34] },
+  { id:'kolhapur',  name:'Kolhapur',  lat:16.7050, lng:74.2433, diseaseCategory:'Diarrhea',              diseaseName:'Diarrhea',                          risk:'low',      confirmed:16, suspected:8,  farms:6,  animals:44,  status:'Resolved',             lastReported:'Sep 5, 2026', lastReportedDate:new Date(2026,8,5), isNew:false, trend7:[32,30,29,28,27,28,28] },
+  { id:'amravati',  name:'Amravati',  lat:20.9320, lng:77.7523, diseaseCategory:'PPR',                   diseaseName:'PPR (Peste des Petits Ruminants)',  risk:'low',      confirmed:12, suspected:4,  farms:4,  animals:29,  status:'Resolved',             lastReported:'Sep 4, 2026', lastReportedDate:new Date(2026,8,4), isNew:false, trend7:[22,21,20,19,19,18,19] },
+  { id:'jalgaon',   name:'Jalgaon',   lat:21.0077, lng:75.5626, diseaseCategory:'Diarrhea',              diseaseName:'Diarrhea',                          risk:'low',      confirmed:9,  suspected:3,  farms:3,  animals:21,  status:'Resolved',             lastReported:'Sep 3, 2026', lastReportedDate:new Date(2026,8,3), isNew:false, trend7:[15,14,13,12,12,11,12] }
 ];
 HM_HOTSPOTS.forEach(h => { h.trend30 = hmExtendTo30(h.trend7); });
 
@@ -2189,32 +2197,53 @@ function applyHeatmapFilters(){
   renderHeatmapTrendCharts(displayFiltered);
 }
 
+let mapInstance = null;
+let heatLayer = null;
+
 function renderHeatmapMap(filteredIds){
   const wrap = document.getElementById('hm-map-wrap');
   if(!wrap) return;
-  const isDark = document.body.classList.contains('dark');
-  const gridColor = isDark ? 'rgba(255,255,255,.07)' : 'rgba(35,41,31,.06)';
-  const labelColor = isDark ? '#B8C3AC' : '#5B6154';
-  let gridLines = '';
-  for(let gx=0; gx<=800; gx+=80) gridLines += `<line x1="${gx}" y1="0" x2="${gx}" y2="460" stroke="${gridColor}" stroke-width="1"/>`;
-  for(let gy=0; gy<=460; gy+=76.6) gridLines += `<line x1="0" y1="${gy.toFixed(1)}" x2="800" y2="${gy.toFixed(1)}" stroke="${gridColor}" stroke-width="1"/>`;
-  let markers = '';
-  HM_HOTSPOTS.forEach(h=>{
-    const included = filteredIds.has(h.id);
-    const total = h.confirmed + h.suspected;
-    const r = Math.max(12, Math.min(30, 10 + Math.sqrt(total)*1.6));
-    const color = hmRiskFill(h.risk);
-    const dimClass = included ? '' : ' dim';
-    const pulseClass = (h.isNew && included) ? 'hm-marker-pulse' : '';
-    markers += `<g class="hm-marker${dimClass}" onclick="showHotspotDetail('${h.id}')">
-      <circle cx="${h.x}" cy="${h.y}" r="${(r*1.7).toFixed(1)}" fill="${color}" opacity="0.16" class="${pulseClass}"/>
-      <circle cx="${h.x}" cy="${h.y}" r="${r.toFixed(1)}" fill="${color}" stroke="#fff" stroke-width="2"/>
-      <text x="${h.x}" y="${(h.y+4).toFixed(1)}" text-anchor="middle" font-size="10.5" font-weight="700" fill="#fff" font-family="system-ui">${total}</text>
-      <text x="${h.x}" y="${(h.y+r+16).toFixed(1)}" text-anchor="middle" font-size="11.5" font-weight="600" fill="${labelColor}" font-family="system-ui">${h.name}</text>
-      <title>${h.name} — ${h.diseaseName} (${h.risk.toUpperCase()}) — ${total} cases</title>
-    </g>`;
+
+  if (!mapInstance) {
+    mapInstance = L.map('hm-map-wrap').setView([19.0, 75.0], 6);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(mapInstance);
+  }
+
+  if (heatLayer) {
+    mapInstance.removeLayer(heatLayer);
+  }
+
+  const heatData = [];
+  HM_HOTSPOTS.forEach(h => {
+    if (filteredIds.has(h.id)) {
+      const total = h.confirmed + h.suspected;
+      // Convert to intensity. More cases = higher intensity. Max ~250.
+      const intensity = Math.min(1.0, total / 100);
+      heatData.push([h.lat, h.lng, intensity]);
+
+      // Add a marker to click
+      L.circleMarker([h.lat, h.lng], {
+        radius: Math.max(8, Math.min(20, 5 + Math.sqrt(total))),
+        fillColor: hmRiskFill(h.risk),
+        color: '#fff',
+        weight: 1.5,
+        fillOpacity: 0.8
+      }).bindTooltip(`${h.name} — ${h.diseaseName} (${h.risk.toUpperCase()}) — ${total} cases`)
+        .on('click', () => showHotspotDetail(h.id))
+        .addTo(mapInstance);
+    }
   });
-  wrap.innerHTML = `<svg viewBox="0 0 800 460" xmlns="http://www.w3.org/2000/svg">${gridLines}${markers}</svg>`;
+
+  if (heatData.length > 0) {
+    heatLayer = L.heatLayer(heatData, {
+      radius: 40,
+      blur: 25,
+      maxZoom: 10,
+      gradient: {0.2: '#2F7A4F', 0.5: '#B9791F', 0.8: '#B3402A'}
+    }).addTo(mapInstance);
+  }
 }
 
 function renderHeatmapKPIs(filtered){
@@ -2350,19 +2379,13 @@ function hmComputeTrendSeries(hotspots, days){
 }
 
 function renderHeatmapTrendCharts(filtered){
-  if(!filtered.length){
-    ['cv-hm-trend7','cv-hm-trend30'].forEach(id=>{ if(CI[id]){ CI[id].destroy(); delete CI[id]; } });
-    return;
-  }
-  const s7 = hmComputeTrendSeries(filtered, 7);
-  const s30 = hmComputeTrendSeries(filtered, 30);
-  mk('cv-hm-trend7', { type:'line', data:{ labels:hmDateLabels(7), datasets:[
-    { label:'Confirmed', ...ld('#B3402A'), data:s7.confirmed },
-    { label:'Suspected', ...ld('#B9791F'), data:s7.suspected }
-  ]}, options: lineOpts(true) });
-  mk('cv-hm-trend30', { type:'line', data:{ labels:hmDateLabels(30), datasets:[
-    { label:'Confirmed', ...ld('#B3402A'), data:s30.confirmed },
-    { label:'Suspected', ...ld('#B9791F'), data:s30.suspected }
+  if(CI['cv-hm-trend']) { CI['cv-hm-trend'].destroy(); delete CI['cv-hm-trend']; }
+  if(!filtered.length) return;
+  const days = parseInt(document.getElementById('hm-trend-filter').value || '7');
+  const s = hmComputeTrendSeries(filtered, days);
+  mk('cv-hm-trend', { type:'line', data:{ labels:hmDateLabels(days), datasets:[
+    { label:'Confirmed', ...ld('#B3402A'), data:s.confirmed },
+    { label:'Suspected', ...ld('#B9791F'), data:s.suspected }
   ]}, options: lineOpts(true) });
 }
 
@@ -2606,7 +2629,7 @@ function initSettings(){
   const langSel = document.getElementById('pref-lang');
   if(langSel) langSel.value = PC_LANG;
 
-  const savedTheme = localStorage.getItem('pc-theme') || (localStorage.getItem('pc-dark')==='1' ? 'dark' : 'system');
+  const savedTheme = localStorage.getItem('pc-theme') || 'light';
   setTheme(savedTheme);
 
   const savedSize = localStorage.getItem('pc-textsize') || 'medium';

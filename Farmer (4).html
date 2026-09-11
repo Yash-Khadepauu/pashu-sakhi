@@ -4180,7 +4180,7 @@ function PashuSakhiDashboard() {
     try { return localStorage.getItem("psk_language") || "en"; } catch { return "en"; }
   });
   const [theme, setTheme] = useState(() => {
-    try { return localStorage.getItem("psk_theme") || "system"; } catch { return "system"; }
+    try { return localStorage.getItem("psk_theme") || "light"; } catch { return "light"; }
   });
   const [textSize, setTextSize] = useState(() => {
     try { return localStorage.getItem("psk_textSize") || "medium"; } catch { return "medium"; }
@@ -8676,52 +8676,18 @@ function PermissionsModal({ t, onClose }) {
 /* ------------------------------------------------------------------ */
 /* ------------------------------------------------------------------ */
 function EmergencyModal({ animals, onClose, onContactVet, onStartConsult, t }) {
-  const [animalId, setAnimalId] = useState("");
-  const [showFirstAid, setShowFirstAid] = useState(false);
-  const animalName = animals.find((a) => a.id === animalId)?.name;
+  const [step, setStep] = useState(0);
   const modalCardRef = useRef(null);
   const closeBtnRef = useRef(null);
-
-  const tips = [1, 2, 3, 4, 5].map((idx) => t ? t(`firstAid_tip${idx}`) : firstAidTips[idx - 1]);
 
   useEffect(() => {
     const previouslyFocused = document.activeElement;
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-
-    const timer = setTimeout(() => {
-      closeBtnRef.current?.focus();
-    }, 0);
-
+    const timer = setTimeout(() => closeBtnRef.current?.focus(), 0);
     const handleKeyDown = (e) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        onClose();
-        return;
-      }
-
-      if (e.key === "Tab") {
-        if (!modalCardRef.current) return;
-        const focusable = modalCardRef.current.querySelectorAll(
-          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-        );
-        const firstEl = focusable[0];
-        const lastEl = focusable[focusable.length - 1];
-
-        if (e.shiftKey) {
-          if (document.activeElement === firstEl || !modalCardRef.current.contains(document.activeElement)) {
-            e.preventDefault();
-            lastEl.focus();
-          }
-        } else {
-          if (document.activeElement === lastEl || !modalCardRef.current.contains(document.activeElement)) {
-            e.preventDefault();
-            firstEl.focus();
-          }
-        }
-      }
+      if (e.key === "Escape") { e.preventDefault(); onClose(); return; }
     };
-
     document.addEventListener("keydown", handleKeyDown);
     return () => {
       clearTimeout(timer);
@@ -8732,6 +8698,13 @@ function EmergencyModal({ animals, onClose, onContactVet, onStartConsult, t }) {
       }
     };
   }, [onClose]);
+
+  const handleOption = (opt) => {
+    setStep(1);
+    setTimeout(() => {
+       setStep(2);
+    }, 2000);
+  };
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -8747,7 +8720,7 @@ function EmergencyModal({ animals, onClose, onContactVet, onStartConsult, t }) {
           <div style={{ display: "flex", alignItems: "center", gap: 9, flex: 1, minWidth: 0, paddingRight: 8 }}>
             <AlertTriangle size={22} color="var(--urgent-fg, var(--urgent))" style={{ flexShrink: 0 }} />
             <h2 id="emergency-modal-title" style={{ margin: 0, fontSize: "calc(19px * var(--text-scale, 1))", overflowWrap: "break-word", wordBreak: "break-word" }}>
-              {t ? t("emergency_title") : "Emergency help"}
+              {t ? t("nav_emergencyGuide", "Connect to Admin") : "Connect to Admin"}
             </h2>
           </div>
           <button
@@ -8755,51 +8728,52 @@ function EmergencyModal({ animals, onClose, onContactVet, onStartConsult, t }) {
             ref={closeBtnRef}
             className="modal-close-btn"
             onClick={onClose}
-            aria-label={t ? t("emergency_closeAria") : "Close Emergency help"}
+            aria-label="Close"
           >
             <X size={20} />
           </button>
         </div>
-        <p style={{ color: "var(--ink-soft)", fontSize: "calc(13.5px * var(--text-scale, 1))", margin: "0 0 18px" }}>
-          {t ? t("emergency_subtitle") : "Choose what you need right now. This does not place a real call."}
-        </p>
 
-        <label className="field-label">{t ? t("emergency_whichAnimal") : "Which animal is affected? (optional)"}</label>
-        <select className="field-input" style={{ marginBottom: 18 }} value={animalId} onChange={(e) => setAnimalId(e.target.value)}>
-          <option value="">{t ? t("emergency_notSure") : "Not sure yet"}</option>
-          {animals.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.name}  —  {formatSpecies(a.species, t)}
-            </option>
-          ))}
-        </select>
-
-        <div style={{ display: "grid", gap: 10 }}>
-          <button className="btn-emergency" style={{ justifyContent: "flex-start" }} onClick={() => onContactVet(animalName)}>
-            <Phone size={17} /> {t ? t("emergency_contactVet") : "Contact veterinarian"}
-          </button>
-          <button className="btn-primary" style={{ justifyContent: "flex-start" }} onClick={() => onStartConsult(animalId || animals[0]?.id)}>
-            <MessageCircle size={17} /> {t ? t("emergency_startConsult") : "Start emergency consultation"}
-          </button>
-          <button
-            type="button"
-            className="btn-secondary"
-            style={{ justifyContent: "flex-start" }}
-            onClick={() => setShowFirstAid((s) => !s)}
-            aria-expanded={showFirstAid}
-            aria-controls="emergency-first-aid-guidance"
-          >
-            <ClipboardList size={17} /> {t ? t("emergency_firstAid") : "View immediate first-aid guidance"}
-            <ChevronDown size={16} style={{ marginLeft: "auto", transform: showFirstAid ? "rotate(180deg)" : "none" }} />
-          </button>
-          {showFirstAid && (
-            <div id="emergency-first-aid-guidance" style={{ background: "var(--paper)", border: "1px solid var(--line)", borderRadius: 12, padding: "12px 16px" }}>
-              <ul style={{ margin: 0, paddingLeft: 18, fontSize: "calc(13.5px * var(--text-scale, 1))", lineHeight: 1.7, color: "var(--ink)" }}>
-                {tips.map((tipText, i) => <li key={i}>{tipText}</li>)}
-              </ul>
+        {step === 0 && (
+          <>
+            <p style={{ color: "var(--ink-soft)", fontSize: "calc(13.5px * var(--text-scale, 1))", margin: "0 0 18px" }}>
+              How can we help you?
+            </p>
+            <div style={{ display: "grid", gap: 10 }}>
+              <button className="btn-secondary" style={{ justifyContent: "flex-start", textAlign: "left" }} onClick={() => handleOption(1)}>
+                1. Report Animal Health Issue
+              </button>
+              <button className="btn-secondary" style={{ justifyContent: "flex-start", textAlign: "left" }} onClick={() => handleOption(2)}>
+                2. Request Veterinary Assistance
+              </button>
+              <button className="btn-secondary" style={{ justifyContent: "flex-start", textAlign: "left" }} onClick={() => handleOption(3)}>
+                3. Report Animal Death
+              </button>
+              <button className="btn-secondary" style={{ justifyContent: "flex-start", textAlign: "left" }} onClick={() => handleOption(4)}>
+                4. Speak to an Administrator
+              </button>
             </div>
-          )}
-        </div>
+          </>
+        )}
+
+        {step === 1 && (
+          <div style={{ textAlign: "center", padding: "40px 0" }}>
+            <Loader size={32} className="spinning" style={{ color: "var(--brand)", marginBottom: 16 }} />
+            <p style={{ margin: 0, fontSize: "16px", fontWeight: "600" }}>Connecting to PashuSakhi Admin...</p>
+            <p style={{ color: "var(--ink-soft)", margin: "8px 0 0" }}>Please wait...</p>
+          </div>
+        )}
+
+        {step === 2 && (
+          <div style={{ textAlign: "center", padding: "40px 0" }}>
+            <CheckCircle size={40} color="var(--healthy)" style={{ marginBottom: 16 }} />
+            <p style={{ margin: 0, fontSize: "16px", fontWeight: "600", color: "var(--healthy)" }}>Admin support connected</p>
+            <p style={{ color: "var(--ink-soft)", margin: "8px 0 24px" }}>An administrator is now on the line.</p>
+            <button className="btn-primary" style={{ width: "100%", justifyContent: "center" }} onClick={onClose}>
+              End Session
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
