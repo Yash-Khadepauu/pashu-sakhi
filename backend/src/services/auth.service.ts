@@ -1,4 +1,4 @@
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 import prisma from "../config/database";
 import { AppError } from "../utils/apiError";
 import { signJwt } from "../utils/jwt";

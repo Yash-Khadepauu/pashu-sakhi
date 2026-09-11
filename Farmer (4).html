@@ -276,12 +276,7 @@
 
     seedDefaultData: function() {
       if (!localStorage.getItem('psk_shared_reports')) {
-        const defaultReports = [
-          { id: "rep_101", type: "detection", animalId: "a1", animalName: "Gauri (Cow)", farmerName: "Suresh Patil", date: new Date().toISOString().split('T')[0], condition: "Suspected Bovine Dermatitis", severity: "attention", confidence: 87, status: "Under Review", details: { title: "Suspected Bovine Dermatitis / Cutaneous Lesions" } },
-          { id: "rep_102", type: "detection", animalId: "a2", animalName: "Raju (Bullock)", farmerName: "Suresh Patil", date: new Date().toISOString().split('T')[0], condition: "Suspected Nodular Skin Lesions", severity: "urgent", confidence: 91, status: "New", details: { title: "Suspected Nodular Skin Lesions" } },
-          { id: "rep_103", type: "screening", animalId: "a3", animalName: "Lakshmi (Buffalo)", farmerName: "Suresh Patil", date: new Date().toISOString().split('T')[0], condition: "Mild Bloat & Lethargy", severity: "attention", confidence: 82, status: "Resolved", details: { title: "Mild Bloat" } }
-        ];
-        _set('psk_shared_reports', defaultReports);
+        _set('psk_shared_reports', []);
       }
 
       if (!localStorage.getItem('psk_shared_emergencies')) {
@@ -7064,6 +7059,8 @@ function ScreeningView({ animals, preselectedId, setSelectedAnimalId, result, se
   const [temperature, setTemperature] = useState("Normal");
   const [activity, setActivity] = useState("Normal");
   const [notes, setNotes] = useState("");
+  const [screenError, setScreenError] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (preselectedId) setAnimalId(preselectedId);
@@ -7079,49 +7076,85 @@ function ScreeningView({ animals, preselectedId, setSelectedAnimalId, result, se
   };
 
   const submit = async () => {
-    const r = runScreening({ symptoms, appetite, temperature, activity, notes }, t);
-    setResult(r);
+    setIsSubmitting(true);
+    setScreenError(null);
 
-    if (window.PashuSakhiApi) {
-      try {
-        await window.PashuSakhiApi.submitSymptomScreening({
-          animalId,
-          symptoms,
-          appetite,
-          temperature,
-          activity,
-          notes
-        });
-      } catch (err) {
-        console.warn('Backend symptom screening log error:', err);
+    try {
+      if (!window.PashuSakhiApi) {
+        throw new Error("PashuSakhi API client not initialized.");
       }
-    }
 
-    if (window.PashuSakhiBridge) {
-      const sess = window.PashuSakhiBridge.getSession();
-      const curAnimal = (animals || []).find(a => a.id === animalId);
-      window.PashuSakhiBridge.addReport({
-        type: 'screening',
+      const apiRes = await window.PashuSakhiApi.submitSymptomScreening({
         animalId,
-        animalName: (curAnimal && curAnimal.name) || 'Livestock',
-        farmerName: (sess && sess.name) || (typeof profile !== 'undefined' && profile.name) || "Suresh Patil",
-        date: new Date().toISOString().split('T')[0],
-        condition: r.title || "AI Symptom Screening",
-        severity: r.level || "attention",
-        confidence: 88,
-        status: "New",
-        details: r
+        reportedSymptoms: symptoms,
+        appetiteSelected: appetite,
+        temperatureSelected: temperature,
+        activitySelected: activity,
+        notes
       });
+
+      if (!apiRes.success || !apiRes.data?.triage) {
+        throw new Error(apiRes.message || "Failed to receive screening evaluation from Gemini AI.");
+      }
+
+      const tr = apiRes.data.triage;
+      const r = {
+        level:
+          tr.severity === "emergency"
+            ? "urgent"
+            : tr.severity === "moderate"
+            ? "attention"
+            : tr.severity === "routine"
+            ? "healthy"
+            : "attention",
+        conditionFormatted: (tr.condition || "Screening complete").replace(/_/g, " ").toUpperCase(),
+        title: `AI Triage: ${(tr.condition || "Screening").replace(/_/g, " ").toUpperCase()} (${tr.confidence}% confidence)`,
+        explanation: tr.reasoning || tr.symptom_findings,
+        recommendation: tr.recommended_action,
+        factors: symptoms,
+        notes: notes ? `${notes} [Model: ${tr.model_tier_used}]` : `[Model: ${tr.model_tier_used}]`,
+        confidence: tr.confidence,
+        modelTier: tr.model_tier_used || "live_gemini",
+        visualFindings: tr.visual_findings,
+        symptomFindings: tr.symptom_findings,
+        escalateTo1962: tr.escalate_to_1962,
+        severity: tr.severity
+      };
+
+      setResult(r);
+
+      if (window.PashuSakhiBridge) {
+        const sess = window.PashuSakhiBridge.getSession();
+        const curAnimal = (animals || []).find((a) => a.id === animalId);
+        window.PashuSakhiBridge.addReport({
+          type: "screening",
+          animalId,
+          animalName: (curAnimal && curAnimal.name) || "Livestock",
+          farmerName:
+            (sess && sess.name) || (typeof profile !== "undefined" && profile.name) || "Suresh Patil",
+          date: new Date().toISOString().split("T")[0],
+          condition: r.conditionFormatted,
+          severity: r.level || "attention",
+          confidence: r.confidence,
+          status: "New",
+          details: r
+        });
+      }
+      onDone && onDone(animalId, r);
+    } catch (err) {
+      console.error("[ScreeningView] Live backend screening error:", err);
+      setScreenError("Gemini AI Screening Error: " + (err.message || String(err)));
+      setResult(null);
+    } finally {
+      setIsSubmitting(false);
     }
-    onDone && onDone(animalId, r);
   };
 
   const reset = () => {
-    setSymptoms([]); setAppetite("Normal"); setTemperature("Normal"); setActivity("Normal"); setNotes(""); setResult(null);
+    setSymptoms([]); setAppetite("Normal"); setTemperature("Normal"); setActivity("Normal"); setNotes(""); setResult(null); setScreenError(null);
   };
 
   const handleBack = () => {
-    // Back from result returns to the screening form with animal and responses preserved
     if (result) {
       setResult(null);
     } else {
@@ -7130,7 +7163,7 @@ function ScreeningView({ animals, preselectedId, setSelectedAnimalId, result, se
   };
 
   const currentAnimal = animals.find((a) => a.id === animalId);
-  const animalName = currentAnimal?.name;
+  const animalName = currentAnimal?.name || "Livestock";
 
   return (
     <div>
@@ -7142,9 +7175,31 @@ function ScreeningView({ animals, preselectedId, setSelectedAnimalId, result, se
       <Card style={{ marginBottom: 16, display: "flex", gap: 10, alignItems: "flex-start", background: "var(--brand-soft)" }}>
         <Info size={18} color="var(--brand-ink, var(--brand-dark))" style={{ flexShrink: 0, marginTop: 1 }} />
         <p style={{ margin: 0, fontSize: "calc(13.5px * var(--text-scale, 1))", color: "var(--brand-ink, var(--brand-dark))", lineHeight: 1.5 }}>
-          {t ? t("screen_disclaimer") : "This is an early screening tool to help you decide if you need a vet. It does not replace a veterinarian's examination."}
+          {t ? t("screen_disclaimer") : "Live Gemini AI veterinary triage screening. Designed for cattle and buffalo in Maharashtra. Does not replace physical veterinary examination."}
         </p>
       </Card>
+
+      {screenError && (
+        <div
+          role="alert"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            padding: "13px 16px",
+            background: "var(--urgent-soft)",
+            border: "1.5px solid var(--urgent)",
+            borderRadius: 10,
+            marginBottom: 16,
+            color: "var(--urgent)",
+            fontWeight: 600,
+            fontSize: "calc(13.5px * var(--text-scale, 1))"
+          }}
+        >
+          <AlertTriangle size={20} style={{ flexShrink: 0 }} />
+          <span>{screenError}</span>
+        </div>
+      )}
 
       {!result ? (
         <Card>
@@ -7205,33 +7260,85 @@ function ScreeningView({ animals, preselectedId, setSelectedAnimalId, result, se
             onChange={(e) => setNotes(e.target.value)}
           />
 
-          <button className="btn-primary" style={{ width: "100%" }} onClick={submit}>{t ? t("screen_submit") : "Submit for screening"}</button>
+          <button className="btn-primary" style={{ width: "100%" }} onClick={submit} disabled={isSubmitting}>
+            {isSubmitting ? "Dispatching to Gemini AI..." : (t ? t("screen_submit") : "Submit for screening")}
+          </button>
+
         </Card>
       ) : (
         <div>
           <Card className={`result-card result-${result.level === "urgent" ? "urgent" : result.level === "attention" ? "attention" : "healthy"}`}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+            {/* Header with live badge and animal name */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
               <span className="badge" style={{ fontSize: "calc(12px * var(--text-scale, 1))", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.5px", padding: "4px 9px", borderRadius: 6, background: "rgba(0,0,0,0.08)", color: "var(--ink)" }}>
-                {t ? t("screen_resultBadge") : "AI-assisted screening result"}
+                ⚡ LIVE GEMINI AI ({result.modelTier || "PRO"})
               </span>
               <span style={{ fontSize: "calc(13.5px * var(--text-scale, 1))", fontWeight: 700, color: "var(--ink-soft)" }}>
                 {animalName}
               </span>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-              {result.level === "urgent" && <AlertTriangle size={22} color="var(--urgent-fg, var(--urgent))" />}
-              {result.level === "attention" && <AlertCircle size={22} color="var(--attention-fg, var(--attention))" />}
-              {result.level === "healthy" && <CheckCircle2 size={22} color="var(--healthy-fg, var(--healthy))" />}
-              <p style={{ margin: 0, fontWeight: 700, fontSize: "calc(18px * var(--text-scale, 1))" }}>
-                {(t && t("screen_title_" + result.level)) || result.title}
+
+            {/* Live Condition Headline */}
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+              {result.level === "urgent" && <AlertTriangle size={24} color="var(--urgent-fg, var(--urgent))" />}
+              {result.level === "attention" && <AlertCircle size={24} color="var(--attention-fg, var(--attention))" />}
+              {result.level === "healthy" && <CheckCircle2 size={24} color="var(--healthy-fg, var(--healthy))" />}
+              <div>
+                <div style={{ fontSize: "calc(12px * var(--text-scale, 1))", fontWeight: 700, color: "var(--ink-soft)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                  Screening Condition
+                </div>
+                <h2 style={{ margin: 0, fontWeight: 800, fontSize: "calc(19px * var(--text-scale, 1))", color: "var(--ink)" }}>
+                  {result.conditionFormatted}
+                </h2>
+              </div>
+            </div>
+
+            {/* Metrics & Risk Level */}
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", background: "rgba(255,255,255,0.6)", padding: "10px 14px", borderRadius: 10, marginBottom: 14 }}>
+              <span style={{ fontSize: "calc(12px * var(--text-scale, 1))", fontWeight: 800, padding: "4px 9px", borderRadius: 6, background: result.level === "urgent" ? "var(--urgent)" : result.level === "attention" ? "var(--attention)" : "var(--healthy)", color: "#fff" }}>
+                {result.level === "urgent" ? "URGENT / EMERGENCY" : result.level === "attention" ? "NEEDS ATTENTION" : "LOW RISK / ROUTINE"}
+              </span>
+              <span style={{ fontSize: "calc(13px * var(--text-scale, 1))", fontWeight: 700, color: "var(--ink)" }}>
+                Confidence: <strong>{result.confidence}%</strong>
+              </span>
+              {result.escalateTo1962 && (
+                <span style={{ fontSize: "calc(11.5px * var(--text-scale, 1))", fontWeight: 800, padding: "4px 8px", borderRadius: 6, background: "#B3402A", color: "#fff" }}>
+                  🚨 1962 EMERGENCY HELPLINE DISPATCH
+                </span>
+              )}
+            </div>
+
+            {/* AI Clinical Reasoning */}
+            <div style={{ marginBottom: 14 }}>
+              <strong style={{ display: "block", fontSize: "calc(12.5px * var(--text-scale, 1))", color: "var(--ink-soft)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 4 }}>
+                AI Clinical Reasoning
+              </strong>
+              <p style={{ margin: 0, fontSize: "calc(14px * var(--text-scale, 1))", lineHeight: 1.6, color: "var(--ink)" }}>
+                {result.explanation}
               </p>
             </div>
-            <p style={{ margin: "0 0 12px", lineHeight: 1.6 }}>
-              {(t && (result.factors.length === 0 ? t("screen_expl_none") : t("screen_expl_" + result.level))) || result.explanation}
-            </p>
-            <p style={{ margin: 0, fontWeight: 700, lineHeight: 1.6 }}>
-              {(t && t("screen_rec_" + result.level)) || result.recommendation}
-            </p>
+
+            {/* Reported Symptom Findings */}
+            {result.symptomFindings && (
+              <div style={{ marginBottom: 14 }}>
+                <strong style={{ display: "block", fontSize: "calc(12.5px * var(--text-scale, 1))", color: "var(--ink-soft)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 4 }}>
+                  Reported Symptom Findings
+                </strong>
+                <p style={{ margin: 0, fontSize: "calc(13.5px * var(--text-scale, 1))", lineHeight: 1.5, color: "var(--ink)" }}>
+                  {result.symptomFindings}
+                </p>
+              </div>
+            )}
+
+            {/* Recommended Veterinary Action */}
+            <div style={{ background: "rgba(255,255,255,0.7)", padding: "12px 14px", borderRadius: 10, marginTop: 10 }}>
+              <strong style={{ display: "block", fontSize: "calc(12.5px * var(--text-scale, 1))", color: "var(--brand-dark)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 4 }}>
+                Recommended Action
+              </strong>
+              <p style={{ margin: 0, fontWeight: 600, fontSize: "calc(14px * var(--text-scale, 1))", lineHeight: 1.6, color: "var(--ink)" }}>
+                {result.recommendation}
+              </p>
+            </div>
           </Card>
 
           <div
@@ -7348,7 +7455,7 @@ function DiseaseDetectionView({ animals, preselectedId, setSelectedAnimalId, onB
     setError(null);
   };
 
-  const runAnalysis = () => {
+  const runAnalysis = async () => {
     if (!selectedImage) {
       setError(t ? t("disease_errNoImage") : "Please select or capture an image before starting analysis.");
       return;
@@ -7357,102 +7464,73 @@ function DiseaseDetectionView({ animals, preselectedId, setSelectedAnimalId, onB
     setError(null);
     setIsAnalyzing(true);
 
-    window.setTimeout(() => {
-      setIsAnalyzing(false);
-
-      // Deterministic realistic simulated result based on animal ID
-      let generated;
-      if (animalId === "a1") {
-        // Gauri: Suspected dermatitis
-        generated = {
-          level: "attention",
-          possibleCondition: "Suspected Bovine Dermatitis / Cutaneous Lesions",
-          confidence: 87,
-          indicators: [
-            "Circular crusted lesions along epidermal surface",
-            "Focal hair thinning (alopecia) around neck/shoulder crease",
-            "Localized erythema (redness) without deep ulcerative tissue"
-          ],
-          nextSteps: [
-            "Isolate animal from common milking stall to prevent potential contact spread",
-            "Avoid scratching or peeling crusts with bare hands",
-            "Keep stall floor clean, dry, and free of wet bedding or biting insects",
-            "Consult Dr. Kavita Rao to confirm diagnosis and prescribe topical ointment"
-          ]
-        };
-      } else if (animalId === "a2") {
-        // Raju: Suspected nodular lesions (urgent attention)
-        generated = {
-          level: "urgent",
-          possibleCondition: "Suspected Nodular Skin Lesions (Lumpy Skin Disease Profile)",
-          confidence: 91,
-          indicators: [
-            "Multiple distinct raised nodules (2-5 cm) across cutaneous layer",
-            "Superficial necrotic center observed on primary neck nodule",
-            "Localized edema and marked epidermal sensitivity in the affected region"
-          ],
-          nextSteps: [
-            "Immediately isolate Raju from all other herd members in a separate shed",
-            "Implement strict fly, mosquito, and tick control measures around the shelter",
-            "Contact your on-call veterinarian immediately for confirmatory clinical testing",
-            "Monitor rectal temperature twice daily and ensure clean drinking water"
-          ]
-        };
-      } else if (animalId === "a3") {
-        // Lakshmi: Minor abrasion
-        generated = {
-          level: "attention",
-          possibleCondition: "Localized Surface Abrasion & Mild Folliculitis",
-          confidence: 84,
-          indicators: [
-            "Superficial epidermal scraping likely from friction or stall fencing",
-            "Minor focal swelling with no purulent discharge or deep tissue involvement",
-            "Surrounding skin tissue and hair follicles show mild irritation"
-          ],
-          nextSteps: [
-            "Clean the affected area gently with clean warm water or mild antiseptic wash",
-            "Inspect stall walls and fences for protruding wires or sharp rough edges",
-            "Apply veterinary antiseptic spray if advised by health worker",
-            "Observe for any spreading or heat over the next 48 hours"
-          ]
-        };
-      } else {
-        // Moti or default: Clean / Low risk
-        generated = {
-          level: "healthy",
-          possibleCondition: "No Critical Visible Pathological Lesions Detected",
-          confidence: 93,
-          indicators: [
-            "Skin surface appears intact without circular lesions or crusts",
-            "Uniform coat texture without marked focal alopecia or patches",
-            "No acute cutaneous swelling, discharge, or open sores detected"
-          ],
-          nextSteps: [
-            "Continue routine daily grooming, clean feeding, and observation",
-            "Ensure scheduled bi-monthly preventive vaccinations remain up to date",
-            "Re-screen if the animal shows behavioral distress, fever, or skin irritation"
-          ]
-        };
+    try {
+      if (!window.PashuSakhiApi) {
+        throw new Error("PashuSakhi API client not initialized.");
       }
 
+      const res = await window.PashuSakhiApi.submitSymptomScreening({
+        animalId,
+        screeningType: "image_detection",
+        imageUrl: selectedImage,
+        reportedSymptoms: ["Visual lesion analysis"],
+        notes: "Uploaded animal photograph for AI visual screening"
+      });
+
+      if (!res.success || !res.data) {
+        throw new Error(res.message || "Failed to analyze animal photo with Gemini.");
+      }
+
+      const triage = res.data.triage || {};
+      const generated = {
+        level:
+          triage.severity === "emergency"
+            ? "urgent"
+            : triage.severity === "moderate"
+            ? "attention"
+            : triage.severity === "routine"
+            ? "healthy"
+            : "attention",
+        possibleCondition: (triage.condition || "Screening complete").replace(/_/g, " ").toUpperCase(),
+        confidence: triage.confidence || 0,
+        indicators: [
+          triage.visual_findings || "Visual features analyzed by Gemini AI.",
+          triage.reasoning || "Reasoning generated by Gemini screening assistant."
+        ].filter(Boolean),
+        nextSteps: [
+          triage.recommended_action || "Consult qualified veterinarian for clinical diagnosis.",
+          triage.escalate_to_1962
+            ? "🚨 URGENT: 1962 Emergency helpline dispatch recommended!"
+            : "Monitor vital signs and herd."
+        ].filter(Boolean),
+        modelTier: triage.model_tier_used || "live_gemini"
+      };
+
       setResult(generated);
+
       if (window.PashuSakhiBridge) {
         const sess = window.PashuSakhiBridge.getSession();
         window.PashuSakhiBridge.addReport({
-          type: 'detection',
+          type: "detection",
           animalId,
-          animalName: animalName || 'Livestock',
+          animalName: animalName || "Livestock",
           farmerName: (sess && sess.name) || profile.name || "Suresh Patil",
-          date: new Date().toISOString().split('T')[0],
-          condition: generated.possibleCondition || "AI Image Screening",
-          severity: generated.level || "attention",
-          confidence: generated.confidence || 89,
+          date: new Date().toISOString().split("T")[0],
+          condition: generated.possibleCondition,
+          severity: generated.level,
+          confidence: generated.confidence,
           status: "New",
           details: generated
         });
       }
-    }, 1350);
+    } catch (err) {
+      console.error("Live AI screening error:", err);
+      setError("AI Screening Error: " + (err.message || String(err)));
+    } finally {
+      setIsAnalyzing(false);
+    }
   };
+
 
   const resetToImageSelection = () => {
     setResult(null);
@@ -7649,8 +7727,8 @@ function DiseaseDetectionView({ animals, preselectedId, setSelectedAnimalId, onB
                     <div style={{ background: "rgba(0,0,0,0.08)", height: 6, borderRadius: 999, overflow: "hidden", marginBottom: 10 }}>
                       <div style={{ width: "85%", height: "100%", background: "var(--brand)", borderRadius: 999, transition: "width 1.2s ease" }} />
                     </div>
-                    <span style={{ display: "inline-block", fontSize: "calc(11.5px * var(--text-scale, 1))", background: "#FFF3CD", color: "#856404", padding: "4px 10px", borderRadius: 6, fontWeight: 700 }}>
-                      {t ? t("disease_analysingSimNote") : "Prototype Demonstration: Simulating local computer vision feature extraction... No live cloud model is queried."}
+                    <span style={{ display: "inline-block", fontSize: "calc(12px * var(--text-scale, 1))", background: "#DCEAE4", color: "#1F5D50", padding: "5px 12px", borderRadius: 6, fontWeight: 700 }}>
+                      ⚡ Live Google Gemini AI: Multi-modal vision analysis in progress...
                     </span>
                   </div>
                 ) : (
@@ -7706,7 +7784,7 @@ function DiseaseDetectionView({ animals, preselectedId, setSelectedAnimalId, onB
             {/* Header with badge and animal name */}
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
               <span className="badge" style={{ fontSize: "calc(12px * var(--text-scale, 1))", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.5px", padding: "4px 9px", borderRadius: 6, background: "rgba(0,0,0,0.08)", color: "var(--ink)" }}>
-                {t ? t("disease_resultBadge") : "AI Disease Detection Result"}
+                ⚡ LIVE GEMINI VISION ({result.modelTier || "3.5-FLASH"})
               </span>
               <span style={{ fontSize: "calc(13.5px * var(--text-scale, 1))", fontWeight: 700, color: "var(--ink-soft)" }}>
                 {animalName}

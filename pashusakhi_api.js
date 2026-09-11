@@ -203,11 +203,23 @@
 
     // AI Diagnostics / Screening
     async submitSymptomScreening(data) {
-      return request("/diagnostics/symptoms", {
+      if (!getToken()) {
+        try {
+          console.log("[PashuSakhiApi] Authenticating as demo farmer...");
+          await PashuSakhiApi.login("farmer@pashusakhi.in", "farmer123");
+        } catch (e) {
+          console.warn("[PashuSakhiApi] Auto-login fallback failed:", e);
+        }
+      }
+      console.log("🐾 [PashuSakhiApi] Sending request to Live Gemini Backend (/diagnostics/symptoms)...", data);
+      const res = await request("/diagnostics/symptoms", {
         method: "POST",
         body: JSON.stringify(data),
       });
+      console.log("✨ [PashuSakhiApi] Backend triage response:", res);
+      return res;
     },
+
 
     async getScreeningReports() {
       return request("/diagnostics/reports");
@@ -286,4 +298,29 @@
   };
 
   window.PashuSakhiApi = PashuSakhiApi;
+
+  // Purge any stale hardcoded reports from previous prototype sessions
+  try {
+    const rawReports = localStorage.getItem("psk_shared_reports");
+    if (rawReports) {
+      const parsed = JSON.parse(rawReports);
+      if (Array.isArray(parsed)) {
+        const cleaned = parsed.filter(r => !r.id || !String(r.id).startsWith("rep_10"));
+        localStorage.setItem("psk_shared_reports", JSON.stringify(cleaned));
+      }
+    }
+  } catch (e) {}
+
+  // Seamless auto-authentication on initialization for seamless testing & UI sync
+  try {
+    if (!getToken()) {
+      PashuSakhiApi.login("farmer@pashusakhi.in", "farmer123").then(res => {
+        if (res?.success) console.log("[PashuSakhiApi] Auto-authenticated demo farmer session.");
+      }).catch(err => {
+        console.warn("[PashuSakhiApi] Auto-login check:", err);
+      });
+    }
+  } catch (e) {}
 })(window);
+
+
