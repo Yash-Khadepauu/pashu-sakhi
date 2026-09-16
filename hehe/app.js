@@ -1,323 +1,42 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>PashuSakhi Dashboard</title>
-<script type="importmap">
-{
-  "imports": {
-    "react": "https://esm.sh/react@18.3.1",
-    "react-dom/client": "https://esm.sh/react-dom@18.3.1/client",
-    "lucide-react": "https://esm.sh/lucide-react@0.468.0?external=react"
-  }
-}
-</script>
-<script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
-<style>
-  html, body { margin: 0; padding: 0; width: 100%; max-width: 100%; overflow-x: hidden; }
-  #root { min-height: 100vh; }
+/**
+ * Pashu Sakhi - Farmer Dashboard
+ * Standalone Frontend Application
+ * Fully self-contained - Runs without localhost or backend server!
+ */
 
-        .sort-control { display: inline-flex; align-items: center; gap: 8px; flex-wrap: nowrap; min-width: 0; }
-        .sort-select-wrapper { position: relative; display: inline-flex; align-items: center; flex: 1 1 auto; min-width: 0; }
-        .sort-select-btn {
-          padding: 7px 34px 7px 14px; font-size: calc(13px * var(--text-scale, 1)); font-weight: 700;
-          border-radius: 999px; background: var(--paper-soft); border: 1.5px solid var(--line);
-          color: var(--ink); cursor: pointer; appearance: none; -webkit-appearance: none;
-          min-height: 38px; box-shadow: 0 1px 2px rgba(0,0,0,0.03);
-          transition: border-color .15s ease, box-shadow .15s ease;
-          width: 100%; max-width: 100%; box-sizing: border-box;
-          overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-        }
-        .sort-select-btn:hover { border-color: var(--brand); }
-        .sort-select-btn:focus-visible { outline: 2.5px solid var(--accent); outline-offset: 2px; border-color: var(--brand); }
-</style>
-</head>
-<body>
-<div id="root"></div>
-
-<!-- PashuSakhi Shared API & Bridge -->
-<script src="pashusakhi_api.js"></script>
-<script>
 (function() {
-  const _tabId = 'tab_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now();
-  const _listeners = new Set();
+  'use strict';
 
-  function _get(key, defaultVal) {
-    try {
-      const v = localStorage.getItem(key);
-      return v ? JSON.parse(v) : defaultVal;
-    } catch (e) {
-      return defaultVal;
-    }
+  const React = window.React;
+  if (!React) {
+    console.error('React not loaded!');
+    return;
+  }
+  const { useState, useMemo, useRef, useEffect } = React;
+  const { createRoot } = window.ReactDOM || {};
+  if (!createRoot) {
+    console.error('ReactDOM createRoot not loaded!');
+    return;
   }
 
-  function _set(key, val) {
-    try {
-      localStorage.setItem(key, JSON.stringify(val));
-    } catch (e) {
-      console.warn('PashuSakhiBridge storage write failed:', e);
-    }
-  }
+  const Lucide = window.LucideReact || {};
+  const {
+    Home, ListChecks, Stethoscope, MessageCircle, Bell, User, AlertTriangle,
+    Phone, ChevronRight, ArrowLeft, Send, Edit3, Check, X, Calendar, Clock,
+    Thermometer, Utensils, Zap, ShieldCheck, MapPin, PawPrint, Syringe,
+    Activity, CheckCircle2, AlertCircle, Info, Save, PlusCircle, HeartPulse,
+    ClipboardList, ChevronDown, Menu, Settings, Lock, Trash2, Sun, Moon,
+    Monitor, Type, Eye, HelpCircle, FileText, MessageSquare, Camera, Mic,
+    Sparkles, Volume2, Square, Play, Pause, Upload,
+    LogOut, Navigation, Globe, Star, LifeBuoy, ScanSearch, ArrowUpDown
+  } = Lucide;
 
-  function broadcast(event, data) {
-    const payload = { event, data, timestamp: Date.now(), sourceId: _tabId };
-    try {
-      localStorage.setItem('psk_bridge_event', JSON.stringify(payload));
-    } catch (e) {}
-    _listeners.forEach(fn => {
-      try { fn(event, data); } catch (err) { console.error('PashuSakhiBridge listener error:', err); }
-    });
-  }
-
-  window.addEventListener('storage', function(e) {
-    if (e.key === 'psk_bridge_event' && e.newValue) {
-      try {
-        const payload = JSON.parse(e.newValue);
-        if (payload && payload.sourceId !== _tabId) {
-          _listeners.forEach(fn => {
-            try { fn(payload.event, payload.data); } catch (err) { console.error('PashuSakhiBridge cross-tab listener error:', err); }
-          });
-        }
-      } catch (err) {}
-    }
-  });
-
-  window.PashuSakhiBridge = {
-    tabId: _tabId,
-
-    setSession: function(sessionObj) {
-      _set('psk_session', sessionObj);
-      if (sessionObj && sessionObj.language) {
-        try {
-          localStorage.setItem('psk_language', sessionObj.language);
-          localStorage.setItem('lumen_selected_language', sessionObj.language);
-        } catch (e) {}
-      }
-      broadcast('psk:session:updated', sessionObj);
-    },
-
-    getSession: function() {
-      return _get('psk_session', null);
-    },
-
-    clearSession: function() {
-      try {
-        localStorage.removeItem('psk_session');
-        localStorage.removeItem('session:current');
-        localStorage.removeItem('pashusakhi_user');
-      } catch (e) {}
-      broadcast('psk:session:cleared', {});
-    },
-
-    getReports: function(filter) {
-      const all = _get('psk_shared_reports', []);
-      if (!filter || filter === 'All') return all;
-      return all.filter(r => (r.status || '').toLowerCase() === filter.toLowerCase());
-    },
-
-    addReport: function(report) {
-      const reports = _get('psk_shared_reports', []);
-      const newRep = {
-        id: report.id || ('rep_' + Date.now()),
-        type: report.type || 'screening',
-        animalId: report.animalId || 'a1',
-        animalName: report.animalName || 'Livestock',
-        farmerName: report.farmerName || 'Suresh Patil',
-        date: report.date || new Date().toISOString().split('T')[0],
-        condition: report.condition || 'Suspected condition',
-        severity: report.severity || 'attention',
-        confidence: report.confidence || 85,
-        status: report.status || 'New',
-        details: report.details || {}
-      };
-      reports.unshift(newRep);
-      _set('psk_shared_reports', reports);
-      broadcast('psk:report:added', newRep);
-      return newRep;
-    },
-
-    updateReportStatus: function(id, status) {
-      const reports = _get('psk_shared_reports', []);
-      let updated = null;
-      const next = reports.map(r => {
-        if (r.id === id) {
-          updated = { ...r, status };
-          return updated;
-        }
-        return r;
-      });
-      _set('psk_shared_reports', next);
-      if (updated) broadcast('psk:report:updated', updated);
-      return updated;
-    },
-
-    getEmergencies: function(filter) {
-      const all = _get('psk_shared_emergencies', []);
-      if (!filter || filter === 'All') return all;
-      return all.filter(e => (e.status || '').toLowerCase() === filter.toLowerCase());
-    },
-
-    addEmergency: function(emergency) {
-      const emergencies = _get('psk_shared_emergencies', []);
-      const newEmg = {
-        id: emergency.id || ('emg_' + Date.now()),
-        animalId: emergency.animalId || 'a1',
-        animalName: emergency.animalName || 'Livestock',
-        farmerName: emergency.farmerName || 'Suresh Patil',
-        village: emergency.village || 'Wagholi, Pune',
-        contact: emergency.contact || '+91 98765 43210',
-        severity: emergency.severity || 'critical',
-        status: emergency.status || 'new',
-        title: emergency.title || 'Emergency Case',
-        time: emergency.time || 'Just now',
-        assignedVet: emergency.assignedVet || null
-      };
-      emergencies.unshift(newEmg);
-      _set('psk_shared_emergencies', emergencies);
-      broadcast('psk:emergency:added', newEmg);
-      return newEmg;
-    },
-
-    updateEmergencyStatus: function(id, status, vetName) {
-      const emergencies = _get('psk_shared_emergencies', []);
-      let updated = null;
-      const next = emergencies.map(e => {
-        if (e.id === id) {
-          updated = {
-            ...e,
-            status,
-            assignedVet: vetName || e.assignedVet || 'Dr. Kavita Rao'
-          };
-          return updated;
-        }
-        return e;
-      });
-      _set('psk_shared_emergencies', next);
-      if (updated) broadcast('psk:emergency:updated', updated);
-      return updated;
-    },
-
-    getChats: function(animalId) {
-      const chats = _get('psk_shared_chats', {});
-      return animalId ? (chats[animalId] || []) : chats;
-    },
-
-    sendChat: function(animalId, msg) {
-      const chats = _get('psk_shared_chats', {});
-      if (!chats[animalId]) chats[animalId] = [];
-      const newMsg = {
-        id: msg.id || ('msg_' + Date.now()),
-        sender: msg.sender || 'farmer',
-        text: msg.text || '',
-        time: msg.time || 'Just now',
-        timestamp: Date.now(),
-        animalId: animalId
-      };
-      chats[animalId].push(newMsg);
-      _set('psk_shared_chats', chats);
-      broadcast('psk:chat:message', { animalId, message: newMsg });
-      return newMsg;
-    },
-
-    getAnimals: function() {
-      return _get('psk_shared_animals', null);
-    },
-
-    addTreatment: function(animalId, treatmentObj) {
-      const animalsData = _get('psk_shared_animals', {});
-      if (!animalsData[animalId]) animalsData[animalId] = { treatments: [] };
-      if (!animalsData[animalId].treatments) animalsData[animalId].treatments = [];
-      const entry = {
-        id: 'trt_' + Date.now(),
-        date: treatmentObj.date || new Date().toISOString().split('T')[0],
-        condition: treatmentObj.condition || 'Clinical Treatment',
-        medicine: treatmentObj.medicine || 'Prescribed Drug',
-        dosage: treatmentObj.dosage || 'Standard dose',
-        route: treatmentObj.route || 'Oral',
-        duration: treatmentObj.duration || '3 days',
-        notes: treatmentObj.notes || 'Recorded by veterinarian',
-        vetName: treatmentObj.vetName || 'Dr. Kavita Rao'
-      };
-      animalsData[animalId].treatments.unshift(entry);
-      _set('psk_shared_animals', animalsData);
-      broadcast('psk:treatment:added', { animalId, treatment: entry });
-      return entry;
-    },
-
-    updateUserStatus: function(userId, status) {
-      const users = _get('psk_shared_users', {});
-      users[userId] = { status, updatedAt: Date.now() };
-      _set('psk_shared_users', users);
-      broadcast('psk:user:updated', { userId, status });
-    },
-
-    updateCase: function(caseId, updates) {
-      const cases = _get('psk_shared_cases', {});
-      cases[caseId] = { ...(cases[caseId] || {}), ...updates, updatedAt: Date.now() };
-      _set('psk_shared_cases', cases);
-      broadcast('psk:case:updated', { caseId, updates });
-    },
-
-    updateComplaint: function(id, status) {
-      const complaints = _get('psk_shared_complaints', {});
-      complaints[id] = { status, updatedAt: Date.now() };
-      _set('psk_shared_complaints', complaints);
-      broadcast('psk:complaint:updated', { id, status });
-    },
-
-    onEvent: function(fn) {
-      if (typeof fn === 'function') _listeners.add(fn);
-    },
-
-    offEvent: function(fn) {
-      _listeners.delete(fn);
-    },
-
-    seedDefaultData: function() {
-      if (!localStorage.getItem('psk_shared_reports')) {
-        const defaultReports = [
-          { id: "rep_101", type: "detection", animalId: "a1", animalName: "Gauri (Cow)", farmerName: "Suresh Patil", date: new Date().toISOString().split('T')[0], condition: "Suspected Bovine Dermatitis", severity: "attention", confidence: 87, status: "Under Review", details: { title: "Suspected Bovine Dermatitis / Cutaneous Lesions" } },
-          { id: "rep_102", type: "detection", animalId: "a2", animalName: "Raju (Bullock)", farmerName: "Suresh Patil", date: new Date().toISOString().split('T')[0], condition: "Suspected Nodular Skin Lesions", severity: "urgent", confidence: 91, status: "New", details: { title: "Suspected Nodular Skin Lesions" } },
-          { id: "rep_103", type: "screening", animalId: "a3", animalName: "Lakshmi (Buffalo)", farmerName: "Suresh Patil", date: new Date().toISOString().split('T')[0], condition: "Mild Bloat & Lethargy", severity: "attention", confidence: 82, status: "Resolved", details: { title: "Mild Bloat" } }
-        ];
-        _set('psk_shared_reports', defaultReports);
-      }
-
-      if (!localStorage.getItem('psk_shared_emergencies')) {
-        const defaultEmergencies = [
-          { id: "emg_101", animalId: "a2", animalName: "Raju (Bullock)", farmerName: "Suresh Patil", village: "Wagholi, Pune", contact: "+91 98765 43210", severity: "critical", status: "new", title: "Severe colic & unable to stand", time: "14 min ago", assignedVet: null },
-          { id: "emg_102", animalId: "a1", animalName: "Gauri (Cow)", farmerName: "Suresh Patil", village: "Wagholi, Pune", contact: "+91 98765 43210", severity: "high", status: "accepted", title: "Sudden high fever & respiratory distress", time: "35 min ago", assignedVet: "Dr. Kavita Rao" }
-        ];
-        _set('psk_shared_emergencies', defaultEmergencies);
-      }
-    }
-  };
-})();
-</script>
-
-<script type="text/babel" data-type="module" data-presets="react">
-import React, { useState, useMemo, useRef, useEffect } from "react";
-import { createRoot } from "react-dom/client";
-import {
-  Home, ListChecks, Stethoscope, MessageCircle, Bell, User, AlertTriangle,
-  Phone, ChevronRight, ArrowLeft, Send, Edit3, Check, X, Calendar, Clock,
-  Thermometer, Utensils, Zap, ShieldCheck, MapPin, PawPrint, Syringe,
-  Activity, CheckCircle2, AlertCircle, Info, Save, PlusCircle, HeartPulse,
-  ClipboardList, ChevronDown, Menu, Settings, Lock, Trash2, Sun, Moon,
-  Monitor, Type, Eye, HelpCircle, FileText, MessageSquare, Camera, Mic,
-  Sparkles, Volume2, Square, Play, Pause, Upload,
-  LogOut, Navigation, Globe, Star, LifeBuoy, ScanSearch, ArrowUpDown
-} from "lucide-react";
- 
- 
 /* ------------------------------------------------------------------ */
 /* Dynamic current date/time utilities (uses local system time)        */
 /* ------------------------------------------------------------------ */
 function getNow() {
   return new Date();
 }
-
 function getToday() {
   return new Date();
 }
@@ -376,7 +95,11 @@ function daysUntil(dateStr, baseDate) {
 // Consistently formats local date string using user's locale formatting
 function formatDate(dateStr) {
   const d = parseLocalDate(dateStr);
-  return d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+  return d.toLocaleDateString("en-IN", {
+    day: "numeric",
+    month: "short",
+    year: "numeric"
+  });
 }
 
 // Formats relative date labels dynamically relative to actual current system date
@@ -409,150 +132,221 @@ function isReminderDue(dueDate, reminderTiming = "due", baseDate) {
 /* Demo data                                                           */
 /* ------------------------------------------------------------------ */
 const PASHU_SAKHI_LOGO = "data:image/jpeg;base64,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";
-
-const initialAnimals = [
-  {
-    id: "gauri",
-    name: "Gauri",
-    species: "Cow",
-    breed: "Gir",
-    age: 4,
-    gender: "Female",
-    healthStatus: "healthy",
-    treatment: null,
-    vaccination: { name: "FMD (Foot & Mouth Disease)", dueDate: "2026-09-12", status: "due" },
-    lastScreening: null,
-    history: [
-      { id: "h1", type: "vaccination", label: "Vaccination completed", detail: "HS (Haemorrhagic Septicaemia) vaccine given", date: "2026-08-20" },
-      { id: "h2", type: "checkup", label: "Routine checkup", detail: "Weight and general health checked, all normal", date: "2026-07-30" }
-    ]
+const initialAnimals = [{
+  id: "gauri",
+  name: "Gauri",
+  species: "Cow",
+  breed: "Gir",
+  age: 4,
+  gender: "Female",
+  healthStatus: "healthy",
+  treatment: null,
+  vaccination: {
+    name: "FMD (Foot & Mouth Disease)",
+    dueDate: "2026-09-12",
+    status: "due"
   },
-  {
-    id: "raju",
-    name: "Raju",
-    species: "Buffalo",
-    breed: "Murrah",
-    age: 6,
-    gender: "Male",
-    healthStatus: "attention",
-    treatment: { condition: "Fever / suspected infection", started: "2026-09-01", followUp: "2026-09-05", medicine: "Antibiotic course, as prescribed by Dr. Kavita Rao" },
-    vaccination: { name: "FMD (Foot & Mouth Disease)", dueDate: "2026-11-15", status: "upToDate" },
-    lastScreening: "2026-09-01",
-    history: [
-      { id: "h3", type: "treatment", label: "Treatment started", detail: "Fever noticed, follow-up scheduled with vet", date: "2026-09-01" },
-      { id: "h4", type: "screening", label: "AI screening completed", detail: "Screening indication: Needs attention — fever and reduced appetite", date: "2026-09-01" }
-    ]
+  lastScreening: null,
+  history: [{
+    id: "h1",
+    type: "vaccination",
+    label: "Vaccination completed",
+    detail: "HS (Haemorrhagic Septicaemia) vaccine given",
+    date: "2026-08-20"
+  }, {
+    id: "h2",
+    type: "checkup",
+    label: "Routine checkup",
+    detail: "Weight and general health checked, all normal",
+    date: "2026-07-30"
+  }]
+}, {
+  id: "raju",
+  name: "Raju",
+  species: "Buffalo",
+  breed: "Murrah",
+  age: 6,
+  gender: "Male",
+  healthStatus: "attention",
+  treatment: {
+    condition: "Fever / suspected infection",
+    started: "2026-09-01",
+    followUp: "2026-09-05",
+    medicine: "Antibiotic course, as prescribed by Dr. Kavita Rao"
   },
-  {
-    id: "lakshmi",
-    name: "Lakshmi",
-    species: "Cow",
-    breed: "Sahiwal",
-    age: 3,
-    gender: "Female",
-    healthStatus: "healthy",
-    treatment: null,
-    vaccination: { name: "Brucellosis", dueDate: "2026-12-01", status: "upToDate" },
-    lastScreening: "2026-09-03",
-    history: [
-      { id: "h5", type: "screening", label: "AI screening completed", detail: "Screening indication: Low risk / healthy", date: "2026-09-03" },
-      { id: "h6", type: "vaccination", label: "Vaccination completed", detail: "Brucellosis vaccine given", date: "2026-06-10" }
-    ]
+  vaccination: {
+    name: "FMD (Foot & Mouth Disease)",
+    dueDate: "2026-11-15",
+    status: "upToDate"
   },
-  {
-    id: "moti",
-    name: "Moti",
-    species: "Cow",
-    breed: "Gir",
-    age: 5,
-    gender: "Male",
-    healthStatus: "healthy",
-    treatment: null,
-    vaccination: { name: "HS (Haemorrhagic Septicaemia)", dueDate: "2027-01-20", status: "upToDate" },
-    lastScreening: null,
-    history: [
-      { id: "h7", type: "consultation", label: "Vet consultation completed", detail: "Dr. Kavita Rao — general health check, all clear", date: "2026-09-02" }
-    ]
-  }
-];
- 
-const initialNotifications = [
-  {
-    id: "n1", category: "vaccination", animalId: "gauri",
-    title: "Vaccination due for Gauri",
-    message: `FMD vaccination due ${relativeDay("2026-09-12")} (${formatDate("2026-09-12")}).`,
-    time: "Today, 8:00 AM", read: false
+  lastScreening: "2026-09-01",
+  history: [{
+    id: "h3",
+    type: "treatment",
+    label: "Treatment started",
+    detail: "Fever noticed, follow-up scheduled with vet",
+    date: "2026-09-01"
+  }, {
+    id: "h4",
+    type: "screening",
+    label: "AI screening completed",
+    detail: "Screening indication: Needs attention — fever and reduced appetite",
+    date: "2026-09-01"
+  }]
+}, {
+  id: "lakshmi",
+  name: "Lakshmi",
+  species: "Cow",
+  breed: "Sahiwal",
+  age: 3,
+  gender: "Female",
+  healthStatus: "healthy",
+  treatment: null,
+  vaccination: {
+    name: "Brucellosis",
+    dueDate: "2026-12-01",
+    status: "upToDate"
   },
-  {
-    id: "n2", category: "treatment", animalId: "raju",
-    title: "Raju's treatment follow-up",
-    message: `Follow-up with the vet is due ${relativeDay("2026-09-05")}.`,
-    time: "Today, 7:30 AM", read: false
+  lastScreening: "2026-09-03",
+  history: [{
+    id: "h5",
+    type: "screening",
+    label: "AI screening completed",
+    detail: "Screening indication: Low risk / healthy",
+    date: "2026-09-03"
+  }, {
+    id: "h6",
+    type: "vaccination",
+    label: "Vaccination completed",
+    detail: "Brucellosis vaccine given",
+    date: "2026-06-10"
+  }]
+}, {
+  id: "moti",
+  name: "Moti",
+  species: "Cow",
+  breed: "Gir",
+  age: 5,
+  gender: "Male",
+  healthStatus: "healthy",
+  treatment: null,
+  vaccination: {
+    name: "HS (Haemorrhagic Septicaemia)",
+    dueDate: "2027-01-20",
+    status: "upToDate"
   },
-  {
-    id: "n3", category: "consultation", animalId: null,
-    title: "Vet consultation scheduled",
-    message: "Your consultation with Dr. Kavita Rao is scheduled for tomorrow, 10:00 AM.",
-    time: "Yesterday, 6:15 PM", read: false
-  },
-  {
-    id: "n4", category: "screening", animalId: "lakshmi",
-    title: "AI screening completed for Lakshmi",
-    message: "Screening indication: Healthy / low risk. No immediate action needed.",
-    time: "Yesterday, 11:20 AM", read: true
-  },
-  {
-    id: "n5", category: "vaccination", animalId: "moti",
-    title: "Vaccination completed for Moti",
-    message: "HS vaccine recorded. Next dose due 20 Jan 2027.",
-    time: "2 days ago", read: true
-  },
-  {
-    id: "n6", category: "checkup", animalId: "gauri",
-    title: "Routine checkup due for Gauri",
-    message: "Bi-monthly health checkup scheduled with Pashu Sakhi.",
-    time: "3 days ago", read: true
-  }
-];
- 
-const firstAidTips = [
-  "Keep the animal calm, in shade, and away from other animals.",
-  "Do not give any medicine unless a vet has told you to.",
-  "If there is bleeding, gently press a clean cloth on the wound.",
-  "Keep clean drinking water nearby at all times.",
-  "Note down what you saw (when it started, what changed) to tell the vet.",
-];
+  lastScreening: null,
+  history: [{
+    id: "h7",
+    type: "consultation",
+    label: "Vet consultation completed",
+    detail: "Dr. Kavita Rao — general health check, all clear",
+    date: "2026-09-02"
+  }]
+}];
+const initialNotifications = [{
+  id: "n1",
+  category: "vaccination",
+  animalId: "gauri",
+  title: "Vaccination due for Gauri",
+  message: `FMD vaccination due ${relativeDay("2026-09-12")} (${formatDate("2026-09-12")}).`,
+  time: "Today, 8:00 AM",
+  read: false
+}, {
+  id: "n2",
+  category: "treatment",
+  animalId: "raju",
+  title: "Raju's treatment follow-up",
+  message: `Follow-up with the vet is due ${relativeDay("2026-09-05")}.`,
+  time: "Today, 7:30 AM",
+  read: false
+}, {
+  id: "n3",
+  category: "consultation",
+  animalId: null,
+  title: "Vet consultation scheduled",
+  message: "Your consultation with Dr. Kavita Rao is scheduled for tomorrow, 10:00 AM.",
+  time: "Yesterday, 6:15 PM",
+  read: false
+}, {
+  id: "n4",
+  category: "screening",
+  animalId: "lakshmi",
+  title: "AI screening completed for Lakshmi",
+  message: "Screening indication: Healthy / low risk. No immediate action needed.",
+  time: "Yesterday, 11:20 AM",
+  read: true
+}, {
+  id: "n5",
+  category: "vaccination",
+  animalId: "moti",
+  title: "Vaccination completed for Moti",
+  message: "HS vaccine recorded. Next dose due 20 Jan 2027.",
+  time: "2 days ago",
+  read: true
+}, {
+  id: "n6",
+  category: "checkup",
+  animalId: "gauri",
+  title: "Routine checkup due for Gauri",
+  message: "Bi-monthly health checkup scheduled with Pashu Sakhi.",
+  time: "3 days ago",
+  read: true
+}];
+const firstAidTips = ["Keep the animal calm, in shade, and away from other animals.", "Do not give any medicine unless a vet has told you to.", "If there is bleeding, gently press a clean cloth on the wound.", "Keep clean drinking water nearby at all times.", "Note down what you saw (when it started, what changed) to tell the vet."];
 
 /* ------------------------------------------------------------------ */
 /* Settings: languages, translations, defaults                        */
 /* ------------------------------------------------------------------ */
 const APP_VERSION = "1.0.0 (Prototype)";
-
-const LANGUAGES = [
-  { code: "en", label: "English" },
-  { code: "hi", label: "हिन्दी" },
-  { code: "mr", label: "मराठी" },
-  { code: "gu", label: "ગુજરાતી" },
-  { code: "pa", label: "ਪੰਜਾਬੀ" },
-  { code: "bn", label: "বাংলা" },
-  { code: "ta", label: "தமிழ்" },
-  { code: "te", label: "తెలుగు" },
-  { code: "kn", label: "ಕನ್ನಡ" },
-  { code: "varhadi", label: "Varhadi" },
-  { code: "malvani", label: "Malvani" },
-  { code: "ahirani", label: "Ahirani" },
-  { code: "zadi_boli", label: "Zadi Boli" },
-];
-
+const LANGUAGES = [{
+  code: "en",
+  label: "English"
+}, {
+  code: "hi",
+  label: "हिन्दी"
+}, {
+  code: "mr",
+  label: "मराठी"
+}, {
+  code: "gu",
+  label: "ગુજરાતી"
+}, {
+  code: "pa",
+  label: "ਪੰਜਾਬੀ"
+}, {
+  code: "bn",
+  label: "বাংলা"
+}, {
+  code: "ta",
+  label: "தமிழ்"
+}, {
+  code: "te",
+  label: "తెలుగు"
+}, {
+  code: "kn",
+  label: "ಕನ್ನಡ"
+}, {
+  code: "varhadi",
+  label: "Varhadi"
+}, {
+  code: "malvani",
+  label: "Malvani"
+}, {
+  code: "ahirani",
+  label: "Ahirani"
+}, {
+  code: "zadi_boli",
+  label: "Zadi Boli"
+}];
 const DEFAULT_NOTIF_PREFS = {
   vaccination: true,
   treatment: true,
   checkup: true,
   consultation: true,
   screening: true,
-  general: true,
+  general: true
 };
-
 const en = {
   sort_age: "Age (oldest/youngest first)",
   sort_health: "Health status (Attention needed first)",
@@ -564,7 +358,8 @@ const en = {
   animal_yearsOld: "years old",
   animal_yrs: "yrs",
   animal_add: "Add animal",
-  animal_addTitle: "Add a new animal",  animal_addName: "Animal name",
+  animal_addTitle: "Add a new animal",
+  animal_addName: "Animal name",
   animal_addNamePlaceholder: "e.g. Gauri",
   animal_addSpecies: "Species",
   animal_addBreed: "Breed",
@@ -905,9 +700,8 @@ const en = {
   disease_discussWithVet: "Discuss with Vet",
   disease_analyseAnother: "Analyse Another Image",
   chat_discussDiseaseMsg: "I'd like to discuss the AI image screening result for",
-  chat_vetReply_diseaseDetection: "I have received your AI image screening request for your animal. Visible signs can help guide our examination, but an in-person physical checkup is needed. Please monitor temperature, appetite, and keep the animal comfortable while I review this.",
+  chat_vetReply_diseaseDetection: "I have received your AI image screening request for your animal. Visible signs can help guide our examination, but an in-person physical checkup is needed. Please monitor temperature, appetite, and keep the animal comfortable while I review this."
 };
-
 const hi = {
   sort_age: "आयु (अधिकतम पहले)",
   sort_health: "स्वास्थ्य स्थिति (ध्यान देने योग्य पहले)",
@@ -1235,9 +1029,8 @@ const hi = {
   disease_discussWithVet: "पशुचिकित्सक से चर्चा करें",
   disease_analyseAnother: "दूसरी तस्वीर का विश्लेषण करें",
   chat_discussDiseaseMsg: "मैं इसके लिए एआई छवि स्क्रीनिंग परिणाम पर चर्चा करना चाहता हूं:",
-  chat_vetReply_diseaseDetection: "मुझे आपके पशु के लिए एआई छवि स्क्रीनिंग का परिणाम मिल गया है। दृश्य लक्षण केवल मार्गदर्शन के लिए हैं, प्रत्यक्ष जांच आवश्यक है। कृपया पशु को अलग रखें और आराम दें, मैं जल्द संपर्क करता हूं।",
+  chat_vetReply_diseaseDetection: "मुझे आपके पशु के लिए एआई छवि स्क्रीनिंग का परिणाम मिल गया है। दृश्य लक्षण केवल मार्गदर्शन के लिए हैं, प्रत्यक्ष जांच आवश्यक है। कृपया पशु को अलग रखें और आराम दें, मैं जल्द संपर्क करता हूं।"
 };
-
 const mr = {
   sort_age: "वय (मोठे प्रथम)",
   sort_health: "आरोग्य स्थिती (लक्ष देणे आवश्यक प्रथम)",
@@ -1565,9 +1358,8 @@ const mr = {
   disease_discussWithVet: "पशुवैद्यांशी चर्चा करा",
   disease_analyseAnother: "दुसऱ्या फोटोचे विश्लेषण करा",
   chat_discussDiseaseMsg: "मी या जनावराच्या एआय फोटो तपासणीच्या निकालावर चर्चा करू इच्छितो:",
-  chat_vetReply_diseaseDetection: "मला आपल्या जनावराचा एआय फोटो तपासणी अहवाल मिळाला आहे. फोटोवरील लक्षणे केवळ मार्गदर्शनासाठी असतात, प्रत्यक्ष तपासणी आवश्यक आहे. जनावराला विश्रांती द्या, मी लवकरच तपासतो.",
+  chat_vetReply_diseaseDetection: "मला आपल्या जनावराचा एआय फोटो तपासणी अहवाल मिळाला आहे. फोटोवरील लक्षणे केवळ मार्गदर्शनासाठी असतात, प्रत्यक्ष तपासणी आवश्यक आहे. जनावराला विश्रांती द्या, मी लवकरच तपासतो."
 };
-
 const gu = {
   sort_age: "ઉંમર (મોટા પ્રથમ)",
   sort_health: "આરોગ્ય સ્થિતિ (ધ્યાન આપવા યોગ્ય પ્રથમ)",
@@ -1885,9 +1677,8 @@ const gu = {
   disease_discussWithVet: "પશુચિકિત્સક સાથે ચર્ચા કરો",
   disease_analyseAnother: "બીજી ઇમેજનું વિશ્લેષણ કરો",
   chat_discussDiseaseMsg: "હું પશુ માટેના AI ઇમેજ સ્ક્રીનીંગ પરિણામ પર ચર્ચા કરવા માંગુ છું:",
-  chat_vetReply_diseaseDetection: "મને તમારા પશુની AI ઇમેજ સ્ક્રીનીંગ માહિતી મળી છે. દ્રશ્ય લક્ષણો ઉપયોગી છે પણ રૂબરૂ તપાસ જરૂરી છે. પશુને આરામ આપો અને હું ટૂંક સમયમાં સંપર્ક કરું છું.",
+  chat_vetReply_diseaseDetection: "મને તમારા પશુની AI ઇમેજ સ્ક્રીનીંગ માહિતી મળી છે. દ્રશ્ય લક્ષણો ઉપયોગી છે પણ રૂબરૂ તપાસ જરૂરી છે. પશુને આરામ આપો અને હું ટૂંક સમયમાં સંપર્ક કરું છું."
 };
-
 const pa = {
   sort_age: "ਉਮਰ (ਵੱਡੀ ਉਮਰ ਪਹਿਲਾਂ)",
   sort_health: "ਸਿਹਤ ਸਥਿਤੀ (ਧਿਆਨ ਦੀ ਲੋੜ ਪਹਿਲਾਂ)",
@@ -2205,9 +1996,8 @@ const pa = {
   disease_discussWithVet: "ਪਸ਼ੂ ਡਾਕਟਰ ਨਾਲ ਗੱਲ ਕਰੋ",
   disease_analyseAnother: "ਹੋਰ ਫੋਟੋ ਦੀ ਜਾਂਚ ਕਰੋ",
   chat_discussDiseaseMsg: "ਮੈਂ ਇਸ ਪਸ਼ੂ ਦੇ AI ਫੋਟੋ ਜਾਂਚ ਨਤੀਜੇ ਬਾਰੇ ਗੱਲ ਕਰਨੀ ਚਾਹੁੰਦਾ ਹਾਂ:",
-  chat_vetReply_diseaseDetection: "ਮੈਨੂੰ ਤੁਹਾਡੇ ਪਸ਼ੂ ਦੀ AI ਤਸਵੀਰ ਸਕ੍ਰੀਨਿੰਗ ਰਿਪੋਰਟ ਮਿਲ ਗਈ ਹੈ। ਬਾਹਰੀ ਲੱਛਣ ਮਦਦਗਾਰ ਹਨ ਪਰ ਖੁਦ ਜਾਂਚ ਕਰਨੀ ਜ਼ਰੂਰੀ ਹੈ। ਪਸ਼ੂ ਨੂੰ ਆਰਾਮ ਦਿਓ, ਮੈਂ ਜਲਦ ਸੰਪਰਕ ਕਰਾਂਗਾ।",
+  chat_vetReply_diseaseDetection: "ਮੈਨੂੰ ਤੁਹਾਡੇ ਪਸ਼ੂ ਦੀ AI ਤਸਵੀਰ ਸਕ੍ਰੀਨਿੰਗ ਰਿਪੋਰਟ ਮਿਲ ਗਈ ਹੈ। ਬਾਹਰੀ ਲੱਛਣ ਮਦਦਗਾਰ ਹਨ ਪਰ ਖੁਦ ਜਾਂਚ ਕਰਨੀ ਜ਼ਰੂਰੀ ਹੈ। ਪਸ਼ੂ ਨੂੰ ਆਰਾਮ ਦਿਓ, ਮੈਂ ਜਲਦ ਸੰਪਰਕ ਕਰਾਂਗਾ।"
 };
-
 const bn = {
   sort_age: "বয়স (বয়োজ্যেষ্ঠ আগে)",
   sort_health: "স্বাস্থ্যের অবস্থা (মনোযোগ প্রয়োজন আগে)",
@@ -2525,9 +2315,8 @@ const bn = {
   disease_discussWithVet: "পশুচিকিৎসকের সাথে আলোচনা করুন",
   disease_analyseAnother: "অন্য ছবি বিশ্লেষণ করুন",
   chat_discussDiseaseMsg: "আমি এই পশুর এআই ইমেজ স্ক্রীনিং ফলাফল নিয়ে আলোচনা করতে চাই:",
-  chat_vetReply_diseaseDetection: "আমি আপনার পশুর এআই ইমেজ স্ক্রীনিং রিপোর্ট পেয়েছি। দৃশ্যমান লক্ষণ সহায়ক হলেও সরাসরি পরীক্ষা জরুরি। পশুকে বিশ্রামে রাখুন, আমি শীঘ্রই জানাচ্ছি।",
+  chat_vetReply_diseaseDetection: "আমি আপনার পশুর এআই ইমেজ স্ক্রীনিং রিপোর্ট পেয়েছি। দৃশ্যমান লক্ষণ সহায়ক হলেও সরাসরি পরীক্ষা জরুরি। পশুকে বিশ্রামে রাখুন, আমি শীঘ্রই জানাচ্ছি।"
 };
-
 const ta = {
   sort_age: "வயது (மூத்தவை முதலில்)",
   sort_health: "சுகாதார நிலை (கவனம் தேவைப்படுபவை முதலில்)",
@@ -2845,9 +2634,8 @@ const ta = {
   disease_discussWithVet: "மருத்துவரிடம் கலந்தாலோசிக்கவும்",
   disease_analyseAnother: "மற்றொரு படத்தை ஆய்வு செய்யவும்",
   chat_discussDiseaseMsg: "இந்தக் கால்நடையின் AI படப் பரிசோதனை முடிவு குறித்து விவாதிக்க விரும்புகிறேன்:",
-  chat_vetReply_diseaseDetection: "உங்கள் கால்நடையின் AI படப் பரிசோதனை அறிக்கை கிடைத்தது. வெளிப்புற அறிகுறிகள் வழிகாட்ட உதவும், ஆனால் நேரடிப் பரிசோதனை அவசியம். கால்நடையைப் பாதுகாப்பாக வையுங்கள், விரைவில் பார்க்கிறேன்.",
+  chat_vetReply_diseaseDetection: "உங்கள் கால்நடையின் AI படப் பரிசோதனை அறிக்கை கிடைத்தது. வெளிப்புற அறிகுறிகள் வழிகாட்ட உதவும், ஆனால் நேரடிப் பரிசோதனை அவசியம். கால்நடையைப் பாதுகாப்பாக வையுங்கள், விரைவில் பார்க்கிறேன்."
 };
-
 const te = {
   sort_age: "వయస్సు (పెద్దవి మొదట)",
   sort_health: "ఆరోగ్య స్థితి (శ్రద్ధ అవసరమైనవి మొదట)",
@@ -3165,9 +2953,8 @@ const te = {
   disease_discussWithVet: "పశువైద్యుడితో చర్చించండి",
   disease_analyseAnother: "మరో చిత్రాన్ని విశ్లేషించండి",
   chat_discussDiseaseMsg: "ఈ పశువు AI ఇమేజ్ స్క్రీనింగ్ ఫలితం గురించి చర్చించాలనుకుంటున్నాను:",
-  chat_vetReply_diseaseDetection: "మీ పశువు AI చిత్ర స్క్రీనింగ్ వివరాలు అందాయి. కనిపించే లక్షణాలు ఉపయోగపడతాయి కానీ ప్రత్యక్ష పరీక్ష అవసరం. పశువును విశ్రాంతిగా ఉంచండి, నేను త్వరలోనే చూస్తాను.",
+  chat_vetReply_diseaseDetection: "మీ పశువు AI చిత్ర స్క్రీనింగ్ వివరాలు అందాయి. కనిపించే లక్షణాలు ఉపయోగపడతాయి కానీ ప్రత్యక్ష పరీక్ష అవసరం. పశువును విశ్రాంతిగా ఉంచండి, నేను త్వరలోనే చూస్తాను."
 };
-
 const kn = {
   sort_age: "ವಯಸ್ಸು (ಹಿರಿಯವು ಮೊದಲು)",
   sort_health: "ಆರೋಗ್ಯ ಸ್ಥಿತಿ (ಗಮನ ಅಗತ್ಯವಿರುವವು ಮೊದಲು)",
@@ -3485,9 +3272,8 @@ const kn = {
   disease_discussWithVet: "ಪಶುವೈದ್ಯರೊಂದಿಗೆ ಚರ್ಚಿಸಿ",
   disease_analyseAnother: "ಮತ್ತೊಂದು ಚಿತ್ರವನ್ನು ವಿಶ್ಲೇಷಿಸಿ",
   chat_discussDiseaseMsg: "ಈ ಪ್ರಾಣಿಯ AI ಚಿತ್ರ ತಪಾಸಣೆ ಫಲಿತಾಂಶದ ಬಗ್ಗೆ ಚರ್ಚಿಸಲು ನಾನು ಬಯಸುತ್ತೇನೆ:",
-  chat_vetReply_diseaseDetection: "ನಿಮ್ಮ ಜಾನುವಾರಿನ AI ಚಿತ್ರ ತಪಾಸಣೆ ವರದಿ ಬಂದಿದೆ. ಗೋಚರ ಲಕ್ಷಣಗಳು ಸಹಾಯಕವಾಗಿವೆ ಆದರೆ ಪ್ರತ್ಯಕ್ಷ ಪರೀಕ್ಷೆ ಅತ್ಯಗತ್ಯ. ಪ್ರಾಣಿಯನ್ನು ಆರಾಮವಾಗಿರಿಸಿ, ನಾನು ಶೀಘ್ರದಲ್ಲೇ ಪರಿಶೀಲಿಸುತ್ತೇನೆ.",
+  chat_vetReply_diseaseDetection: "ನಿಮ್ಮ ಜಾನುವಾರಿನ AI ಚಿತ್ರ ತಪಾಸಣೆ ವರದಿ ಬಂದಿದೆ. ಗೋಚರ ಲಕ್ಷಣಗಳು ಸಹಾಯಕವಾಗಿವೆ ಆದರೆ ಪ್ರತ್ಯಕ್ಷ ಪರೀಕ್ಷೆ ಅತ್ಯಗತ್ಯ. ಪ್ರಾಣಿಯನ್ನು ಆರಾಮವಾಗಿರಿಸಿ, ನಾನು ಶೀಘ್ರದಲ್ಲೇ ಪರಿಶೀಲಿಸುತ್ತೇನೆ."
 };
-
 const varhadi = {
   ...mr,
   dash_greeting: "राम राम",
@@ -3499,9 +3285,8 @@ const varhadi = {
   animal_type_buffaloes: "म्हशी",
   animal_type_goats: "शेळ्या",
   animal_type_sheep: "मेंढ्या",
-  animal_type_chicken: "कोंबड्या",
+  animal_type_chicken: "कोंबड्या"
 };
-
 const malvani = {
   ...mr,
   dash_greeting: "नमस्कार",
@@ -3513,9 +3298,8 @@ const malvani = {
   animal_type_buffaloes: "म्हशी",
   animal_type_goats: "शेळ्या",
   animal_type_sheep: "मेंढ्या",
-  animal_type_chicken: "कोंबड्या",
+  animal_type_chicken: "कोंबड्या"
 };
-
 const ahirani = {
   ...mr,
   dash_greeting: "राम राम",
@@ -3528,9 +3312,8 @@ const ahirani = {
   animal_type_buffaloes: "म्हशी",
   animal_type_goats: "शेळ्या",
   animal_type_sheep: "मेंढ्या",
-  animal_type_chicken: "कोंबड्या",
+  animal_type_chicken: "कोंबड्या"
 };
-
 const zadi_boli = {
   ...mr,
   dash_greeting: "राम राम",
@@ -3543,16 +3326,25 @@ const zadi_boli = {
   animal_type_buffaloes: "म्हशी",
   animal_type_goats: "शेळ्या",
   animal_type_sheep: "मेंढ्या",
-  animal_type_chicken: "कोंबड्या",
+  animal_type_chicken: "कोंबड्या"
 };
-
 const zadiboli = zadi_boli;
-
 const translations = {
-  en, hi, mr, gu, pa, bn, ta, te, kn,
-  varhadi, malvani, ahirani, zadi_boli, zadiboli
+  en,
+  hi,
+  mr,
+  gu,
+  pa,
+  bn,
+  ta,
+  te,
+  kn,
+  varhadi,
+  malvani,
+  ahirani,
+  zadi_boli,
+  zadiboli
 };
-
 function tt(lang, key, fallback) {
   if (translations[lang] && translations[lang][key] !== undefined && translations[lang][key] !== "") {
     return translations[lang][key];
@@ -3562,7 +3354,6 @@ function tt(lang, key, fallback) {
   }
   return fallback !== undefined ? fallback : key;
 }
-
 function formatSpecies(species, t) {
   if (!species) return "";
   const s = String(species).toLowerCase();
@@ -3573,235 +3364,426 @@ function formatSpecies(species, t) {
   if (s === "chicken" || s === "chickens" || s === "poultry") return t ? t("species_chicken") : "Chicken";
   return species;
 }
-
-function CowIcon({ size = 18, color = "currentColor", style }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style}>
-      <path d="M7 5C5.5 3.5 3 4 3 5c0 1.5 2 2.5 3 3" />
-      <path d="M17 5c1.5-1.5 4-1 4 0 0 1.5-2 2.5-3 3" />
-      <path d="M6 9a6 6 0 0 1 12 0v4a6 6 0 0 1-12 0V9z" />
-      <path d="M8 15h8a2 2 0 0 1 2 2v1a3 3 0 0 1-3 3H9a3 3 0 0 1-3-3v-1a2 2 0 0 1 2-2z" />
-      <circle cx="10" cy="18" r="0.75" fill={color} />
-      <circle cx="14" cy="18" r="0.75" fill={color} />
-      <circle cx="9" cy="11" r="1" fill={color} />
-      <circle cx="15" cy="11" r="1" fill={color} />
-    </svg>
-  );
+function CowIcon({
+  size = 18,
+  color = "currentColor",
+  style
+}) {
+  return /*#__PURE__*/React.createElement("svg", {
+    width: size,
+    height: size,
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: color,
+    strokeWidth: "2",
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+    style: style
+  }, /*#__PURE__*/React.createElement("path", {
+    d: "M7 5C5.5 3.5 3 4 3 5c0 1.5 2 2.5 3 3"
+  }), /*#__PURE__*/React.createElement("path", {
+    d: "M17 5c1.5-1.5 4-1 4 0 0 1.5-2 2.5-3 3"
+  }), /*#__PURE__*/React.createElement("path", {
+    d: "M6 9a6 6 0 0 1 12 0v4a6 6 0 0 1-12 0V9z"
+  }), /*#__PURE__*/React.createElement("path", {
+    d: "M8 15h8a2 2 0 0 1 2 2v1a3 3 0 0 1-3 3H9a3 3 0 0 1-3-3v-1a2 2 0 0 1 2-2z"
+  }), /*#__PURE__*/React.createElement("circle", {
+    cx: "10",
+    cy: "18",
+    r: "0.75",
+    fill: color
+  }), /*#__PURE__*/React.createElement("circle", {
+    cx: "14",
+    cy: "18",
+    r: "0.75",
+    fill: color
+  }), /*#__PURE__*/React.createElement("circle", {
+    cx: "9",
+    cy: "11",
+    r: "1",
+    fill: color
+  }), /*#__PURE__*/React.createElement("circle", {
+    cx: "15",
+    cy: "11",
+    r: "1",
+    fill: color
+  }));
+}
+function BuffaloIcon({
+  size = 18,
+  color = "currentColor",
+  style
+}) {
+  return /*#__PURE__*/React.createElement("svg", {
+    width: size,
+    height: size,
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: color,
+    strokeWidth: "2",
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+    style: style
+  }, /*#__PURE__*/React.createElement("path", {
+    d: "M4 8C2 5 3.5 2.5 7 4c2.5 1 3.5 2.5 4.5 4"
+  }), /*#__PURE__*/React.createElement("path", {
+    d: "M20 8c2-3 .5-5.5-3-4-2.5 1-3.5 2.5-4.5 4"
+  }), /*#__PURE__*/React.createElement("path", {
+    d: "M6 10a6 6 0 0 1 12 0v3a6 6 0 0 1-12 0v-3z"
+  }), /*#__PURE__*/React.createElement("path", {
+    d: "M8 15h8a2 2 0 0 1 2 2v1a3 3 0 0 1-3 3H9a3 3 0 0 1-3-3v-1a2 2 0 0 1 2-2z"
+  }), /*#__PURE__*/React.createElement("circle", {
+    cx: "10",
+    cy: "18",
+    r: "0.75",
+    fill: color
+  }), /*#__PURE__*/React.createElement("circle", {
+    cx: "14",
+    cy: "18",
+    r: "0.75",
+    fill: color
+  }), /*#__PURE__*/React.createElement("circle", {
+    cx: "9",
+    cy: "12",
+    r: "1",
+    fill: color
+  }), /*#__PURE__*/React.createElement("circle", {
+    cx: "15",
+    cy: "12",
+    r: "1",
+    fill: color
+  }));
+}
+function GoatIcon({
+  size = 18,
+  color = "currentColor",
+  style
+}) {
+  return /*#__PURE__*/React.createElement("svg", {
+    width: size,
+    height: size,
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: color,
+    strokeWidth: "2",
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+    style: style
+  }, /*#__PURE__*/React.createElement("path", {
+    d: "M8 6C7 3 5 2.5 4 4"
+  }), /*#__PURE__*/React.createElement("path", {
+    d: "M16 6c1-3 3-3.5 4-2"
+  }), /*#__PURE__*/React.createElement("path", {
+    d: "M7 8l5-3 5 3v5l-5 5-5-5V8z"
+  }), /*#__PURE__*/React.createElement("path", {
+    d: "M5 10l-2 1"
+  }), /*#__PURE__*/React.createElement("path", {
+    d: "M19 10l2 1"
+  }), /*#__PURE__*/React.createElement("path", {
+    d: "M12 18v3"
+  }), /*#__PURE__*/React.createElement("circle", {
+    cx: "10",
+    cy: "10",
+    r: "1",
+    fill: color
+  }), /*#__PURE__*/React.createElement("circle", {
+    cx: "14",
+    cy: "10",
+    r: "1",
+    fill: color
+  }));
+}
+function SheepIcon({
+  size = 18,
+  color = "currentColor",
+  style
+}) {
+  return /*#__PURE__*/React.createElement("svg", {
+    width: size,
+    height: size,
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: color,
+    strokeWidth: "2",
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+    style: style
+  }, /*#__PURE__*/React.createElement("path", {
+    d: "M8 7a3 3 0 0 1 8 0 3 3 0 0 1 3 3 3 3 0 0 1-1 3 3 3 0 0 1-3 3H9a3 3 0 0 1-3-3 3 3 0 0 1-1-3 3 3 0 0 1 3-3z"
+  }), /*#__PURE__*/React.createElement("path", {
+    d: "M5 10c-1.5 1-2 2.5-1 3.5"
+  }), /*#__PURE__*/React.createElement("path", {
+    d: "M19 10c1.5 1 2 2.5 1 3.5"
+  }), /*#__PURE__*/React.createElement("path", {
+    d: "M10 13h4v1.5a2 2 0 0 1-4 0V13z"
+  }), /*#__PURE__*/React.createElement("circle", {
+    cx: "9.5",
+    cy: "10.5",
+    r: "1",
+    fill: color
+  }), /*#__PURE__*/React.createElement("circle", {
+    cx: "14.5",
+    cy: "10.5",
+    r: "1",
+    fill: color
+  }));
+}
+function ChickenIcon({
+  size = 18,
+  color = "currentColor",
+  style
+}) {
+  return /*#__PURE__*/React.createElement("svg", {
+    width: size,
+    height: size,
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: color,
+    strokeWidth: "2",
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+    style: style
+  }, /*#__PURE__*/React.createElement("path", {
+    d: "M11 4c0 1.5-.5 2-1 2.5 1 .5 1.5 1.5 1 2.5.8-.3 1.8 0 2 1"
+  }), /*#__PURE__*/React.createElement("path", {
+    d: "M10 8a5 5 0 0 1 5 5v3a4 4 0 0 1-4 4H9a5 5 0 0 1-5-5v-1a6 6 0 0 1 6-6z"
+  }), /*#__PURE__*/React.createElement("path", {
+    d: "M15 11l4 2-4 2"
+  }), /*#__PURE__*/React.createElement("path", {
+    d: "M13 16c0 1.5-1 2-1.5 2s-1-.5-1-1.5"
+  }), /*#__PURE__*/React.createElement("circle", {
+    cx: "12",
+    cy: "11",
+    r: "1",
+    fill: color
+  }));
 }
 
-function BuffaloIcon({ size = 18, color = "currentColor", style }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style}>
-      <path d="M4 8C2 5 3.5 2.5 7 4c2.5 1 3.5 2.5 4.5 4" />
-      <path d="M20 8c2-3 .5-5.5-3-4-2.5 1-3.5 2.5-4.5 4" />
-      <path d="M6 10a6 6 0 0 1 12 0v3a6 6 0 0 1-12 0v-3z" />
-      <path d="M8 15h8a2 2 0 0 1 2 2v1a3 3 0 0 1-3 3H9a3 3 0 0 1-3-3v-1a2 2 0 0 1 2-2z" />
-      <circle cx="10" cy="18" r="0.75" fill={color} />
-      <circle cx="14" cy="18" r="0.75" fill={color} />
-      <circle cx="9" cy="12" r="1" fill={color} />
-      <circle cx="15" cy="12" r="1" fill={color} />
-    </svg>
-  );
-}
-
-function GoatIcon({ size = 18, color = "currentColor", style }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style}>
-      <path d="M8 6C7 3 5 2.5 4 4" />
-      <path d="M16 6c1-3 3-3.5 4-2" />
-      <path d="M7 8l5-3 5 3v5l-5 5-5-5V8z" />
-      <path d="M5 10l-2 1" />
-      <path d="M19 10l2 1" />
-      <path d="M12 18v3" />
-      <circle cx="10" cy="10" r="1" fill={color} />
-      <circle cx="14" cy="10" r="1" fill={color} />
-    </svg>
-  );
-}
-
-function SheepIcon({ size = 18, color = "currentColor", style }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style}>
-      <path d="M8 7a3 3 0 0 1 8 0 3 3 0 0 1 3 3 3 3 0 0 1-1 3 3 3 0 0 1-3 3H9a3 3 0 0 1-3-3 3 3 0 0 1-1-3 3 3 0 0 1 3-3z" />
-      <path d="M5 10c-1.5 1-2 2.5-1 3.5" />
-      <path d="M19 10c1.5 1 2 2.5 1 3.5" />
-      <path d="M10 13h4v1.5a2 2 0 0 1-4 0V13z" />
-      <circle cx="9.5" cy="10.5" r="1" fill={color} />
-      <circle cx="14.5" cy="10.5" r="1" fill={color} />
-    </svg>
-  );
-}
-
-function ChickenIcon({ size = 18, color = "currentColor", style }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style}>
-      <path d="M11 4c0 1.5-.5 2-1 2.5 1 .5 1.5 1.5 1 2.5.8-.3 1.8 0 2 1" />
-      <path d="M10 8a5 5 0 0 1 5 5v3a4 4 0 0 1-4 4H9a5 5 0 0 1-5-5v-1a6 6 0 0 1 6-6z" />
-      <path d="M15 11l4 2-4 2" />
-      <path d="M13 16c0 1.5-1 2-1.5 2s-1-.5-1-1.5" />
-      <circle cx="12" cy="11" r="1" fill={color} />
-    </svg>
-  );
-}
- 
 /* ------------------------------------------------------------------ */
 /* Small shared UI bits                                                */
 /* ------------------------------------------------------------------ */
-function StatusBadge({ status, t }) {
+function StatusBadge({
+  status,
+  t
+}) {
   const map = {
-    healthy: { label: t ? t("status_healthy") : "Healthy", cls: "badge badge-healthy", Icon: ShieldCheck },
-    attention: { label: t ? t("status_attention") : "Needs attention", cls: "badge badge-attention", Icon: AlertCircle },
-    urgent: { label: t ? t("status_urgent") : "Urgent", cls: "badge badge-urgent", Icon: AlertTriangle },
+    healthy: {
+      label: t ? t("status_healthy") : "Healthy",
+      cls: "badge badge-healthy",
+      Icon: ShieldCheck
+    },
+    attention: {
+      label: t ? t("status_attention") : "Needs attention",
+      cls: "badge badge-attention",
+      Icon: AlertCircle
+    },
+    urgent: {
+      label: t ? t("status_urgent") : "Urgent",
+      cls: "badge badge-urgent",
+      Icon: AlertTriangle
+    }
   };
   const s = map[status] || map.healthy;
-  const { Icon } = s;
-  return (
-    <span className={s.cls}>
-      <Icon size={14} strokeWidth={2.4} />
-      {s.label}
-    </span>
-  );
+  const {
+    Icon
+  } = s;
+  return /*#__PURE__*/React.createElement("span", {
+    className: s.cls
+  }, /*#__PURE__*/React.createElement(Icon, {
+    size: 14,
+    strokeWidth: 2.4
+  }), s.label);
 }
- 
-function AnimalAvatar({ animal, size = 48 }) {
+function AnimalAvatar({
+  animal,
+  size = 48
+}) {
   const initials = animal.name.slice(0, 1);
   const bg = animal.healthStatus === "urgent" ? "var(--urgent)" : animal.healthStatus === "attention" ? "var(--attention)" : "var(--brand)";
-  return (
-    <div
-      className="animal-avatar"
-      style={{ width: size, height: size, background: bg, fontSize: size * 0.4 }}
-    >
-      {initials}
-    </div>
-  );
+  return /*#__PURE__*/React.createElement("div", {
+    className: "animal-avatar",
+    style: {
+      width: size,
+      height: size,
+      background: bg,
+      fontSize: size * 0.4
+    }
+  }, initials);
 }
- 
-function Card({ children, className = "", onClick, style }) {
-  return (
-    <div
-      className={`psk-card ${onClick ? "psk-card-clickable" : ""} ${className}`}
-      onClick={onClick}
-      style={style}
-      role={onClick ? "button" : undefined}
-      tabIndex={onClick ? 0 : undefined}
-      onKeyDown={onClick ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(e); } } : undefined}
-    >
-      {children}
-    </div>
-  );
+function Card({
+  children,
+  className = "",
+  onClick,
+  style
+}) {
+  return /*#__PURE__*/React.createElement("div", {
+    className: `psk-card ${onClick ? "psk-card-clickable" : ""} ${className}`,
+    onClick: onClick,
+    style: style,
+    role: onClick ? "button" : undefined,
+    tabIndex: onClick ? 0 : undefined,
+    onKeyDown: onClick ? e => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        onClick(e);
+      }
+    } : undefined
+  }, children);
 }
- 
-function SectionTitle({ children, action }) {
-  return (
-    <div className="section-title-row">
-      <h2 className="section-title">{children}</h2>
-      {action}
-    </div>
-  );
+function SectionTitle({
+  children,
+  action
+}) {
+  return /*#__PURE__*/React.createElement("div", {
+    className: "section-title-row"
+  }, /*#__PURE__*/React.createElement("h2", {
+    className: "section-title"
+  }, children), action);
 }
 
 /* ------------------------------------------------------------------ */
 /* Settings: shared row / switch / section components                 */
 /* ------------------------------------------------------------------ */
-function Switch({ checked, onChange, label }) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      aria-label={label}
-      className={`psk-switch ${checked ? "on" : ""}`}
-      onClick={() => onChange(!checked)}
-    >
-      <span className="psk-switch-knob" />
-    </button>
-  );
+function Switch({
+  checked,
+  onChange,
+  label
+}) {
+  return /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    role: "switch",
+    "aria-checked": checked,
+    "aria-label": label,
+    className: `psk-switch ${checked ? "on" : ""}`,
+    onClick: () => onChange(!checked)
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "psk-switch-knob"
+  }));
 }
-
-function SettingsSection({ title, children }) {
-  return (
-    <div style={{ marginBottom: 24 }}>
-      <h2 className="section-title" style={{ marginBottom: 10 }}>{title}</h2>
-      <Card style={{ padding: 0 }}>{children}</Card>
-    </div>
-  );
+function SettingsSection({
+  title,
+  children
+}) {
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginBottom: 24
+    }
+  }, /*#__PURE__*/React.createElement("h2", {
+    className: "section-title",
+    style: {
+      marginBottom: 10
+    }
+  }, title), /*#__PURE__*/React.createElement(Card, {
+    style: {
+      padding: 0
+    }
+  }, children));
 }
-
-function SettingsRow({ icon: Icon, label, desc, onClick, control, danger, last }) {
-  return (
-    <div
-      className={`settings-row ${onClick ? "psk-card-clickable" : ""}`}
-      style={{ borderBottom: last ? "none" : undefined, cursor: onClick ? "pointer" : "default" }}
-      onClick={onClick}
-      role={onClick ? "button" : undefined}
-      tabIndex={onClick ? 0 : undefined}
-      onKeyDown={(e) => { if (onClick && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onClick(); } }}
-    >
-      <div className="settings-row-icon" style={danger ? { background: "var(--urgent-soft)", color: "var(--urgent-fg, var(--urgent))" } : undefined}>
-        <Icon size={18} />
-      </div>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <p className="settings-row-label" style={danger ? { color: "var(--urgent-fg, var(--urgent))" } : undefined}>{label}</p>
-        {desc && <p className="settings-row-desc">{desc}</p>}
-      </div>
-      {control !== undefined ? control : (onClick && <ChevronRight size={18} color="var(--ink-soft)" />)}
-    </div>
-  );
+function SettingsRow({
+  icon: Icon,
+  label,
+  desc,
+  onClick,
+  control,
+  danger,
+  last
+}) {
+  return /*#__PURE__*/React.createElement("div", {
+    className: `settings-row ${onClick ? "psk-card-clickable" : ""}`,
+    style: {
+      borderBottom: last ? "none" : undefined,
+      cursor: onClick ? "pointer" : "default"
+    },
+    onClick: onClick,
+    role: onClick ? "button" : undefined,
+    tabIndex: onClick ? 0 : undefined,
+    onKeyDown: e => {
+      if (onClick && (e.key === "Enter" || e.key === " ")) {
+        e.preventDefault();
+        onClick();
+      }
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "settings-row-icon",
+    style: danger ? {
+      background: "var(--urgent-soft)",
+      color: "var(--urgent-fg, var(--urgent))"
+    } : undefined
+  }, /*#__PURE__*/React.createElement(Icon, {
+    size: 18
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1,
+      minWidth: 0
+    }
+  }, /*#__PURE__*/React.createElement("p", {
+    className: "settings-row-label",
+    style: danger ? {
+      color: "var(--urgent-fg, var(--urgent))"
+    } : undefined
+  }, label), desc && /*#__PURE__*/React.createElement("p", {
+    className: "settings-row-desc"
+  }, desc)), control !== undefined ? control : onClick && /*#__PURE__*/React.createElement(ChevronRight, {
+    size: 18,
+    color: "var(--ink-soft)"
+  }));
 }
-
-function SegmentedControl({ options, value, onChange, ariaLabel }) {
-  return (
-    <div className="segmented-control" role="radiogroup" aria-label={ariaLabel}>
-      {options.map((opt) => (
-        <button
-          key={opt.value}
-          type="button"
-          role="radio"
-          aria-checked={value === opt.value}
-          className={`segmented-option ${value === opt.value ? "active" : ""}`}
-          onClick={() => onChange(opt.value)}
-        >
-          {opt.Icon && <opt.Icon size={14} style={{ verticalAlign: -2, marginRight: 5 }} />}
-          {opt.label}
-        </button>
-      ))}
-    </div>
-  );
+function SegmentedControl({
+  options,
+  value,
+  onChange,
+  ariaLabel
+}) {
+  return /*#__PURE__*/React.createElement("div", {
+    className: "segmented-control",
+    role: "radiogroup",
+    "aria-label": ariaLabel
+  }, options.map(opt => /*#__PURE__*/React.createElement("button", {
+    key: opt.value,
+    type: "button",
+    role: "radio",
+    "aria-checked": value === opt.value,
+    className: `segmented-option ${value === opt.value ? "active" : ""}`,
+    onClick: () => onChange(opt.value)
+  }, opt.Icon && /*#__PURE__*/React.createElement(opt.Icon, {
+    size: 14,
+    style: {
+      verticalAlign: -2,
+      marginRight: 5
+    }
+  }), opt.label)));
 }
-
-function SettingsModal({ title, icon: Icon, onClose, children, labelledId }) {
+function SettingsModal({
+  title,
+  icon: Icon,
+  onClose,
+  children,
+  labelledId
+}) {
   const modalCardRef = useRef(null);
   const closeBtnRef = useRef(null);
   const slug = typeof title === "string" ? title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") : "";
   const titleId = labelledId || (slug ? `modal-title-${slug}` : "settings-modal-title");
   const closeLabel = typeof title === "string" ? `Close ${title}` : "Close dialog";
-
   useEffect(() => {
     const previouslyFocused = document.activeElement;
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-
     const timer = setTimeout(() => {
       closeBtnRef.current?.focus();
     }, 0);
-
-    const handleKeyDown = (e) => {
+    const handleKeyDown = e => {
       if (e.key === "Escape") {
         e.preventDefault();
         onClose();
         return;
       }
-
       if (e.key === "Tab") {
         if (!modalCardRef.current) return;
-        const focusable = modalCardRef.current.querySelectorAll(
-          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
-        );
+        const focusable = modalCardRef.current.querySelectorAll('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])');
         if (!focusable || focusable.length === 0) return;
-
         const firstEl = focusable[0];
         const lastEl = focusable[focusable.length - 1];
-
         if (e.shiftKey) {
           if (document.activeElement === firstEl || !modalCardRef.current.contains(document.activeElement)) {
             e.preventDefault();
@@ -3815,7 +3797,6 @@ function SettingsModal({ title, icon: Icon, onClose, children, labelledId }) {
         }
       }
     };
-
     document.addEventListener("keydown", handleKeyDown);
     return () => {
       clearTimeout(timer);
@@ -3826,106 +3807,166 @@ function SettingsModal({ title, icon: Icon, onClose, children, labelledId }) {
       }
     };
   }, [onClose]);
-
-  return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div
-        ref={modalCardRef}
-        className="modal-card"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 9, flex: 1, minWidth: 0, paddingRight: 8 }}>
-            {Icon && <Icon size={20} color="var(--brand-fg, var(--brand))" style={{ flexShrink: 0 }} />}
-            <h2 id={titleId} style={{ margin: 0, fontSize: "calc(18px * var(--text-scale, 1))", overflowWrap: "break-word", wordBreak: "break-word" }}>{title}</h2>
-          </div>
-          <button
-            type="button"
-            ref={closeBtnRef}
-            className="modal-close-btn"
-            onClick={onClose}
-            aria-label={closeLabel}
-          >
-            <X size={20} />
-          </button>
-        </div>
-        {children}
-      </div>
-    </div>
-  );
+  return /*#__PURE__*/React.createElement("div", {
+    className: "modal-overlay",
+    onClick: onClose
+  }, /*#__PURE__*/React.createElement("div", {
+    ref: modalCardRef,
+    className: "modal-card",
+    role: "dialog",
+    "aria-modal": "true",
+    "aria-labelledby": titleId,
+    onClick: e => e.stopPropagation()
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: 16
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 9,
+      flex: 1,
+      minWidth: 0,
+      paddingRight: 8
+    }
+  }, Icon && /*#__PURE__*/React.createElement(Icon, {
+    size: 20,
+    color: "var(--brand-fg, var(--brand))",
+    style: {
+      flexShrink: 0
+    }
+  }), /*#__PURE__*/React.createElement("h2", {
+    id: titleId,
+    style: {
+      margin: 0,
+      fontSize: "calc(18px * var(--text-scale, 1))",
+      overflowWrap: "break-word",
+      wordBreak: "break-word"
+    }
+  }, title)), /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    ref: closeBtnRef,
+    className: "modal-close-btn",
+    onClick: onClose,
+    "aria-label": closeLabel
+  }, /*#__PURE__*/React.createElement(X, {
+    size: 20
+  }))), children));
 }
- 
+
 /* ------------------------------------------------------------------ */
 /* AI Screening rule-based mock                                        */
 /* ------------------------------------------------------------------ */
-const SYMPTOMS_LIST = [
-  { id: "sym_lossOfAppetite", en: "Loss of appetite", weight: 1 },
-  { id: "sym_fever", en: "Fever / warm body", weight: 2 },
-  { id: "sym_lethargy", en: "Lethargy / low energy", weight: 1 },
-  { id: "sym_breathing", en: "Difficulty breathing", weight: 3 },
-  { id: "sym_limping", en: "Limping / difficulty walking", weight: 2 },
-  { id: "sym_discharge", en: "Unusual discharge", weight: 3 },
-  { id: "sym_diarrhea", en: "Diarrhea", weight: 2 },
-  { id: "sym_chewingCud", en: "Not chewing cud", weight: 3 },
-];
-
-const symptomOptions = SYMPTOMS_LIST.map((s) => s.en);
-
-function runScreening({ symptoms, appetite, temperature, activity, notes }, t) {
+const SYMPTOMS_LIST = [{
+  id: "sym_lossOfAppetite",
+  en: "Loss of appetite",
+  weight: 1
+}, {
+  id: "sym_fever",
+  en: "Fever / warm body",
+  weight: 2
+}, {
+  id: "sym_lethargy",
+  en: "Lethargy / low energy",
+  weight: 1
+}, {
+  id: "sym_breathing",
+  en: "Difficulty breathing",
+  weight: 3
+}, {
+  id: "sym_limping",
+  en: "Limping / difficulty walking",
+  weight: 2
+}, {
+  id: "sym_discharge",
+  en: "Unusual discharge",
+  weight: 3
+}, {
+  id: "sym_diarrhea",
+  en: "Diarrhea",
+  weight: 2
+}, {
+  id: "sym_chewingCud",
+  en: "Not chewing cud",
+  weight: 3
+}];
+const symptomOptions = SYMPTOMS_LIST.map(s => s.en);
+function runScreening({
+  symptoms,
+  appetite,
+  temperature,
+  activity,
+  notes
+}, t) {
   let score = 0;
   const factors = [];
-
   const heavy = ["sym_breathing", "sym_discharge", "sym_chewingCud", "Difficulty breathing", "Unusual discharge", "Not chewing cud"];
   const medium = ["sym_fever", "sym_diarrhea", "sym_limping", "Fever / warm body", "Diarrhea", "Limping / difficulty walking"];
-  symptoms.forEach((s) => {
-    if (heavy.includes(s)) { score += 3; factors.push(s); }
-    else if (medium.includes(s)) { score += 2; factors.push(s); }
-    else { score += 1; factors.push(s); }
+  symptoms.forEach(s => {
+    if (heavy.includes(s)) {
+      score += 3;
+      factors.push(s);
+    } else if (medium.includes(s)) {
+      score += 2;
+      factors.push(s);
+    } else {
+      score += 1;
+      factors.push(s);
+    }
   });
-
-  if (temperature === "High" || temperature === (t && t("screen_high"))) { score += 3; factors.push("High"); }
-  else if (temperature === "Slightly high" || temperature === (t && t("screen_slightlyHigh"))) { score += 1; factors.push("Slightly high"); }
-
-  if (appetite === "Not eating" || appetite === (t && t("screen_notEating"))) { score += 3; factors.push("Not eating"); }
-  else if (appetite === "Reduced" || appetite === (t && t("screen_reduced"))) { score += 1; factors.push("Reduced"); }
-
-  if (activity === "Not moving" || activity === (t && t("screen_notMoving"))) { score += 3; factors.push("Not moving"); }
-  else if (activity === "Very low" || activity === (t && t("screen_veryLow"))) { score += 2; factors.push("Very low"); }
-  else if (activity === "Low" || activity === (t && t("screen_low"))) { score += 1; factors.push("Low"); }
-
+  if (temperature === "High" || temperature === (t && t("screen_high"))) {
+    score += 3;
+    factors.push("High");
+  } else if (temperature === "Slightly high" || temperature === (t && t("screen_slightlyHigh"))) {
+    score += 1;
+    factors.push("Slightly high");
+  }
+  if (appetite === "Not eating" || appetite === (t && t("screen_notEating"))) {
+    score += 3;
+    factors.push("Not eating");
+  } else if (appetite === "Reduced" || appetite === (t && t("screen_reduced"))) {
+    score += 1;
+    factors.push("Reduced");
+  }
+  if (activity === "Not moving" || activity === (t && t("screen_notMoving"))) {
+    score += 3;
+    factors.push("Not moving");
+  } else if (activity === "Very low" || activity === (t && t("screen_veryLow"))) {
+    score += 2;
+    factors.push("Very low");
+  } else if (activity === "Low" || activity === (t && t("screen_low"))) {
+    score += 1;
+    factors.push("Low");
+  }
   let level = "healthy";
-  if (score >= 7) level = "urgent";
-  else if (score >= 3) level = "attention";
-
+  if (score >= 7) level = "urgent";else if (score >= 3) level = "attention";
   const titles = {
-    healthy: (t && t("screen_title_healthy")) || "Screening indication: Low risk / Healthy",
-    attention: (t && t("screen_title_attention")) || "Screening indication: Needs attention (Possible concern)",
-    urgent: (t && t("screen_title_urgent")) || "Screening indication: High risk / Urgent attention needed",
+    healthy: t && t("screen_title_healthy") || "Screening indication: Low risk / Healthy",
+    attention: t && t("screen_title_attention") || "Screening indication: Needs attention (Possible concern)",
+    urgent: t && t("screen_title_urgent") || "Screening indication: High risk / Urgent attention needed"
   };
-
   const recs = {
-    healthy: (t && t("screen_rec_healthy")) || "Keep watching your animal as usual. No urgent action indicated right now. Consult a vet if new signs appear.",
-    attention: (t && t("screen_rec_attention")) || "These signs are screening indications of a possible mild infection or early illness. We recommend consulting a qualified veterinarian for an accurate examination.",
-    urgent: (t && t("screen_rec_urgent")) || "These signs indicate a possible serious health concern requiring prompt medical assessment. Please contact a qualified veterinarian immediately or use Emergency help.",
+    healthy: t && t("screen_rec_healthy") || "Keep watching your animal as usual. No urgent action indicated right now. Consult a vet if new signs appear.",
+    attention: t && t("screen_rec_attention") || "These signs are screening indications of a possible mild infection or early illness. We recommend consulting a qualified veterinarian for an accurate examination.",
+    urgent: t && t("screen_rec_urgent") || "These signs indicate a possible serious health concern requiring prompt medical assessment. Please contact a qualified veterinarian immediately or use Emergency help."
   };
-
   let explanation;
   if (factors.length === 0) {
-    explanation = (t && t("screen_expl_none")) || "No worrying signs were selected. Your animal appears healthy based on the reported observations.";
+    explanation = t && t("screen_expl_none") || "No worrying signs were selected. Your animal appears healthy based on the reported observations.";
   } else {
-    explanation = (t && t("screen_expl_" + level)) || (level === "urgent" ? "Together, these reported signs suggest a possible severe health concern that warrants prompt veterinary evaluation." : level === "attention" ? "These reported signs may indicate a possible infection or early health issue. A qualified veterinarian should assess the animal before any condition worsens." : "On their own, these reported observations are typically low-risk indications, but continue observing your animal closely.");
+    explanation = t && t("screen_expl_" + level) || (level === "urgent" ? "Together, these reported signs suggest a possible severe health concern that warrants prompt veterinary evaluation." : level === "attention" ? "These reported signs may indicate a possible infection or early health issue. A qualified veterinarian should assess the animal before any condition worsens." : "On their own, these reported observations are typically low-risk indications, but continue observing your animal closely.");
   }
-
   return {
     level,
     title: titles[level],
     explanation,
     recommendation: recs[level],
     factors,
-    notes,
+    notes
   };
 }
 
@@ -3935,13 +3976,20 @@ function runScreening({ symptoms, appetite, temperature, activity, notes }, t) {
 function vetReplyFor(category, animalName, t) {
   if (t) {
     switch (category) {
-      case "symptoms": return t("chat_vetReply_symptoms");
-      case "treatment": return t("chat_vetReply_treatment");
-      case "vaccination": return t("chat_vetReply_vaccination");
-      case "screening": return t("chat_vetReply_screening");
-      case "diseaseDetection": return t("chat_vetReply_diseaseDetection");
-      case "consultation": return t("chat_vetReply_consultation");
-      default: return t("chat_vetReply_default");
+      case "symptoms":
+        return t("chat_vetReply_symptoms");
+      case "treatment":
+        return t("chat_vetReply_treatment");
+      case "vaccination":
+        return t("chat_vetReply_vaccination");
+      case "screening":
+        return t("chat_vetReply_screening");
+      case "diseaseDetection":
+        return t("chat_vetReply_diseaseDetection");
+      case "consultation":
+        return t("chat_vetReply_consultation");
+      default:
+        return t("chat_vetReply_default");
     }
   }
   const who = animalName || "your animal";
@@ -3962,11 +4010,10 @@ function vetReplyFor(category, animalName, t) {
       return `Got it, thank you for the message. I'll get back to you shortly regarding ${who}.`;
   }
 }
-
 function mapBackendAnimal(a) {
   const latestVacc = a.vaccinations && a.vaccinations[0];
   const activeTrt = a.treatments && (a.treatments.find(t => t.status === 'ACTIVE') || a.treatments[0]);
-  const sName = a.species ? (a.species.charAt(0).toUpperCase() + a.species.slice(1).toLowerCase()) : 'Cow';
+  const sName = a.species ? a.species.charAt(0).toUpperCase() + a.species.slice(1).toLowerCase() : 'Cow';
   return {
     id: a.id,
     backendId: a.id,
@@ -3974,7 +4021,7 @@ function mapBackendAnimal(a) {
     species: sName,
     breed: a.breed || 'Indigenous',
     age: Math.max(1, Math.round((a.ageMonths || 36) / 12)),
-    gender: a.gender ? (a.gender.charAt(0).toUpperCase() + a.gender.slice(1).toLowerCase()) : 'Female',
+    gender: a.gender ? a.gender.charAt(0).toUpperCase() + a.gender.slice(1).toLowerCase() : 'Female',
     healthStatus: (a.healthStatus || 'HEALTHY').toLowerCase(),
     treatment: activeTrt ? {
       condition: activeTrt.diagnosis || 'Active Condition',
@@ -3988,24 +4035,25 @@ function mapBackendAnimal(a) {
       name: latestVacc.vaccineName,
       dueDate: latestVacc.nextDueDate ? latestVacc.nextDueDate.split('T')[0] : '2026-10-15',
       status: latestVacc.status === 'COMPLETED' ? 'upToDate' : 'due'
-    } : { name: 'FMD (Foot & Mouth Disease)', dueDate: '2026-10-15', status: 'due' },
+    } : {
+      name: 'FMD (Foot & Mouth Disease)',
+      dueDate: '2026-10-15',
+      status: 'due'
+    },
     lastScreening: null,
-    history: [
-      ...(a.vaccinations || []).map(v => ({
-        id: v.id,
-        type: 'vaccination',
-        label: 'Vaccination recorded',
-        detail: `${v.vaccineName} (${v.status})`,
-        date: v.administeredDate ? v.administeredDate.split('T')[0] : '2026-08-01'
-      })),
-      ...(a.treatments || []).map(t => ({
-        id: t.id,
-        type: 'treatment',
-        label: 'Treatment: ' + t.diagnosis,
-        detail: `${t.medication} - ${t.dosage || ''}`,
-        date: t.startDate ? t.startDate.split('T')[0] : '2026-09-01'
-      }))
-    ]
+    history: [...(a.vaccinations || []).map(v => ({
+      id: v.id,
+      type: 'vaccination',
+      label: 'Vaccination recorded',
+      detail: `${v.vaccineName} (${v.status})`,
+      date: v.administeredDate ? v.administeredDate.split('T')[0] : '2026-08-01'
+    })), ...(a.treatments || []).map(t => ({
+      id: t.id,
+      type: 'treatment',
+      label: 'Treatment: ' + t.diagnosis,
+      detail: `${t.medication} - ${t.dosage || ''}`,
+      date: t.startDate ? t.startDate.split('T')[0] : '2026-09-01'
+    }))]
   };
 }
 
@@ -4020,13 +4068,16 @@ function PashuSakhiDashboard() {
       if (stored) {
         const parsed = JSON.parse(stored);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          const storedMap = new Map(parsed.map((n) => [n.id, n]));
-          const baseList = initialNotifications.map((initN) => {
+          const storedMap = new Map(parsed.map(n => [n.id, n]));
+          const baseList = initialNotifications.map(initN => {
             const found = storedMap.get(initN.id);
-            return found ? { ...initN, read: Boolean(found.read) } : initN;
+            return found ? {
+              ...initN,
+              read: Boolean(found.read)
+            } : initN;
           });
-          parsed.forEach((n) => {
-            if (!initialNotifications.some((initN) => initN.id === n.id) && !baseList.some((b) => b.id === n.id)) {
+          parsed.forEach(n => {
+            if (!initialNotifications.some(initN => initN.id === n.id) && !baseList.some(b => b.id === n.id)) {
               baseList.push(n);
             }
           });
@@ -4036,7 +4087,6 @@ function PashuSakhiDashboard() {
     } catch {}
     return initialNotifications;
   });
-
   useEffect(() => {
     try {
       localStorage.setItem("psk_notifications", JSON.stringify(notifications));
@@ -4051,7 +4101,9 @@ function PashuSakhiDashboard() {
     }
   });
   useEffect(() => {
-    try { localStorage.setItem("psk_view", view); } catch {}
+    try {
+      localStorage.setItem("psk_view", view);
+    } catch {}
   }, [view]);
   const [selectedAnimalId, setSelectedAnimalId] = useState(null);
   const [detailTab, setDetailTab] = useState("overview");
@@ -4066,50 +4118,135 @@ function PashuSakhiDashboard() {
   const [toast, setToast] = useState(null);
   const DEFAULT_INITIAL_CHATS = {
     a1: {
-      messages: [
-        { id: "m_prev_101", sender: "farmer", text: "Namaste Dr. Rao, Gauri ke gardan ke pass halki soojan aur khujli dikh rahi hai.", time: "10 Sept 2026, 10:15 AM", session: "previous", sessionDate: "10 Sept 2026" },
-        { id: "m_prev_102", sender: "vet", text: "Namaste Suresh ji. Maine photo dekha. Yeh mild skin dermatitis lag raha hai. Aap Neoclovet ointment din me do baar lagayein aur paani saaf rakhein.", time: "10 Sept 2026, 10:22 AM", session: "previous", sessionDate: "10 Sept 2026" },
-        { id: "m_prev_103", sender: "farmer", text: "Theek hai doctor sahiba. Aur doodh nikaalna jaari rakh sakte hain?", time: "10 Sept 2026, 10:28 AM", session: "previous", sessionDate: "10 Sept 2026" },
-        { id: "m_prev_104", sender: "vet", text: "Haan bilkul, doodh nikaalne ke baad ointment lagayein. 3 din baad batayein kaisa sudhaar hai.", time: "10 Sept 2026, 10:30 AM", session: "previous", sessionDate: "10 Sept 2026" },
-        { id: "m_curr_101", sender: "vet", text: "Namaste Suresh ji! Dr. Kavita Rao here. Follow-up check: Gauri ki skin healing kaisi hai aaj? Any further symptoms?", time: "Today, 09:30 AM", session: "current", sessionDate: "Today" }
-      ],
+      messages: [{
+        id: "m_prev_101",
+        sender: "farmer",
+        text: "Namaste Dr. Rao, Gauri ke gardan ke pass halki soojan aur khujli dikh rahi hai.",
+        time: "10 Sept 2026, 10:15 AM",
+        session: "previous",
+        sessionDate: "10 Sept 2026"
+      }, {
+        id: "m_prev_102",
+        sender: "vet",
+        text: "Namaste Suresh ji. Maine photo dekha. Yeh mild skin dermatitis lag raha hai. Aap Neoclovet ointment din me do baar lagayein aur paani saaf rakhein.",
+        time: "10 Sept 2026, 10:22 AM",
+        session: "previous",
+        sessionDate: "10 Sept 2026"
+      }, {
+        id: "m_prev_103",
+        sender: "farmer",
+        text: "Theek hai doctor sahiba. Aur doodh nikaalna jaari rakh sakte hain?",
+        time: "10 Sept 2026, 10:28 AM",
+        session: "previous",
+        sessionDate: "10 Sept 2026"
+      }, {
+        id: "m_prev_104",
+        sender: "vet",
+        text: "Haan bilkul, doodh nikaalne ke baad ointment lagayein. 3 din baad batayein kaisa sudhaar hai.",
+        time: "10 Sept 2026, 10:30 AM",
+        session: "previous",
+        sessionDate: "10 Sept 2026"
+      }, {
+        id: "m_curr_101",
+        sender: "vet",
+        text: "Namaste Suresh ji! Dr. Kavita Rao here. Follow-up check: Gauri ki skin healing kaisi hai aaj? Any further symptoms?",
+        time: "Today, 09:30 AM",
+        session: "current",
+        sessionDate: "Today"
+      }],
       typing: false
     },
     a2: {
-      messages: [
-        { id: "m_prev_201", sender: "farmer", text: "Doctor sahiba, Raju aaj subah se chara kam kha raha hai aur pet me thodi garmi lag rahi hai.", time: "05 Sept 2026, 08:30 AM", session: "previous", sessionDate: "05 Sept 2026" },
-        { id: "m_prev_202", sender: "vet", text: "Suresh ji, Raju ko turant thoda gunguna paani aur hing-ajwain ka ghol dein. Dhoop me mat baandhiye.", time: "05 Sept 2026, 08:45 AM", session: "previous", sessionDate: "05 Sept 2026" },
-        { id: "m_prev_203", sender: "farmer", text: "Ji doctor sahiba, ghol de diya hai, abhi aaram se baitha hai.", time: "05 Sept 2026, 11:00 AM", session: "previous", sessionDate: "05 Sept 2026" },
-        { id: "m_prev_204", sender: "vet", text: "Bahut badhiya. Sham tak observation rakhein aur taaza hara chara dein.", time: "05 Sept 2026, 11:05 AM", session: "previous", sessionDate: "05 Sept 2026" },
-        { id: "m_curr_201", sender: "vet", text: "Namaste Suresh ji! Raju ka colic checkup follow-up: kaisa hai uska digestion aur movement?", time: "Today, 08:45 AM", session: "current", sessionDate: "Today" }
-      ],
+      messages: [{
+        id: "m_prev_201",
+        sender: "farmer",
+        text: "Doctor sahiba, Raju aaj subah se chara kam kha raha hai aur pet me thodi garmi lag rahi hai.",
+        time: "05 Sept 2026, 08:30 AM",
+        session: "previous",
+        sessionDate: "05 Sept 2026"
+      }, {
+        id: "m_prev_202",
+        sender: "vet",
+        text: "Suresh ji, Raju ko turant thoda gunguna paani aur hing-ajwain ka ghol dein. Dhoop me mat baandhiye.",
+        time: "05 Sept 2026, 08:45 AM",
+        session: "previous",
+        sessionDate: "05 Sept 2026"
+      }, {
+        id: "m_prev_203",
+        sender: "farmer",
+        text: "Ji doctor sahiba, ghol de diya hai, abhi aaram se baitha hai.",
+        time: "05 Sept 2026, 11:00 AM",
+        session: "previous",
+        sessionDate: "05 Sept 2026"
+      }, {
+        id: "m_prev_204",
+        sender: "vet",
+        text: "Bahut badhiya. Sham tak observation rakhein aur taaza hara chara dein.",
+        time: "05 Sept 2026, 11:05 AM",
+        session: "previous",
+        sessionDate: "05 Sept 2026"
+      }, {
+        id: "m_curr_201",
+        sender: "vet",
+        text: "Namaste Suresh ji! Raju ka colic checkup follow-up: kaisa hai uska digestion aur movement?",
+        time: "Today, 08:45 AM",
+        session: "current",
+        sessionDate: "Today"
+      }],
       typing: false
     },
     a3: {
-      messages: [
-        { id: "m_prev_301", sender: "farmer", text: "Doctor sahiba, Lakshmi (Buffalo) ke liye calving ke baad mineral mixture kitna dena chahiye?", time: "24 Aug 2026, 04:15 PM", session: "previous", sessionDate: "24 Aug 2026" },
-        { id: "m_prev_302", sender: "vet", text: "Namaste Suresh ji. Calving ke baad 50 gram daily Chelated Mineral Mixture chane ke daane ya daane ke chhilke me mila kar dein.", time: "24 Aug 2026, 04:30 PM", session: "previous", sessionDate: "24 Aug 2026" },
-        { id: "m_prev_303", sender: "farmer", text: "Dhanyawaad doctor sahiba.", time: "24 Aug 2026, 04:35 PM", session: "previous", sessionDate: "24 Aug 2026" },
-        { id: "m_curr_301", sender: "vet", text: "Namaste Suresh ji! Dr. Kavita Rao here. Lakshmi ke lactation aur feed intake me sab normal hai?", time: "Today, 09:10 AM", session: "current", sessionDate: "Today" }
-      ],
+      messages: [{
+        id: "m_prev_301",
+        sender: "farmer",
+        text: "Doctor sahiba, Lakshmi (Buffalo) ke liye calving ke baad mineral mixture kitna dena chahiye?",
+        time: "24 Aug 2026, 04:15 PM",
+        session: "previous",
+        sessionDate: "24 Aug 2026"
+      }, {
+        id: "m_prev_302",
+        sender: "vet",
+        text: "Namaste Suresh ji. Calving ke baad 50 gram daily Chelated Mineral Mixture chane ke daane ya daane ke chhilke me mila kar dein.",
+        time: "24 Aug 2026, 04:30 PM",
+        session: "previous",
+        sessionDate: "24 Aug 2026"
+      }, {
+        id: "m_prev_303",
+        sender: "farmer",
+        text: "Dhanyawaad doctor sahiba.",
+        time: "24 Aug 2026, 04:35 PM",
+        session: "previous",
+        sessionDate: "24 Aug 2026"
+      }, {
+        id: "m_curr_301",
+        sender: "vet",
+        text: "Namaste Suresh ji! Dr. Kavita Rao here. Lakshmi ke lactation aur feed intake me sab normal hai?",
+        time: "Today, 09:10 AM",
+        session: "current",
+        sessionDate: "Today"
+      }],
       typing: false
     }
   };
-
   const [chats, setChats] = useState(() => {
     try {
       const stored = localStorage.getItem("psk_shared_chats");
       if (stored) {
         const parsed = JSON.parse(stored);
         if (parsed && typeof parsed === "object" && Object.keys(parsed).length > 0) {
-          const merged = { ...DEFAULT_INITIAL_CHATS };
+          const merged = {
+            ...DEFAULT_INITIAL_CHATS
+          };
           Object.keys(parsed).forEach(k => {
             if (Array.isArray(parsed[k]) && parsed[k].length > 0) {
               const defMsgs = merged[k]?.messages || [];
               const map = new Map();
               defMsgs.forEach(m => map.set(m.id, m));
               parsed[k].forEach(m => map.set(m.id, m));
-              merged[k] = { messages: Array.from(map.values()), typing: false };
+              merged[k] = {
+                messages: Array.from(map.values()),
+                typing: false
+              };
             }
           });
           return merged;
@@ -4122,22 +4259,23 @@ function PashuSakhiDashboard() {
     name: "Suresh Patil",
     mobile: "+91 98765 43210",
     village: "Wagholi, Pune District, Maharashtra",
-    registered: "2024-03-14",
+    registered: "2024-03-14"
   };
-
   const [profile, setProfile] = useState(() => {
     try {
       const stored = localStorage.getItem("psk_profile");
       if (stored) {
         const parsed = JSON.parse(stored);
         if (parsed && typeof parsed === "object" && parsed.name) {
-          return { ...DEFAULT_PROFILE, ...parsed };
+          return {
+            ...DEFAULT_PROFILE,
+            ...parsed
+          };
         }
       }
     } catch {}
     return DEFAULT_PROFILE;
   });
-
   useEffect(() => {
     try {
       localStorage.setItem("psk_profile", JSON.stringify(profile));
@@ -4160,7 +4298,9 @@ function PashuSakhiDashboard() {
       }
     }
     fetchAnimalsFromBackend();
-    return () => { isMounted = false; };
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   // Sync with PashuSakhiBridge for cross-role communication
@@ -4170,20 +4310,32 @@ function PashuSakhiDashboard() {
     // Check for active session from portal
     const sess = window.PashuSakhiBridge.getSession();
     if (sess && sess.name) {
-      setProfile((prev) => ({ ...prev, name: sess.name, email: sess.email || prev.email }));
+      setProfile(prev => ({
+        ...prev,
+        name: sess.name,
+        email: sess.email || prev.email
+      }));
       if (sess.language) setLanguage(sess.language);
     }
 
     // Load persisted bridge chats
     const allChats = window.PashuSakhiBridge.getChats();
     if (allChats && typeof allChats === "object") {
-      setChats((prev) => {
-        const next = { ...prev };
-        Object.keys(allChats).forEach((aid) => {
+      setChats(prev => {
+        const next = {
+          ...prev
+        };
+        Object.keys(allChats).forEach(aid => {
           const msgs = allChats[aid];
           if (Array.isArray(msgs) && msgs.length > 0) {
-            const existing = next[aid] || { messages: [], typing: false };
-            next[aid] = { ...existing, messages: msgs };
+            const existing = next[aid] || {
+              messages: [],
+              typing: false
+            };
+            next[aid] = {
+              ...existing,
+              messages: msgs
+            };
           }
         });
         return next;
@@ -4194,9 +4346,12 @@ function PashuSakhiDashboard() {
     const handleBridgeEvent = (eventName, data) => {
       if (eventName === "psk:chat:message") {
         if (data && data.animalId && data.message) {
-          setChats((prev) => {
-            const existing = prev[data.animalId] || { messages: [], typing: false };
-            if (existing.messages.some((m) => m.id === data.message.id)) return prev;
+          setChats(prev => {
+            const existing = prev[data.animalId] || {
+              messages: [],
+              typing: false
+            };
+            if (existing.messages.some(m => m.id === data.message.id)) return prev;
             return {
               ...prev,
               [data.animalId]: {
@@ -4209,25 +4364,23 @@ function PashuSakhiDashboard() {
         }
       } else if (eventName === "psk:treatment:added" || eventName === "psk:emergency:updated") {
         if (data && data.animalId) {
-          setAnimals((prev) =>
-            prev.map((a) => {
-              if (a.id === data.animalId) {
-                return {
-                  ...a,
-                  treatment: a.treatment || {
-                    condition: (data.treatment && data.treatment.condition) || "Active Veterinary Treatment",
-                    medicine: (data.treatment && data.treatment.medicine) || "Prescribed Medication",
-                    dosage: "As prescribed",
-                    startDate: new Date().toISOString().split("T")[0],
-                    endDate: "Ongoing",
-                    daysLeft: 5,
-                    notes: "Supervised by Dr. Kavita Rao"
-                  }
-                };
-              }
-              return a;
-            })
-          );
+          setAnimals(prev => prev.map(a => {
+            if (a.id === data.animalId) {
+              return {
+                ...a,
+                treatment: a.treatment || {
+                  condition: data.treatment && data.treatment.condition || "Active Veterinary Treatment",
+                  medicine: data.treatment && data.treatment.medicine || "Prescribed Medication",
+                  dosage: "As prescribed",
+                  startDate: new Date().toISOString().split("T")[0],
+                  endDate: "Ongoing",
+                  daysLeft: 5,
+                  notes: "Supervised by Dr. Kavita Rao"
+                }
+              };
+            }
+            return a;
+          }));
         }
         if (eventName === "psk:emergency:updated" && data) {
           showToast(`🚨 Emergency case updated by ${data.assignedVet || 'Vet'}: ${data.status.toUpperCase()}`);
@@ -4238,7 +4391,6 @@ function PashuSakhiDashboard() {
         showToast(`📋 AI Report for ${data.animalName || 'livestock'} marked as ${data.status} by veterinarian.`);
       }
     };
-
     window.PashuSakhiBridge.onEvent(handleBridgeEvent);
     return () => {
       window.PashuSakhiBridge.offEvent(handleBridgeEvent);
@@ -4247,62 +4399,120 @@ function PashuSakhiDashboard() {
 
   /* ---- Settings: language, theme, text size, accessibility, notif prefs ---- */
   const [language, setLanguage] = useState(() => {
-    try { return localStorage.getItem("psk_language") || "en"; } catch { return "en"; }
+    try {
+      return localStorage.getItem("psk_language") || "en";
+    } catch {
+      return "en";
+    }
   });
   const [theme, setTheme] = useState(() => {
-    try { return localStorage.getItem("psk_theme") || "light"; } catch { return "light"; }
+    try {
+      return localStorage.getItem("psk_theme") || "light";
+    } catch {
+      return "light";
+    }
   });
   const [textSize, setTextSize] = useState(() => {
-    try { return localStorage.getItem("psk_textSize") || "medium"; } catch { return "medium"; }
+    try {
+      return localStorage.getItem("psk_textSize") || "medium";
+    } catch {
+      return "medium";
+    }
   });
   const [highContrast, setHighContrast] = useState(() => {
-    try { return localStorage.getItem("psk_highContrast") === "true"; } catch { return false; }
+    try {
+      return localStorage.getItem("psk_highContrast") === "true";
+    } catch {
+      return false;
+    }
   });
   const [notifPrefs, setNotifPrefs] = useState(() => {
-    try { return { ...DEFAULT_NOTIF_PREFS, ...JSON.parse(localStorage.getItem("psk_notifPrefs")) }; } catch { return DEFAULT_NOTIF_PREFS; }
+    try {
+      return {
+        ...DEFAULT_NOTIF_PREFS,
+        ...JSON.parse(localStorage.getItem("psk_notifPrefs"))
+      };
+    } catch {
+      return DEFAULT_NOTIF_PREFS;
+    }
   });
   const [reminderTiming, setReminderTiming] = useState(() => {
-    try { return localStorage.getItem("psk_reminderTiming") || "due"; } catch { return "due"; }
+    try {
+      return localStorage.getItem("psk_reminderTiming") || "due";
+    } catch {
+      return "due";
+    }
   });
   const [systemPrefersDark, setSystemPrefersDark] = useState(() => {
-    try { return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches; } catch { return false; }
+    try {
+      return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+    } catch {
+      return false;
+    }
   });
-
-  useEffect(() => { try { localStorage.setItem("psk_language", language); } catch {} }, [language]);
-  useEffect(() => { try { localStorage.setItem("psk_theme", theme); } catch {} }, [theme]);
-  useEffect(() => { try { localStorage.setItem("psk_textSize", textSize); } catch {} }, [textSize]);
-  useEffect(() => { try { localStorage.setItem("psk_highContrast", String(highContrast)); } catch {} }, [highContrast]);
-  useEffect(() => { try { localStorage.setItem("psk_notifPrefs", JSON.stringify(notifPrefs)); } catch {} }, [notifPrefs]);
-  useEffect(() => { try { localStorage.setItem("psk_reminderTiming", reminderTiming); } catch {} }, [reminderTiming]);
-
+  useEffect(() => {
+    try {
+      localStorage.setItem("psk_language", language);
+    } catch {}
+  }, [language]);
+  useEffect(() => {
+    try {
+      localStorage.setItem("psk_theme", theme);
+    } catch {}
+  }, [theme]);
+  useEffect(() => {
+    try {
+      localStorage.setItem("psk_textSize", textSize);
+    } catch {}
+  }, [textSize]);
+  useEffect(() => {
+    try {
+      localStorage.setItem("psk_highContrast", String(highContrast));
+    } catch {}
+  }, [highContrast]);
+  useEffect(() => {
+    try {
+      localStorage.setItem("psk_notifPrefs", JSON.stringify(notifPrefs));
+    } catch {}
+  }, [notifPrefs]);
+  useEffect(() => {
+    try {
+      localStorage.setItem("psk_reminderTiming", reminderTiming);
+    } catch {}
+  }, [reminderTiming]);
   useEffect(() => {
     if (!window.matchMedia) return;
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
-    const handler = (e) => setSystemPrefersDark(e.matches);
-    if (mq.addEventListener) mq.addEventListener("change", handler); else mq.addListener(handler);
-    return () => { if (mq.removeEventListener) mq.removeEventListener("change", handler); else mq.removeListener(handler); };
+    const handler = e => setSystemPrefersDark(e.matches);
+    if (mq.addEventListener) mq.addEventListener("change", handler);else mq.addListener(handler);
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener("change", handler);else mq.removeListener(handler);
+    };
   }, []);
-
-  const effectiveTheme = theme === "system" ? (systemPrefersDark ? "dark" : "light") : theme;
+  const effectiveTheme = theme === "system" ? systemPrefersDark ? "dark" : "light" : theme;
   const t = (key, fallback) => tt(language, key, fallback);
 
   // Maps a notification's category to its matching entry in notifPrefs / DEFAULT_NOTIF_PREFS.
   // Any category not explicitly listed here falls back to "general".
-  const notifCategoryKey = (category) => ({
-    vaccination: "vaccination", treatment: "treatment", checkup: "checkup", screening: "screening", consultation: "consultation",
-  }[category] || "general");
+  const notifCategoryKey = category => ({
+    vaccination: "vaccination",
+    treatment: "treatment",
+    checkup: "checkup",
+    screening: "screening",
+    consultation: "consultation"
+  })[category] || "general";
 
   // Notification preferences control whether FUTURE notifications of a category would be
   // generated/eligible (via notifCategoryKey + notifPrefs) — they must never hide or remove
   // notifications that already exist in history. So the Notifications screen and the unread
   // count are always derived from the full `notifications` history, unfiltered by notifPrefs.
 
-  const showToast = (msg) => {
+  const showToast = msg => {
     setToast(msg);
     window.clearTimeout(showToast._t);
     showToast._t = window.setTimeout(() => setToast(null), 3200);
   };
- 
+
   // Auto-refresh dynamic date calculations periodically so relative dates stay accurate
   // when the day rolls over without requiring a page reload
   const [dateTick, setDateTick] = useState(() => Date.now());
@@ -4310,37 +4520,40 @@ function PashuSakhiDashboard() {
     const timer = setInterval(() => setDateTick(Date.now()), 60000);
     return () => clearInterval(timer);
   }, []);
-
   const summary = useMemo(() => {
-    const healthy = animals.filter((a) => !a.treatment && a.healthStatus !== "urgent").length;
-    const underTreatment = animals.filter((a) => a.treatment).length;
-    const vaccDue = animals.filter((a) => {
+    const healthy = animals.filter(a => !a.treatment && a.healthStatus !== "urgent").length;
+    const underTreatment = animals.filter(a => a.treatment).length;
+    const vaccDue = animals.filter(a => {
       if (!a.vaccination) return false;
       const days = daysUntil(a.vaccination.dueDate);
       return a.vaccination.status !== "upToDate" || days <= 0 || isReminderDue(a.vaccination.dueDate, reminderTiming);
     }).length;
-    return { healthy, underTreatment, vaccDue, total: animals.length };
+    return {
+      healthy,
+      underTreatment,
+      vaccDue,
+      total: animals.length
+    };
   }, [animals, reminderTiming, dateTick]);
-
   const recentActivity = useMemo(() => {
     const items = [];
-    animals.forEach((a) => {
-      a.history.forEach((h) => items.push({ ...h, animalId: a.id, animalName: a.name }));
+    animals.forEach(a => {
+      a.history.forEach(h => items.push({
+        ...h,
+        animalId: a.id,
+        animalName: a.name
+      }));
     });
     return items.sort((x, y) => parseLocalDate(y.date) - parseLocalDate(x.date));
   }, [animals, dateTick]);
+  const upcomingVaccinations = useMemo(() => animals.filter(a => {
+    if (!a.vaccination) return false;
+    const days = daysUntil(a.vaccination.dueDate);
+    return a.vaccination.status !== "upToDate" || days <= 14;
+  }).sort((a, b) => parseLocalDate(a.vaccination.dueDate) - parseLocalDate(b.vaccination.dueDate)), [animals, dateTick]);
+  const activeTreatments = useMemo(() => animals.filter(a => a.treatment), [animals]);
+  const unreadCount = notifications.filter(n => !n.read).length;
 
-  const upcomingVaccinations = useMemo(
-    () => animals.filter((a) => {
-      if (!a.vaccination) return false;
-      const days = daysUntil(a.vaccination.dueDate);
-      return a.vaccination.status !== "upToDate" || days <= 14;
-    }).sort((a, b) => parseLocalDate(a.vaccination.dueDate) - parseLocalDate(b.vaccination.dueDate)),
-    [animals, dateTick]
-  );
-  const activeTreatments = useMemo(() => animals.filter((a) => a.treatment), [animals]);
-  const unreadCount = notifications.filter((n) => !n.read).length;
- 
   /* Navigation history: every navigate() call remembers where we came
      from, so Back always returns to the actual previous screen rather
      than a hardcoded destination. Navigating Home clears the stack,
@@ -4349,51 +4562,38 @@ function PashuSakhiDashboard() {
     const hasAnimalId = Object.prototype.hasOwnProperty.call(extra, "selectedAnimalId");
     const hasTab = Object.prototype.hasOwnProperty.call(extra, "detailTab");
     const hasScreeningResult = Object.prototype.hasOwnProperty.call(extra, "screeningResult");
-
-    const targetAnimalId = hasAnimalId ? extra.selectedAnimalId : (newView === "animalDetail" ? selectedAnimalId : null);
-    const targetTab = hasTab ? extra.detailTab : (newView === "animalDetail" ? detailTab : "overview");
-    const targetScreeningResult = hasScreeningResult ? extra.screeningResult : (newView === "screening" ? screeningResult : null);
+    const targetAnimalId = hasAnimalId ? extra.selectedAnimalId : newView === "animalDetail" ? selectedAnimalId : null;
+    const targetTab = hasTab ? extra.detailTab : newView === "animalDetail" ? detailTab : "overview";
+    const targetScreeningResult = hasScreeningResult ? extra.screeningResult : newView === "screening" ? screeningResult : null;
 
     // Prevent duplicate navigation if target state exactly matches current state
-    if (
-      newView === view &&
-      targetAnimalId === selectedAnimalId &&
-      targetTab === detailTab &&
-      targetScreeningResult === screeningResult
-    ) {
+    if (newView === view && targetAnimalId === selectedAnimalId && targetTab === detailTab && targetScreeningResult === screeningResult) {
       setDrawerOpen(false);
       return;
     }
-
-    const snapshot = { view, selectedAnimalId, detailTab, screeningResult };
-
-    setHistory((prev) => {
+    const snapshot = {
+      view,
+      selectedAnimalId,
+      detailTab,
+      screeningResult
+    };
+    setHistory(prev => {
       if (newView === "dashboard") return [];
       const top = prev[prev.length - 1];
       // Prevent consecutive duplicate snapshots
-      if (
-        top &&
-        top.view === snapshot.view &&
-        top.selectedAnimalId === snapshot.selectedAnimalId &&
-        top.detailTab === snapshot.detailTab &&
-        top.screeningResult === snapshot.screeningResult
-      ) {
+      if (top && top.view === snapshot.view && top.selectedAnimalId === snapshot.selectedAnimalId && top.detailTab === snapshot.detailTab && top.screeningResult === snapshot.screeningResult) {
         return prev;
       }
       return [...prev, snapshot];
     });
-
     if (hasAnimalId) setSelectedAnimalId(extra.selectedAnimalId);
     if (hasTab) setDetailTab(extra.detailTab);
-    if (hasScreeningResult) setScreeningResult(extra.screeningResult);
-    else if (newView === "screening" && !hasScreeningResult) setScreeningResult(null);
-
+    if (hasScreeningResult) setScreeningResult(extra.screeningResult);else if (newView === "screening" && !hasScreeningResult) setScreeningResult(null);
     setView(newView);
     setDrawerOpen(false);
   };
-
   const goBack = () => {
-    setHistory((prev) => {
+    setHistory(prev => {
       if (!prev || prev.length === 0) {
         setView("dashboard");
         setSelectedAnimalId(null);
@@ -4401,23 +4601,16 @@ function PashuSakhiDashboard() {
         setScreeningResult(null);
         return [];
       }
-
       const nextHistory = prev.slice();
       let target = null;
       // Pop until we find a target that is different from current screen
       while (nextHistory.length > 0) {
         const candidate = nextHistory.pop();
-        if (
-          candidate.view !== view ||
-          candidate.selectedAnimalId !== selectedAnimalId ||
-          candidate.detailTab !== detailTab ||
-          candidate.screeningResult !== screeningResult
-        ) {
+        if (candidate.view !== view || candidate.selectedAnimalId !== selectedAnimalId || candidate.detailTab !== detailTab || candidate.screeningResult !== screeningResult) {
           target = candidate;
           break;
         }
       }
-
       if (!target) {
         setView("dashboard");
         setSelectedAnimalId(null);
@@ -4425,7 +4618,6 @@ function PashuSakhiDashboard() {
         setScreeningResult(null);
         return [];
       }
-
       setView(target.view);
       setSelectedAnimalId(target.selectedAnimalId);
       setDetailTab(target.detailTab || "overview");
@@ -4433,15 +4625,15 @@ function PashuSakhiDashboard() {
       return nextHistory;
     });
   };
-
   const goToAnimal = (id, tab = "overview") => {
-    navigate("animalDetail", { selectedAnimalId: id, detailTab: tab });
+    navigate("animalDetail", {
+      selectedAnimalId: id,
+      detailTab: tab
+    });
   };
-
-  const navigateTo = (id) => {
+  const navigateTo = id => {
     navigate(id);
   };
-
   const closeDrawer = (restoreFocus = true) => {
     setDrawerOpen(false);
     if (restoreFocus) {
@@ -4450,12 +4642,12 @@ function PashuSakhiDashboard() {
       }, 0);
     }
   };
-
   useEffect(() => {
     document.body.style.overflow = drawerOpen ? "hidden" : "";
-    return () => { document.body.style.overflow = ""; };
+    return () => {
+      document.body.style.overflow = "";
+    };
   }, [drawerOpen]);
-
   useEffect(() => {
     if (drawerOpen) {
       const timer = setTimeout(() => {
@@ -4464,27 +4656,20 @@ function PashuSakhiDashboard() {
       return () => clearTimeout(timer);
     }
   }, [drawerOpen]);
-
   useEffect(() => {
     if (!drawerOpen) return;
-
-    const handleKeyDown = (e) => {
+    const handleKeyDown = e => {
       if (e.key === "Escape") {
         e.preventDefault();
         closeDrawer(true);
         return;
       }
-
       if (e.key === "Tab") {
         if (!drawerRef.current) return;
-        const focusable = drawerRef.current.querySelectorAll(
-          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
-        );
+        const focusable = drawerRef.current.querySelectorAll('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])');
         if (!focusable || focusable.length === 0) return;
-
         const firstEl = focusable[0];
         const lastEl = focusable[focusable.length - 1];
-
         if (e.shiftKey) {
           if (document.activeElement === firstEl || !drawerRef.current.contains(document.activeElement)) {
             e.preventDefault();
@@ -4498,134 +4683,226 @@ function PashuSakhiDashboard() {
         }
       }
     };
-
     document.addEventListener("keydown", handleKeyDown);
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
     };
   }, [drawerOpen]);
- 
-  const openChat = (animalId) => {
-    navigate("chat", { selectedAnimalId: animalId, detailTab });
+  const openChat = animalId => {
+    navigate("chat", {
+      selectedAnimalId: animalId,
+      detailTab
+    });
   };
-
   const discussScreeningWithVet = (animalId, animalName) => {
     sendMessage(animalId, `${t("chat_discussScreeningMsg")} ${animalName}.`, "screening");
-    navigate("chat", { selectedAnimalId: animalId, detailTab, screeningResult });
+    navigate("chat", {
+      selectedAnimalId: animalId,
+      detailTab,
+      screeningResult
+    });
   };
-
   const discussDiseaseDetectionWithVet = (animalId, animalName) => {
     const prefix = t ? t("chat_discussDiseaseMsg") : "I'd like to discuss the AI image screening result for";
     sendMessage(animalId, `${prefix} ${animalName}.`, "diseaseDetection");
-    navigate("chat", { selectedAnimalId: animalId, detailTab });
+    navigate("chat", {
+      selectedAnimalId: animalId,
+      detailTab
+    });
   };
- 
-  const markNotificationRead = (n) => {
+  const markNotificationRead = n => {
     // 1. Mark notification as read in state and sync with persistence
-    setNotifications((prev) =>
-      prev.map((x) => (x.id === n.id ? { ...x, read: true } : x))
-    );
+    setNotifications(prev => prev.map(x => x.id === n.id ? {
+      ...x,
+      read: true
+    } : x));
 
     // 2. Navigate based on notification category and preserve animalId
     if (n.category === "vaccination") {
-      if (n.animalId && animals.some((a) => a.id === n.animalId)) {
+      if (n.animalId && animals.some(a => a.id === n.animalId)) {
         goToAnimal(n.animalId, "vaccination");
       } else {
         navigate("upcomingVaccination");
       }
     } else if (n.category === "treatment") {
-      if (n.animalId && animals.some((a) => a.id === n.animalId)) {
+      if (n.animalId && animals.some(a => a.id === n.animalId)) {
         goToAnimal(n.animalId, "treatment");
       } else {
         navigate("activeTreatment");
       }
     } else if (n.category === "checkup") {
-      if (n.animalId && animals.some((a) => a.id === n.animalId)) {
+      if (n.animalId && animals.some(a => a.id === n.animalId)) {
         goToAnimal(n.animalId, "overview");
       } else {
         navigate("animals");
       }
     } else if (n.category === "screening") {
-      if (n.animalId && animals.some((a) => a.id === n.animalId)) {
+      if (n.animalId && animals.some(a => a.id === n.animalId)) {
         goToAnimal(n.animalId, "history");
       } else {
         navigate("screening");
       }
     } else if (n.category === "consultation") {
-      if (n.animalId && animals.some((a) => a.id === n.animalId)) {
+      if (n.animalId && animals.some(a => a.id === n.animalId)) {
         openChat(n.animalId);
       } else {
         navigate("chat");
       }
     } else {
-      if (n.animalId && animals.some((a) => a.id === n.animalId)) {
+      if (n.animalId && animals.some(a => a.id === n.animalId)) {
         goToAnimal(n.animalId, "overview");
       } else {
         navigate("dashboard");
       }
     }
   };
- 
   const sendMessage = (animalId, text, category = "general") => {
     if (!text.trim()) return;
-    const animal = animals.find((a) => a.id === animalId);
-    const farmerMsg = { id: `m${Date.now()}`, sender: "farmer", text, time: "Just now" };
-    setChats((prev) => {
-      const existing = prev[animalId] || { messages: [], typing: false };
-      return { ...prev, [animalId]: { ...existing, messages: [...existing.messages, farmerMsg], typing: true } };
+    const animal = animals.find(a => a.id === animalId);
+    const farmerMsg = {
+      id: `m${Date.now()}`,
+      sender: "farmer",
+      text,
+      time: "Just now"
+    };
+    setChats(prev => {
+      const existing = prev[animalId] || {
+        messages: [],
+        typing: false
+      };
+      return {
+        ...prev,
+        [animalId]: {
+          ...existing,
+          messages: [...existing.messages, farmerMsg],
+          typing: true
+        }
+      };
     });
     if (window.PashuSakhiBridge) {
       window.PashuSakhiBridge.sendChat(animalId, farmerMsg);
     }
     window.setTimeout(() => {
-      setChats((prev) => {
-        const existing = prev[animalId] || { messages: [], typing: false };
-        const reply = { id: `m${Date.now() + 1}`, sender: "vet", text: vetReplyFor(category, animal?.name, t), time: "Just now" };
+      setChats(prev => {
+        const existing = prev[animalId] || {
+          messages: [],
+          typing: false
+        };
+        const reply = {
+          id: `m${Date.now() + 1}`,
+          sender: "vet",
+          text: vetReplyFor(category, animal?.name, t),
+          time: "Just now"
+        };
         if (window.PashuSakhiBridge) {
           window.PashuSakhiBridge.sendChat(animalId, reply);
         }
-        return { ...prev, [animalId]: { ...existing, messages: [...existing.messages, reply], typing: false } };
+        return {
+          ...prev,
+          [animalId]: {
+            ...existing,
+            messages: [...existing.messages, reply],
+            typing: false
+          }
+        };
       });
     }, 1100);
   };
- 
-  const NAV = [
-    { id: "dashboard", label: t("nav_home"), Icon: Home },
-    { id: "animals", label: t("nav_myAnimals"), Icon: PawPrint },
-    { id: "aiHelp", label: t ? t("nav_aiHelp", "AI Help") : "AI Help", Icon: Sparkles },
-    { id: "chat", label: t("nav_chatWithVet"), Icon: MessageCircle },
-    { id: "notifications", label: t("nav_alerts"), Icon: Bell },
-    { id: "settings", label: t("nav_settings"), Icon: Settings },
-  ];
-
-  const BOTTOM_NAV = [
-    { id: "dashboard", label: t("nav_home", "Home"), Icon: Home },
-    { id: "animals", label: t("nav_myAnimals", "My Animals"), Icon: PawPrint },
-    { id: "aiHelp", label: t ? t("nav_aiHelp", "AI Help") : "AI Help", Icon: Sparkles },
-    { id: "chat", label: t("nav_chatWithVet", "Chat with Vet"), Icon: MessageCircle },
-    { id: "settings", label: t("nav_settings", "Settings"), Icon: Settings },
-  ];
-
-  const DRAWER_NAV = [
-    { id: "dashboard", label: t("nav_home"), Icon: Home, onClick: () => navigateTo("dashboard") },
-    { id: "animals", label: t("nav_myAnimals"), Icon: PawPrint, onClick: () => navigateTo("animals") },
-    { id: "aiHelp", label: t ? t("nav_aiHelp", "AI Help") : "AI Help", Icon: Sparkles, onClick: () => navigateTo("aiHelp") },
-    { id: "chat", label: t("nav_chatWithVet"), Icon: MessageCircle, onClick: () => navigateTo("chat") },
-    { id: "upcomingVaccination", label: t("nav_upcomingVaccination"), Icon: Syringe, onClick: () => navigateTo("upcomingVaccination") },
-    { id: "activeTreatment", label: t("nav_activeTreatment"), Icon: Thermometer, onClick: () => navigateTo("activeTreatment") },
-    { id: "notifications", label: t("nav_notifications"), Icon: Bell, onClick: () => navigateTo("notifications") },
-    { id: "settings", label: t("nav_settings"), Icon: Settings, onClick: () => navigateTo("settings") },
-  ];
- 
+  const NAV = [{
+    id: "dashboard",
+    label: t("nav_home"),
+    Icon: Home
+  }, {
+    id: "animals",
+    label: t("nav_myAnimals"),
+    Icon: PawPrint
+  }, {
+    id: "aiHelp",
+    label: t ? t("nav_aiHelp", "AI Help") : "AI Help",
+    Icon: Sparkles
+  }, {
+    id: "chat",
+    label: t("nav_chatWithVet"),
+    Icon: MessageCircle
+  }, {
+    id: "notifications",
+    label: t("nav_alerts"),
+    Icon: Bell
+  }, {
+    id: "settings",
+    label: t("nav_settings"),
+    Icon: Settings
+  }];
+  const BOTTOM_NAV = [{
+    id: "dashboard",
+    label: t("nav_home", "Home"),
+    Icon: Home
+  }, {
+    id: "animals",
+    label: t("nav_myAnimals", "My Animals"),
+    Icon: PawPrint
+  }, {
+    id: "aiHelp",
+    label: t ? t("nav_aiHelp", "AI Help") : "AI Help",
+    Icon: Sparkles
+  }, {
+    id: "chat",
+    label: t("nav_chatWithVet", "Chat with Vet"),
+    Icon: MessageCircle
+  }, {
+    id: "settings",
+    label: t("nav_settings", "Settings"),
+    Icon: Settings
+  }];
+  const DRAWER_NAV = [{
+    id: "dashboard",
+    label: t("nav_home"),
+    Icon: Home,
+    onClick: () => navigateTo("dashboard")
+  }, {
+    id: "animals",
+    label: t("nav_myAnimals"),
+    Icon: PawPrint,
+    onClick: () => navigateTo("animals")
+  }, {
+    id: "aiHelp",
+    label: t ? t("nav_aiHelp", "AI Help") : "AI Help",
+    Icon: Sparkles,
+    onClick: () => navigateTo("aiHelp")
+  }, {
+    id: "chat",
+    label: t("nav_chatWithVet"),
+    Icon: MessageCircle,
+    onClick: () => navigateTo("chat")
+  }, {
+    id: "upcomingVaccination",
+    label: t("nav_upcomingVaccination"),
+    Icon: Syringe,
+    onClick: () => navigateTo("upcomingVaccination")
+  }, {
+    id: "activeTreatment",
+    label: t("nav_activeTreatment"),
+    Icon: Thermometer,
+    onClick: () => navigateTo("activeTreatment")
+  }, {
+    id: "notifications",
+    label: t("nav_notifications"),
+    Icon: Bell,
+    onClick: () => navigateTo("notifications")
+  }, {
+    id: "settings",
+    label: t("nav_settings"),
+    Icon: Settings,
+    onClick: () => navigateTo("settings")
+  }];
   const handleLogout = () => {
     showToast(t("logout_success"));
     if (window.PashuSakhiBridge) window.PashuSakhiBridge.clearSession();
     window.location.href = "index.html?logout=true";
   };
-
-  return (
-    <div className={`psk-root ${effectiveTheme === "dark" ? "theme-dark" : ""} ${highContrast ? "high-contrast" : ""} text-size-${textSize}`}>
-      <style>{`
+  return /*#__PURE__*/React.createElement("div", {
+    className: `psk-root ${effectiveTheme === "dark" ? "theme-dark" : ""} ${highContrast ? "high-contrast" : ""} text-size-${textSize}`
+  }, /*#__PURE__*/React.createElement("style", null, `
         @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&display=swap');
  
         .psk-root {
@@ -5991,546 +6268,674 @@ function PashuSakhiDashboard() {
             gap: 10px;
           }
         }
-        `}</style>
- 
-      {/* ---------------- Mobile header ---------------- */}
-      <header className="mobile-header">
-        <button
-          ref={hamburgerBtnRef}
-          type="button"
-          className="hamburger-btn"
-          onClick={() => setDrawerOpen(true)}
-          aria-label={t("aria_openNavMenu") || "Open navigation menu"}
-          aria-expanded={drawerOpen}
-          aria-controls="mobile-navigation-drawer"
-        >
-          <Menu size={22} />
-        </button>
-        <div className="mobile-header-brand">
-          <div className="mark" style={{ width: 30, height: 30, borderRadius: 8, background: "transparent", overflow: "hidden" }}><img src={PASHU_SAKHI_LOGO} alt="Pashu Sakhi logo" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} /></div>
-          <span className="mobile-header-title">Pashu Sakhi</span>
-        </div>
-        <button
-          type="button"
-          className="header-emergency-btn"
-          onClick={() => setEmergencyOpen(true)}
-        >
-          <AlertTriangle size={16} /> {t ? t("common_emergency") : "Emergency"}
-        </button>
-
-        
-      </header>
-
-      {/* ---------------- Mobile navigation drawer ---------------- */}
-      {drawerOpen && (
-        <div className="drawer-overlay" onClick={() => setDrawerOpen(false)}>
-          <aside
-            id="mobile-navigation-drawer"
-            ref={drawerRef}
-            className="mobile-drawer"
-            role="dialog"
-            aria-modal="true"
-            aria-label={t("aria_navMenu") || "Navigation menu"}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="drawer-header">
-              <div className="sidebar-brand" style={{ padding: 0 }}>
-                <div className="mark" style={{ background: "transparent", overflow: "hidden" }}><img src={PASHU_SAKHI_LOGO} alt="Pashu Sakhi logo" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} /></div>
-                <div>
-                  <div className="name" style={{ color: "var(--ink)" }}>Pashu Sakhi</div>
-                  <div className="tag" style={{ color: "var(--ink-soft)" }}>{t("brand_tagline") || "Livestock health companion"}</div>
-                </div>
-              </div>
-              <button
-                type="button"
-                ref={drawerCloseBtnRef}
-                className="drawer-close"
-                onClick={() => closeDrawer(true)}
-                aria-label={t("aria_closeMenu") || "Close menu"}
-              >
-                <X size={20} />
-              </button>
-            </div>
-            <nav aria-label={t("aria_navMenu") || "Navigation menu"} className="drawer-nav">
-              {DRAWER_NAV.map((n) => {
-                const isActive = view === n.id || (view === "animalDetail" && n.id === "animals");
-                return (
-                  <button
-                    key={n.id}
-                    type="button"
-                    className={`drawer-item ${isActive ? "active" : ""}`}
-                    onClick={n.onClick}
-                    aria-current={isActive ? "page" : undefined}
-                  >
-                    <n.Icon size={19} />
-                    {n.label}
-                    {n.id === "notifications" && unreadCount > 0 && <span className="nav-badge">{unreadCount}</span>}
-                  </button>
-                );
-              })}
-            </nav>
-            <button
-              type="button"
-              className="drawer-emergency"
-              onClick={() => { closeDrawer(false); setEmergencyOpen(true); }}
-            >
-              <AlertTriangle size={18} />
-              {t("common_emergency")}
-            </button>
-          </aside>
-        </div>
-      )}
-
-      {/* ---------------- Desktop sidebar ---------------- */}
-      <aside className="sidebar">
-        <div className="sidebar-brand">
-          <div className="mark" style={{ background: "transparent", overflow: "hidden" }}><img src={PASHU_SAKHI_LOGO} alt="Pashu Sakhi logo" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} /></div>
-          <div>
-            <div className="name">Pashu Sakhi</div>
-            <div className="tag">{t("brand_tagline") || "Livestock health companion"}</div>
-          </div>
-        </div>
-        {NAV.map((n) => (
-          <button
-            key={n.id}
-            className={`nav-item ${view === n.id || (view === "animalDetail" && n.id === "animals") ? "active" : ""}`}
-            onClick={() => navigateTo(n.id)}
-          >
-            <n.Icon size={18} />
-            {n.label}
-            {n.id === "notifications" && unreadCount > 0 && <span className="nav-badge">{unreadCount}</span>}
-          </button>
-        ))}
-        <button
-          type="button"
-          className="sidebar-emergency"
-          onClick={() => setEmergencyOpen(true)}
-        >
-          <AlertTriangle size={18} />
-          {t("common_emergency")}
-        </button>
-      </aside>
- 
-      {/* ---------------- Main content ---------------- */}
-      <main className="main">
-        {view === "dashboard" && (
-          <DashboardView
-            t={t}
-            profile={profile}
-            summary={summary}
-            upcomingVaccinations={upcomingVaccinations}
-            activeTreatments={activeTreatments}
-            onOpenAnimal={goToAnimal}
-            onOpenEmergency={() => setEmergencyOpen(true)}
-            unreadCount={unreadCount}
-            onOpenNotifications={() => navigate("notifications")}
-            onSeeAllAnimals={() => navigate("animals")}
-            onUpcomingVaccination={() => navigate("upcomingVaccination")}
-            onActiveTreatment={() => navigate("activeTreatment")}
-            onQuickAccess={{
-              animals: () => navigate("animals"),
-              screening: () => navigate("screening"),
-              chat: () => navigate("chat"),
-            }}
-          />
-        )}
- 
-        {view === "animals" && (
-          <AnimalsView
-            animals={animals}
-            onOpenAnimal={goToAnimal}
-            onBack={goBack}
-            onAddAnimal={() => setAddAnimalOpen(true)}
-            onRemoveAnimals={async (ids) => {
-              if (window.PashuSakhiApi) {
-                for (const id of ids) {
-                  try {
-                    await window.PashuSakhiApi.deleteAnimal(id);
-                  } catch (e) {
-                    console.warn('Backend deleteAnimal error:', e);
-                  }
-                }
-              }
-              setAnimals((prev) => prev.filter((a) => !ids.includes(a.id)));
-              showToast(t ? t("animal_removeSuccess") : "Selected animal(s) removed.");
-            }}
-            t={t}
-          />
-        )}
-
-        {addAnimalOpen && (
-          <AddAnimalModal
-            t={t}
-            onClose={() => setAddAnimalOpen(false)}
-            onSave={async (newAnimal) => {
-              let created = newAnimal;
-              if (window.PashuSakhiApi) {
-                try {
-                  const res = await window.PashuSakhiApi.createAnimal({
-                    name: newAnimal.name,
-                    species: newAnimal.species,
-                    breed: newAnimal.breed,
-                    ageMonths: (Number(newAnimal.age) || 3) * 12,
-                    gender: (newAnimal.gender || 'FEMALE').toUpperCase() === 'MALE' ? 'MALE' : 'FEMALE',
-                    healthStatus: (newAnimal.healthStatus || 'HEALTHY').toUpperCase()
-                  });
-                  if (res && res.success && res.data) {
-                    created = {
-                      ...newAnimal,
-                      id: res.data.id,
-                      backendId: res.data.id
-                    };
-                  }
-                } catch (apiErr) {
-                  console.warn('Backend createAnimal error:', apiErr);
-                }
-              }
-              setAnimals((prev) => [created, ...prev]);
-              setAddAnimalOpen(false);
-              showToast(t ? t("animal_addSuccess") : "Animal added successfully.");
-            }}
-          />
-        )}
-
-        {view === "upcomingVaccination" && (
-          <UpcomingVaccinationView
-            animals={upcomingVaccinations}
-            onBack={goBack}
-            onOpenAnimal={goToAnimal}
-            t={t}
-          />
-        )}
-
-        {view === "activeTreatment" && (
-          <ActiveTreatmentView
-            animals={activeTreatments}
-            onBack={goBack}
-            onOpenAnimal={goToAnimal}
-            t={t}
-          />
-        )}
- 
-        {view === "animalDetail" && selectedAnimalId && (
-          <AnimalDetailView
-            animal={animals.find((a) => a.id === selectedAnimalId)}
-            tab={detailTab}
-            setTab={setDetailTab}
-            onBack={goBack}
-            onScreen={() => navigate("screening", { selectedAnimalId, detailTab })}
-            onChat={() => openChat(selectedAnimalId)}
-            t={t}
-          />
-        )}
- 
-                {(view === "screening" || view === "aiHelp" || view === "diseaseDetection") && (
-          <AIHelpView
-            animals={animals}
-            preselectedId={selectedAnimalId}
-            setSelectedAnimalId={setSelectedAnimalId}
-            result={screeningResult}
-            setResult={setScreeningResult}
-            onDone={(targetAnimalId, res) => {
-              if (targetAnimalId && res) {
-                const todayStr = new Date().toISOString().split("T")[0];
-                setAnimals((prev) =>
-                  prev.map((a) => {
-                    if (a.id !== targetAnimalId) return a;
-                    const newEvent = {
-                      id: `h${Date.now()}`,
-                      type: "screening",
-                      label: "AI Help assessment completed",
-                      detail: res.title || res.possibleCondition,
-                      date: todayStr,
-                    };
-                    return {
-                      ...a,
-                      lastScreening: todayStr,
-                      healthStatus: res.level === "urgent" ? "urgent" : res.level === "attention" ? "attention" : a.healthStatus,
-                      history: [newEvent, ...a.history],
-                    };
-                  })
-                );
-              }
-              showToast("AI Help assessment saved to animal record.");
-            }}
-            t={t}
-            onBack={goBack}
-            onDiscussWithVet={discussScreeningWithVet}
-          />
-        )}
-
-        {view === "chat" && (
-          <ChatView
-            animals={animals}
-            selectedAnimalId={selectedAnimalId}
-            setSelectedAnimalId={setSelectedAnimalId}
-            chats={chats}
-            onSend={sendMessage}
-            onBack={goBack}
-            t={t}
-          />
-        )}
- 
-        {view === "notifications" && (
-          <NotificationsView notifications={notifications} onOpen={markNotificationRead} onBack={goBack} t={t} />
-        )}
- 
-        {view === "profile" && (
-          <ProfileView profile={profile} setProfile={setProfile} animalCount={animals.length} onSaved={() => showToast(t("toast_profileUpdated"))} onBack={goBack} t={t} />
-        )}
-
-        {view === "settings" && (
-          <SettingsView
-            t={t}
-            onBack={goBack}
-            onManageProfile={() => navigate("profile")}
-            language={language} setLanguage={setLanguage}
-            theme={theme} setTheme={setTheme}
-            textSize={textSize} setTextSize={setTextSize}
-            highContrast={highContrast} setHighContrast={setHighContrast}
-            notifPrefs={notifPrefs} setNotifPrefs={setNotifPrefs}
-            reminderTiming={reminderTiming} setReminderTiming={setReminderTiming}
-            onLogout={handleLogout}
-            onDeleteAccount={() => {
-              try {
-                localStorage.removeItem("psk_profile");
-                localStorage.removeItem("psk_notifications");
-                setProfile(DEFAULT_PROFILE);
-              } catch {}
-            }}
-            showToast={showToast}
-          />
-        )}
-      </main>
-
-      {/* ---------------- Mobile Bottom Navigation Bar (Phone view) ---------------- */}
-      <nav className="mobile-bottom-nav" aria-label="Mobile Navigation">
-        {BOTTOM_NAV.map((n) => {
-          const isActive = view === n.id || (view === "animalDetail" && n.id === "animals");
-          return (
-            <button
-              key={n.id}
-              type="button"
-              className={`bottom-nav-item ${isActive ? "active" : ""}`}
-              onClick={() => navigateTo(n.id)}
-              aria-label={n.label}
-              aria-current={isActive ? "page" : undefined}
-            >
-              <div className="bottom-nav-icon-wrapper">
-                <n.Icon size={20} />
-              </div>
-              <span className="bottom-nav-label">{n.label}</span>
-            </button>
-          );
-        })}
-      </nav>
-
- 
- 
-      {/* ---------------- Emergency modal ---------------- */}
-      {emergencyOpen && (
-        <EmergencyModal
-          animals={animals}
-          onClose={() => setEmergencyOpen(false)}
-          onContactVet={(animalName) => {
-            const an = animals.find((a) => a.name === animalName) || animals[0];
-            if (window.PashuSakhiApi) {
-              window.PashuSakhiApi.createEmergency({
-                animalId: an ? (an.backendId || an.id) : undefined,
-                title: `Emergency Call: ${animalName || "Livestock"} distress`,
-                description: `Emergency alert for ${animalName || "Livestock"} in ${profile.village || "Wagholi, Pune"}`,
-                severity: "HIGH",
-                location: profile.village || "Wagholi, Pune",
-                farmerPhone: profile.mobile || "+91 98765 43210"
-              }).catch(e => console.warn('Backend emergency log error:', e));
-            }
-            if (window.PashuSakhiBridge) {
-              window.PashuSakhiBridge.addEmergency({
-                animalId: an ? an.id : "a1",
-                animalName: animalName || (an ? an.name : "Animal"),
-                farmerName: profile.name || "Suresh Patil",
-                village: profile.village || "Wagholi, Pune",
-                contact: profile.mobile || "+91 98765 43210",
-                severity: "high",
-                status: "new",
-                title: `Emergency Call: ${animalName || "Livestock"} distress`,
-                time: "Just now"
-              });
-            }
-            showToast(t("toast_connectingVet"));
-            setEmergencyOpen(false);
-          }}
-          onStartConsult={(animalId) => {
-            const an = animals.find((a) => a.id === animalId) || animals[0];
-            if (window.PashuSakhiApi) {
-              window.PashuSakhiApi.createEmergency({
-                animalId: an ? (an.backendId || an.id) : undefined,
-                title: `Critical Emergency Consultation: ${an ? an.name : "Livestock"}`,
-                description: `Critical emergency triage required for ${an ? an.name : "Livestock"}`,
-                severity: "CRITICAL",
-                location: profile.village || "Wagholi, Pune",
-                farmerPhone: profile.mobile || "+91 98765 43210"
-              }).catch(e => console.warn('Backend emergency log error:', e));
-            }
-            if (window.PashuSakhiBridge) {
-              window.PashuSakhiBridge.addEmergency({
-                animalId: animalId || (an ? an.id : "a1"),
-                animalName: an ? an.name : "Animal",
-                farmerName: profile.name || "Suresh Patil",
-                village: profile.village || "Wagholi, Pune",
-                contact: profile.mobile || "+91 98765 43210",
-                severity: "critical",
-                status: "new",
-                title: `Critical Emergency Consultation: ${an ? an.name : "Livestock"}`,
-                time: "Just now"
-              });
-            }
-            setEmergencyOpen(false);
-            openChat(animalId);
-            showToast(t("toast_emergencyConsultStarted"));
-          }}
-          t={t}
-        />
-      )}
- 
-      {toast && <div className="toast" role="status" aria-live="polite">{toast}</div>}
-    </div>
-  );
+        `), /*#__PURE__*/React.createElement("header", {
+    className: "mobile-header"
+  }, /*#__PURE__*/React.createElement("button", {
+    ref: hamburgerBtnRef,
+    type: "button",
+    className: "hamburger-btn",
+    onClick: () => setDrawerOpen(true),
+    "aria-label": t("aria_openNavMenu") || "Open navigation menu",
+    "aria-expanded": drawerOpen,
+    "aria-controls": "mobile-navigation-drawer"
+  }, /*#__PURE__*/React.createElement(Menu, {
+    size: 22
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "mobile-header-brand"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "mark",
+    style: {
+      width: 30,
+      height: 30,
+      borderRadius: 8,
+      background: "transparent",
+      overflow: "hidden"
+    }
+  }, /*#__PURE__*/React.createElement("img", {
+    src: PASHU_SAKHI_LOGO,
+    alt: "Pashu Sakhi logo",
+    style: {
+      width: "100%",
+      height: "100%",
+      objectFit: "cover",
+      display: "block"
+    }
+  })), /*#__PURE__*/React.createElement("span", {
+    className: "mobile-header-title"
+  }, "Pashu Sakhi")), /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: "header-emergency-btn",
+    onClick: () => setEmergencyOpen(true)
+  }, /*#__PURE__*/React.createElement(AlertTriangle, {
+    size: 16
+  }), " ", t ? t("common_emergency") : "Emergency")), drawerOpen && /*#__PURE__*/React.createElement("div", {
+    className: "drawer-overlay",
+    onClick: () => setDrawerOpen(false)
+  }, /*#__PURE__*/React.createElement("aside", {
+    id: "mobile-navigation-drawer",
+    ref: drawerRef,
+    className: "mobile-drawer",
+    role: "dialog",
+    "aria-modal": "true",
+    "aria-label": t("aria_navMenu") || "Navigation menu",
+    onClick: e => e.stopPropagation()
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "drawer-header"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "sidebar-brand",
+    style: {
+      padding: 0
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "mark",
+    style: {
+      background: "transparent",
+      overflow: "hidden"
+    }
+  }, /*#__PURE__*/React.createElement("img", {
+    src: PASHU_SAKHI_LOGO,
+    alt: "Pashu Sakhi logo",
+    style: {
+      width: "100%",
+      height: "100%",
+      objectFit: "cover",
+      display: "block"
+    }
+  })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    className: "name",
+    style: {
+      color: "var(--ink)"
+    }
+  }, "Pashu Sakhi"), /*#__PURE__*/React.createElement("div", {
+    className: "tag",
+    style: {
+      color: "var(--ink-soft)"
+    }
+  }, t("brand_tagline") || "Livestock health companion"))), /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    ref: drawerCloseBtnRef,
+    className: "drawer-close",
+    onClick: () => closeDrawer(true),
+    "aria-label": t("aria_closeMenu") || "Close menu"
+  }, /*#__PURE__*/React.createElement(X, {
+    size: 20
+  }))), /*#__PURE__*/React.createElement("nav", {
+    "aria-label": t("aria_navMenu") || "Navigation menu",
+    className: "drawer-nav"
+  }, DRAWER_NAV.map(n => {
+    const isActive = view === n.id || view === "animalDetail" && n.id === "animals";
+    return /*#__PURE__*/React.createElement("button", {
+      key: n.id,
+      type: "button",
+      className: `drawer-item ${isActive ? "active" : ""}`,
+      onClick: n.onClick,
+      "aria-current": isActive ? "page" : undefined
+    }, /*#__PURE__*/React.createElement(n.Icon, {
+      size: 19
+    }), n.label, n.id === "notifications" && unreadCount > 0 && /*#__PURE__*/React.createElement("span", {
+      className: "nav-badge"
+    }, unreadCount));
+  })), /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: "drawer-emergency",
+    onClick: () => {
+      closeDrawer(false);
+      setEmergencyOpen(true);
+    }
+  }, /*#__PURE__*/React.createElement(AlertTriangle, {
+    size: 18
+  }), t("common_emergency")))), /*#__PURE__*/React.createElement("aside", {
+    className: "sidebar"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "sidebar-brand"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "mark",
+    style: {
+      background: "transparent",
+      overflow: "hidden"
+    }
+  }, /*#__PURE__*/React.createElement("img", {
+    src: PASHU_SAKHI_LOGO,
+    alt: "Pashu Sakhi logo",
+    style: {
+      width: "100%",
+      height: "100%",
+      objectFit: "cover",
+      display: "block"
+    }
+  })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    className: "name"
+  }, "Pashu Sakhi"), /*#__PURE__*/React.createElement("div", {
+    className: "tag"
+  }, t("brand_tagline") || "Livestock health companion"))), NAV.map(n => /*#__PURE__*/React.createElement("button", {
+    key: n.id,
+    className: `nav-item ${view === n.id || view === "animalDetail" && n.id === "animals" ? "active" : ""}`,
+    onClick: () => navigateTo(n.id)
+  }, /*#__PURE__*/React.createElement(n.Icon, {
+    size: 18
+  }), n.label, n.id === "notifications" && unreadCount > 0 && /*#__PURE__*/React.createElement("span", {
+    className: "nav-badge"
+  }, unreadCount))), /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: "sidebar-emergency",
+    onClick: () => setEmergencyOpen(true)
+  }, /*#__PURE__*/React.createElement(AlertTriangle, {
+    size: 18
+  }), t("common_emergency"))), /*#__PURE__*/React.createElement("main", {
+    className: "main"
+  }, view === "dashboard" && /*#__PURE__*/React.createElement(DashboardView, {
+    t: t,
+    profile: profile,
+    summary: summary,
+    upcomingVaccinations: upcomingVaccinations,
+    activeTreatments: activeTreatments,
+    onOpenAnimal: goToAnimal,
+    onOpenEmergency: () => setEmergencyOpen(true),
+    unreadCount: unreadCount,
+    onOpenNotifications: () => navigate("notifications"),
+    onSeeAllAnimals: () => navigate("animals"),
+    onUpcomingVaccination: () => navigate("upcomingVaccination"),
+    onActiveTreatment: () => navigate("activeTreatment"),
+    onQuickAccess: {
+      animals: () => navigate("animals"),
+      screening: () => navigate("screening"),
+      chat: () => navigate("chat")
+    }
+  }), view === "animals" && /*#__PURE__*/React.createElement(AnimalsView, {
+    animals: animals,
+    onOpenAnimal: goToAnimal,
+    onBack: goBack,
+    onAddAnimal: () => setAddAnimalOpen(true),
+    onRemoveAnimals: async ids => {
+      if (window.PashuSakhiApi) {
+        for (const id of ids) {
+          try {
+            await window.PashuSakhiApi.deleteAnimal(id);
+          } catch (e) {
+            console.warn('Backend deleteAnimal error:', e);
+          }
+        }
+      }
+      setAnimals(prev => prev.filter(a => !ids.includes(a.id)));
+      showToast(t ? t("animal_removeSuccess") : "Selected animal(s) removed.");
+    },
+    t: t
+  }), addAnimalOpen && /*#__PURE__*/React.createElement(AddAnimalModal, {
+    t: t,
+    onClose: () => setAddAnimalOpen(false),
+    onSave: async newAnimal => {
+      let created = newAnimal;
+      if (window.PashuSakhiApi) {
+        try {
+          const res = await window.PashuSakhiApi.createAnimal({
+            name: newAnimal.name,
+            species: newAnimal.species,
+            breed: newAnimal.breed,
+            ageMonths: (Number(newAnimal.age) || 3) * 12,
+            gender: (newAnimal.gender || 'FEMALE').toUpperCase() === 'MALE' ? 'MALE' : 'FEMALE',
+            healthStatus: (newAnimal.healthStatus || 'HEALTHY').toUpperCase()
+          });
+          if (res && res.success && res.data) {
+            created = {
+              ...newAnimal,
+              id: res.data.id,
+              backendId: res.data.id
+            };
+          }
+        } catch (apiErr) {
+          console.warn('Backend createAnimal error:', apiErr);
+        }
+      }
+      setAnimals(prev => [created, ...prev]);
+      setAddAnimalOpen(false);
+      showToast(t ? t("animal_addSuccess") : "Animal added successfully.");
+    }
+  }), view === "upcomingVaccination" && /*#__PURE__*/React.createElement(UpcomingVaccinationView, {
+    animals: upcomingVaccinations,
+    onBack: goBack,
+    onOpenAnimal: goToAnimal,
+    t: t
+  }), view === "activeTreatment" && /*#__PURE__*/React.createElement(ActiveTreatmentView, {
+    animals: activeTreatments,
+    onBack: goBack,
+    onOpenAnimal: goToAnimal,
+    t: t
+  }), view === "animalDetail" && selectedAnimalId && /*#__PURE__*/React.createElement(AnimalDetailView, {
+    animal: animals.find(a => a.id === selectedAnimalId),
+    tab: detailTab,
+    setTab: setDetailTab,
+    onBack: goBack,
+    onScreen: () => navigate("screening", {
+      selectedAnimalId,
+      detailTab
+    }),
+    onChat: () => openChat(selectedAnimalId),
+    t: t
+  }), (view === "screening" || view === "aiHelp" || view === "diseaseDetection") && /*#__PURE__*/React.createElement(AIHelpView, {
+    animals: animals,
+    preselectedId: selectedAnimalId,
+    setSelectedAnimalId: setSelectedAnimalId,
+    result: screeningResult,
+    setResult: setScreeningResult,
+    onDone: (targetAnimalId, res) => {
+      if (targetAnimalId && res) {
+        const todayStr = new Date().toISOString().split("T")[0];
+        setAnimals(prev => prev.map(a => {
+          if (a.id !== targetAnimalId) return a;
+          const newEvent = {
+            id: `h${Date.now()}`,
+            type: "screening",
+            label: "AI Help assessment completed",
+            detail: res.title || res.possibleCondition,
+            date: todayStr
+          };
+          return {
+            ...a,
+            lastScreening: todayStr,
+            healthStatus: res.level === "urgent" ? "urgent" : res.level === "attention" ? "attention" : a.healthStatus,
+            history: [newEvent, ...a.history]
+          };
+        }));
+      }
+      showToast("AI Help assessment saved to animal record.");
+    },
+    t: t,
+    onBack: goBack,
+    onDiscussWithVet: discussScreeningWithVet
+  }), view === "chat" && /*#__PURE__*/React.createElement(ChatView, {
+    animals: animals,
+    selectedAnimalId: selectedAnimalId,
+    setSelectedAnimalId: setSelectedAnimalId,
+    chats: chats,
+    onSend: sendMessage,
+    onBack: goBack,
+    t: t
+  }), view === "notifications" && /*#__PURE__*/React.createElement(NotificationsView, {
+    notifications: notifications,
+    onOpen: markNotificationRead,
+    onBack: goBack,
+    t: t
+  }), view === "profile" && /*#__PURE__*/React.createElement(ProfileView, {
+    profile: profile,
+    setProfile: setProfile,
+    animalCount: animals.length,
+    onSaved: () => showToast(t("toast_profileUpdated")),
+    onBack: goBack,
+    t: t
+  }), view === "settings" && /*#__PURE__*/React.createElement(SettingsView, {
+    t: t,
+    onBack: goBack,
+    onManageProfile: () => navigate("profile"),
+    language: language,
+    setLanguage: setLanguage,
+    theme: theme,
+    setTheme: setTheme,
+    textSize: textSize,
+    setTextSize: setTextSize,
+    highContrast: highContrast,
+    setHighContrast: setHighContrast,
+    notifPrefs: notifPrefs,
+    setNotifPrefs: setNotifPrefs,
+    reminderTiming: reminderTiming,
+    setReminderTiming: setReminderTiming,
+    onLogout: handleLogout,
+    onDeleteAccount: () => {
+      try {
+        localStorage.removeItem("psk_profile");
+        localStorage.removeItem("psk_notifications");
+        setProfile(DEFAULT_PROFILE);
+      } catch {}
+    },
+    showToast: showToast
+  })), /*#__PURE__*/React.createElement("nav", {
+    className: "mobile-bottom-nav",
+    "aria-label": "Mobile Navigation"
+  }, BOTTOM_NAV.map(n => {
+    const isActive = view === n.id || view === "animalDetail" && n.id === "animals";
+    return /*#__PURE__*/React.createElement("button", {
+      key: n.id,
+      type: "button",
+      className: `bottom-nav-item ${isActive ? "active" : ""}`,
+      onClick: () => navigateTo(n.id),
+      "aria-label": n.label,
+      "aria-current": isActive ? "page" : undefined
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "bottom-nav-icon-wrapper"
+    }, /*#__PURE__*/React.createElement(n.Icon, {
+      size: 20
+    })), /*#__PURE__*/React.createElement("span", {
+      className: "bottom-nav-label"
+    }, n.label));
+  })), emergencyOpen && /*#__PURE__*/React.createElement(EmergencyModal, {
+    animals: animals,
+    onClose: () => setEmergencyOpen(false),
+    onContactVet: animalName => {
+      const an = animals.find(a => a.name === animalName) || animals[0];
+      if (window.PashuSakhiApi) {
+        window.PashuSakhiApi.createEmergency({
+          animalId: an ? an.backendId || an.id : undefined,
+          title: `Emergency Call: ${animalName || "Livestock"} distress`,
+          description: `Emergency alert for ${animalName || "Livestock"} in ${profile.village || "Wagholi, Pune"}`,
+          severity: "HIGH",
+          location: profile.village || "Wagholi, Pune",
+          farmerPhone: profile.mobile || "+91 98765 43210"
+        }).catch(e => console.warn('Backend emergency log error:', e));
+      }
+      if (window.PashuSakhiBridge) {
+        window.PashuSakhiBridge.addEmergency({
+          animalId: an ? an.id : "a1",
+          animalName: animalName || (an ? an.name : "Animal"),
+          farmerName: profile.name || "Suresh Patil",
+          village: profile.village || "Wagholi, Pune",
+          contact: profile.mobile || "+91 98765 43210",
+          severity: "high",
+          status: "new",
+          title: `Emergency Call: ${animalName || "Livestock"} distress`,
+          time: "Just now"
+        });
+      }
+      showToast(t("toast_connectingVet"));
+      setEmergencyOpen(false);
+    },
+    onStartConsult: animalId => {
+      const an = animals.find(a => a.id === animalId) || animals[0];
+      if (window.PashuSakhiApi) {
+        window.PashuSakhiApi.createEmergency({
+          animalId: an ? an.backendId || an.id : undefined,
+          title: `Critical Emergency Consultation: ${an ? an.name : "Livestock"}`,
+          description: `Critical emergency triage required for ${an ? an.name : "Livestock"}`,
+          severity: "CRITICAL",
+          location: profile.village || "Wagholi, Pune",
+          farmerPhone: profile.mobile || "+91 98765 43210"
+        }).catch(e => console.warn('Backend emergency log error:', e));
+      }
+      if (window.PashuSakhiBridge) {
+        window.PashuSakhiBridge.addEmergency({
+          animalId: animalId || (an ? an.id : "a1"),
+          animalName: an ? an.name : "Animal",
+          farmerName: profile.name || "Suresh Patil",
+          village: profile.village || "Wagholi, Pune",
+          contact: profile.mobile || "+91 98765 43210",
+          severity: "critical",
+          status: "new",
+          title: `Critical Emergency Consultation: ${an ? an.name : "Livestock"}`,
+          time: "Just now"
+        });
+      }
+      setEmergencyOpen(false);
+      openChat(animalId);
+      showToast(t("toast_emergencyConsultStarted"));
+    },
+    t: t
+  }), toast && /*#__PURE__*/React.createElement("div", {
+    className: "toast",
+    role: "status",
+    "aria-live": "polite"
+  }, toast));
 }
- 
+
 /* ------------------------------------------------------------------ */
 /* Dashboard view                                                      */
 /* ------------------------------------------------------------------ */
-function DashboardView({ profile, summary, upcomingVaccinations, activeTreatments, onOpenAnimal, onOpenEmergency, unreadCount, onOpenNotifications, onSeeAllAnimals, onUpcomingVaccination, onActiveTreatment, onQuickAccess, t }) {
-  const summaryText = t
-    ? `${summary.healthy} ${t("dash_healthy")}, ${summary.underTreatment} ${t("dash_underTreatment")}, ${summary.vaccDue} ${t("dash_vaccDue")}`
-    : `${summary.healthy} animal${summary.healthy === 1 ? "" : "s"} healthy, ${summary.underTreatment} under treatment, ${summary.vaccDue} vaccination${summary.vaccDue === 1 ? "" : "s"} due`;
-
-  const quickAccessItems = [
-    { id: "animals", label: t ? t("nav_myAnimals") : "My Animals", Icon: PawPrint, bg: "var(--brand-soft)", color: "var(--brand-fg, var(--brand))", onClick: onQuickAccess.animals },
-    { id: "aiHelp", label: t ? t("nav_aiHelp", "AI Help") : "AI Help", Icon: Sparkles, bg: "var(--healthy-soft)", color: "var(--healthy-fg, var(--healthy))", onClick: onQuickAccess.aiHelp || onQuickAccess.screening },
-    { id: "chat", label: t ? t("nav_chatWithVet") : "Chat with Vet", Icon: MessageCircle, bg: "var(--brand-soft)", color: "var(--brand-ink, var(--brand-dark))", onClick: onQuickAccess.chat },
-    { id: "guidance", label: t ? t("nav_ivr", "IVR") : "IVR", Icon: Phone, bg: "var(--urgent-soft)", color: "var(--urgent-fg, var(--urgent))", onClick: onOpenEmergency },
-  ];
-
-  return (
-    <div>
-      <div className="topbar">
-        <div>
-          <h1 className="greeting">{t ? t("dash_greeting") : "Namaste"}, {profile.name.split(" ")[0]}</h1>
-          <p className="greeting-sub">{t ? t("dash_greetingSub") : "Here's how your animals are doing today."}</p>
-        </div>
-
-      </div>
-
-      <div className="summary-banner">
-        <div className="icon-wrap"><HeartPulse size={26} /></div>
-        <div>
-          <p>{summaryText}</p>
-          <div className="sub">{t ? t("dash_outOfRegistered") : `Out of ${summary.total} registered animals`} ({summary.total})</div>
-        </div>
-      </div>
-
-      <div className="grid-2">
-        <div>
-          <div
-            onClick={onUpcomingVaccination}
-            style={{ cursor: "pointer" }}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onUpcomingVaccination && onUpcomingVaccination(); } }}
-            aria-label={t ? t("nav_upcomingVaccination") : "Upcoming vaccination"}
-          >
-            <SectionTitle>
-              {t ? t("nav_upcomingVaccination") : "Upcoming vaccination"}
-            </SectionTitle>
-          </div>
-          {upcomingVaccinations.length === 0 ? (
-            <Card><p style={{ margin: 0, color: "var(--ink-soft)" }}>{t ? t("dash_noVaccinationsDue") : "No vaccinations due right now."}</p></Card>
-          ) : upcomingVaccinations.map((a) => (
-            <Card key={a.id} className="animal-row" onClick={() => onOpenAnimal(a.id, "vaccination")} style={{ marginBottom: 10 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 13, width: "100%" }}>
-                <div style={{ width: 42, height: 42, borderRadius: 11, background: "var(--accent-soft)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                  <Syringe size={19} color="var(--accent)" />
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <p className="animal-row-name">{a.name}</p>
-                  <p className="animal-row-meta">{a.vaccination.name}, {t ? t("dash_due") : "Due"} {formatDate(a.vaccination.dueDate)}</p>
-                </div>
-                <ChevronRight size={18} color="var(--ink-soft)" />
-              </div>
-            </Card>
-          ))}
-        </div>
-
-        <div>
-          <div
-            onClick={onActiveTreatment}
-            style={{ cursor: "pointer" }}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onActiveTreatment && onActiveTreatment(); } }}
-            aria-label={t ? t("nav_activeTreatment") : "Active treatment"}
-          >
-            <SectionTitle>
-              {t ? t("nav_activeTreatment") : "Active treatment"}
-            </SectionTitle>
-          </div>
-          {activeTreatments.length === 0 ? (
-            <Card><p style={{ margin: 0, color: "var(--ink-soft)" }}>{t ? t("dash_noActiveTreatments") : "No animals are under treatment right now."}</p></Card>
-          ) : activeTreatments.map((a) => (
-            <Card key={a.id} className="animal-row" onClick={() => onOpenAnimal(a.id, "treatment")} style={{ marginBottom: 10 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 13, width: "100%" }}>
-                <div style={{ width: 42, height: 42, borderRadius: 11, background: "var(--attention-soft)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                  <Stethoscope size={19} color="var(--attention-fg, var(--attention))" />
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <p className="animal-row-name">{a.name}</p>
-                  <p className="animal-row-meta">{a.treatment.condition}, {t ? t("dash_followUp") : "Follow-up"} {relativeDay(a.treatment.followUp, t)}</p>
-                </div>
-                <ChevronRight size={18} color="var(--ink-soft)" />
-              </div>
-            </Card>
-          ))}
-        </div>
-      </div>
-
-      <SectionTitle>{t ? t("dash_quickAccess") : "Quick Access"}</SectionTitle>
-      <div className="quick-access-grid">
-        {quickAccessItems.map((item) => (
-          <Card key={item.id} className="quick-access-card" onClick={item.onClick}>
-            <div className="qa-icon" style={{ background: item.bg }}>
-              <item.Icon size={21} color={item.color} />
-            </div>
-            <p className="qa-label">{item.label}</p>
-          </Card>
-        ))}
-      </div>
-    </div>
-  );
+function DashboardView({
+  profile,
+  summary,
+  upcomingVaccinations,
+  activeTreatments,
+  onOpenAnimal,
+  onOpenEmergency,
+  unreadCount,
+  onOpenNotifications,
+  onSeeAllAnimals,
+  onUpcomingVaccination,
+  onActiveTreatment,
+  onQuickAccess,
+  t
+}) {
+  const summaryText = t ? `${summary.healthy} ${t("dash_healthy")}, ${summary.underTreatment} ${t("dash_underTreatment")}, ${summary.vaccDue} ${t("dash_vaccDue")}` : `${summary.healthy} animal${summary.healthy === 1 ? "" : "s"} healthy, ${summary.underTreatment} under treatment, ${summary.vaccDue} vaccination${summary.vaccDue === 1 ? "" : "s"} due`;
+  const quickAccessItems = [{
+    id: "animals",
+    label: t ? t("nav_myAnimals") : "My Animals",
+    Icon: PawPrint,
+    bg: "var(--brand-soft)",
+    color: "var(--brand-fg, var(--brand))",
+    onClick: onQuickAccess.animals
+  }, {
+    id: "aiHelp",
+    label: t ? t("nav_aiHelp", "AI Help") : "AI Help",
+    Icon: Sparkles,
+    bg: "var(--healthy-soft)",
+    color: "var(--healthy-fg, var(--healthy))",
+    onClick: onQuickAccess.aiHelp || onQuickAccess.screening
+  }, {
+    id: "chat",
+    label: t ? t("nav_chatWithVet") : "Chat with Vet",
+    Icon: MessageCircle,
+    bg: "var(--brand-soft)",
+    color: "var(--brand-ink, var(--brand-dark))",
+    onClick: onQuickAccess.chat
+  }, {
+    id: "guidance",
+    label: t ? t("nav_ivr", "IVR") : "IVR",
+    Icon: Phone,
+    bg: "var(--urgent-soft)",
+    color: "var(--urgent-fg, var(--urgent))",
+    onClick: onOpenEmergency
+  }];
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    className: "topbar"
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h1", {
+    className: "greeting"
+  }, t ? t("dash_greeting") : "Namaste", ", ", profile.name.split(" ")[0]), /*#__PURE__*/React.createElement("p", {
+    className: "greeting-sub"
+  }, t ? t("dash_greetingSub") : "Here's how your animals are doing today."))), /*#__PURE__*/React.createElement("div", {
+    className: "summary-banner"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "icon-wrap"
+  }, /*#__PURE__*/React.createElement(HeartPulse, {
+    size: 26
+  })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", null, summaryText), /*#__PURE__*/React.createElement("div", {
+    className: "sub"
+  }, t ? t("dash_outOfRegistered") : `Out of ${summary.total} registered animals`, " (", summary.total, ")"))), /*#__PURE__*/React.createElement("div", {
+    className: "grid-2"
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    onClick: onUpcomingVaccination,
+    style: {
+      cursor: "pointer"
+    },
+    role: "button",
+    tabIndex: 0,
+    onKeyDown: e => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        onUpcomingVaccination && onUpcomingVaccination();
+      }
+    },
+    "aria-label": t ? t("nav_upcomingVaccination") : "Upcoming vaccination"
+  }, /*#__PURE__*/React.createElement(SectionTitle, null, t ? t("nav_upcomingVaccination") : "Upcoming vaccination")), upcomingVaccinations.length === 0 ? /*#__PURE__*/React.createElement(Card, null, /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      color: "var(--ink-soft)"
+    }
+  }, t ? t("dash_noVaccinationsDue") : "No vaccinations due right now.")) : upcomingVaccinations.map(a => /*#__PURE__*/React.createElement(Card, {
+    key: a.id,
+    className: "animal-row",
+    onClick: () => onOpenAnimal(a.id, "vaccination"),
+    style: {
+      marginBottom: 10
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 13,
+      width: "100%"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: 42,
+      height: 42,
+      borderRadius: 11,
+      background: "var(--accent-soft)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      flexShrink: 0
+    }
+  }, /*#__PURE__*/React.createElement(Syringe, {
+    size: 19,
+    color: "var(--accent)"
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1,
+      minWidth: 0
+    }
+  }, /*#__PURE__*/React.createElement("p", {
+    className: "animal-row-name"
+  }, a.name), /*#__PURE__*/React.createElement("p", {
+    className: "animal-row-meta"
+  }, a.vaccination.name, ", ", t ? t("dash_due") : "Due", " ", formatDate(a.vaccination.dueDate))), /*#__PURE__*/React.createElement(ChevronRight, {
+    size: 18,
+    color: "var(--ink-soft)"
+  }))))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    onClick: onActiveTreatment,
+    style: {
+      cursor: "pointer"
+    },
+    role: "button",
+    tabIndex: 0,
+    onKeyDown: e => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        onActiveTreatment && onActiveTreatment();
+      }
+    },
+    "aria-label": t ? t("nav_activeTreatment") : "Active treatment"
+  }, /*#__PURE__*/React.createElement(SectionTitle, null, t ? t("nav_activeTreatment") : "Active treatment")), activeTreatments.length === 0 ? /*#__PURE__*/React.createElement(Card, null, /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      color: "var(--ink-soft)"
+    }
+  }, t ? t("dash_noActiveTreatments") : "No animals are under treatment right now.")) : activeTreatments.map(a => /*#__PURE__*/React.createElement(Card, {
+    key: a.id,
+    className: "animal-row",
+    onClick: () => onOpenAnimal(a.id, "treatment"),
+    style: {
+      marginBottom: 10
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 13,
+      width: "100%"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: 42,
+      height: 42,
+      borderRadius: 11,
+      background: "var(--attention-soft)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      flexShrink: 0
+    }
+  }, /*#__PURE__*/React.createElement(Stethoscope, {
+    size: 19,
+    color: "var(--attention-fg, var(--attention))"
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1,
+      minWidth: 0
+    }
+  }, /*#__PURE__*/React.createElement("p", {
+    className: "animal-row-name"
+  }, a.name), /*#__PURE__*/React.createElement("p", {
+    className: "animal-row-meta"
+  }, a.treatment.condition, ", ", t ? t("dash_followUp") : "Follow-up", " ", relativeDay(a.treatment.followUp, t))), /*#__PURE__*/React.createElement(ChevronRight, {
+    size: 18,
+    color: "var(--ink-soft)"
+  })))))), /*#__PURE__*/React.createElement(SectionTitle, null, t ? t("dash_quickAccess") : "Quick Access"), /*#__PURE__*/React.createElement("div", {
+    className: "quick-access-grid"
+  }, quickAccessItems.map(item => /*#__PURE__*/React.createElement(Card, {
+    key: item.id,
+    className: "quick-access-card",
+    onClick: item.onClick
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "qa-icon",
+    style: {
+      background: item.bg
+    }
+  }, /*#__PURE__*/React.createElement(item.Icon, {
+    size: 21,
+    color: item.color
+  })), /*#__PURE__*/React.createElement("p", {
+    className: "qa-label"
+  }, item.label)))));
 }
-
-function ActivityIcon({ type }) {
+function ActivityIcon({
+  type
+}) {
   const map = {
-    vaccination: { Icon: Syringe, bg: "var(--accent-soft)", color: "var(--accent)" },
-    treatment: { Icon: Stethoscope, bg: "var(--attention-soft)", color: "var(--attention-fg, var(--attention))" },
-    screening: { Icon: Activity, bg: "var(--brand-soft)", color: "var(--brand-fg, var(--brand))" },
-    consultation: { Icon: MessageCircle, bg: "var(--healthy-soft)", color: "var(--healthy-fg, var(--healthy))" },
-    checkup: { Icon: ClipboardList, bg: "var(--brand-soft)", color: "var(--brand-fg, var(--brand))" },
+    vaccination: {
+      Icon: Syringe,
+      bg: "var(--accent-soft)",
+      color: "var(--accent)"
+    },
+    treatment: {
+      Icon: Stethoscope,
+      bg: "var(--attention-soft)",
+      color: "var(--attention-fg, var(--attention))"
+    },
+    screening: {
+      Icon: Activity,
+      bg: "var(--brand-soft)",
+      color: "var(--brand-fg, var(--brand))"
+    },
+    consultation: {
+      Icon: MessageCircle,
+      bg: "var(--healthy-soft)",
+      color: "var(--healthy-fg, var(--healthy))"
+    },
+    checkup: {
+      Icon: ClipboardList,
+      bg: "var(--brand-soft)",
+      color: "var(--brand-fg, var(--brand))"
+    }
   };
   const c = map[type] || map.checkup;
-  const { Icon } = c;
-  return (
-    <div style={{ width: 40, height: 40, borderRadius: 10, background: c.bg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-      <Icon size={18} color={c.color} />
-    </div>
-  );
+  const {
+    Icon
+  } = c;
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: 40,
+      height: 40,
+      borderRadius: 10,
+      background: c.bg,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      flexShrink: 0
+    }
+  }, /*#__PURE__*/React.createElement(Icon, {
+    size: 18,
+    color: c.color
+  }));
 }
 
 /* ------------------------------------------------------------------ */
 /* Animals list view                                                   */
 /* ------------------------------------------------------------------ */
-function AnimalsView({ animals, onOpenAnimal, onBack, onAddAnimal, onRemoveAnimals, t }) {
+function AnimalsView({
+  animals,
+  onOpenAnimal,
+  onBack,
+  onAddAnimal,
+  onRemoveAnimals,
+  t
+}) {
   const [sortBy, setSortBy] = useState(() => {
     try {
       return localStorage.getItem("psk_animalSort") || "recent";
@@ -6538,43 +6943,36 @@ function AnimalsView({ animals, onOpenAnimal, onBack, onAddAnimal, onRemoveAnima
       return "recent";
     }
   });
-
   useEffect(() => {
     try {
       localStorage.setItem("psk_animalSort", sortBy);
     } catch {}
   }, [sortBy]);
-
   const [removeMode, setRemoveMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [confirmRemoveOpen, setConfirmRemoveOpen] = useState(false);
   const [selectionNotice, setSelectionNotice] = useState("");
-
   useEffect(() => {
     if (!selectionNotice) return;
     const timer = setTimeout(() => setSelectionNotice(""), 3000);
     return () => clearTimeout(timer);
   }, [selectionNotice]);
-
   const toggleRemoveMode = () => {
-    setRemoveMode((prev) => {
+    setRemoveMode(prev => {
       const next = !prev;
       if (!next) setSelectedIds(new Set());
       setSelectionNotice("");
       return next;
     });
   };
-
-  const toggleSelected = (id) => {
-    setSelectedIds((prev) => {
+  const toggleSelected = id => {
+    setSelectedIds(prev => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (next.has(id)) next.delete(id);else next.add(id);
       return next;
     });
     setSelectionNotice("");
   };
-
   const handleRemoveSelectedClick = () => {
     if (selectedIds.size === 0) {
       setSelectionNotice(t ? t("animal_removeNoneSelected") : "Select at least one animal to remove.");
@@ -6582,7 +6980,6 @@ function AnimalsView({ animals, onOpenAnimal, onBack, onAddAnimal, onRemoveAnima
     }
     setConfirmRemoveOpen(true);
   };
-
   const confirmRemove = () => {
     onRemoveAnimals && onRemoveAnimals(Array.from(selectedIds));
     setConfirmRemoveOpen(false);
@@ -6590,38 +6987,59 @@ function AnimalsView({ animals, onOpenAnimal, onBack, onAddAnimal, onRemoveAnima
     setSelectedIds(new Set());
     setSelectionNotice("");
   };
-
   const [selectedType, setSelectedType] = useState("all");
-
   const animalCounts = useMemo(() => {
     const list = Array.isArray(animals) ? animals : [];
-    const c = { all: list.length, cows: 0, buffaloes: 0, goats: 0, sheep: 0, chicken: 0 };
-    list.forEach((a) => {
+    const c = {
+      all: list.length,
+      cows: 0,
+      buffaloes: 0,
+      goats: 0,
+      sheep: 0,
+      chicken: 0
+    };
+    list.forEach(a => {
       const s = (a.species || "").toLowerCase();
-      if (s === "cow" || s === "cows") c.cows++;
-      else if (s === "buffalo" || s === "buffaloes") c.buffaloes++;
-      else if (s === "goat" || s === "goats") c.goats++;
-      else if (s === "sheep") c.sheep++;
-      else if (s === "chicken" || s === "chickens" || s === "poultry") c.chicken++;
+      if (s === "cow" || s === "cows") c.cows++;else if (s === "buffalo" || s === "buffaloes") c.buffaloes++;else if (s === "goat" || s === "goats") c.goats++;else if (s === "sheep") c.sheep++;else if (s === "chicken" || s === "chickens" || s === "poultry") c.chicken++;
     });
     return c;
   }, [animals]);
-
-  const animalTypes = [
-    { id: "all", label: t ? t("animal_type_all") : "All", Icon: PawPrint, count: animalCounts.all },
-    { id: "cows", label: t ? t("animal_type_cows") : "Cows", Icon: CowIcon, count: animalCounts.cows },
-    { id: "buffaloes", label: t ? t("animal_type_buffaloes") : "Buffaloes", Icon: BuffaloIcon, count: animalCounts.buffaloes },
-    { id: "goats", label: t ? t("animal_type_goats") : "Goats", Icon: GoatIcon, count: animalCounts.goats },
-    { id: "sheep", label: t ? t("animal_type_sheep") : "Sheep", Icon: SheepIcon, count: animalCounts.sheep },
-    { id: "chicken", label: t ? t("animal_type_chicken") : "Chicken", Icon: ChickenIcon, count: animalCounts.chicken },
-  ];
-
+  const animalTypes = [{
+    id: "all",
+    label: t ? t("animal_type_all") : "All",
+    Icon: PawPrint,
+    count: animalCounts.all
+  }, {
+    id: "cows",
+    label: t ? t("animal_type_cows") : "Cows",
+    Icon: CowIcon,
+    count: animalCounts.cows
+  }, {
+    id: "buffaloes",
+    label: t ? t("animal_type_buffaloes") : "Buffaloes",
+    Icon: BuffaloIcon,
+    count: animalCounts.buffaloes
+  }, {
+    id: "goats",
+    label: t ? t("animal_type_goats") : "Goats",
+    Icon: GoatIcon,
+    count: animalCounts.goats
+  }, {
+    id: "sheep",
+    label: t ? t("animal_type_sheep") : "Sheep",
+    Icon: SheepIcon,
+    count: animalCounts.sheep
+  }, {
+    id: "chicken",
+    label: t ? t("animal_type_chicken") : "Chicken",
+    Icon: ChickenIcon,
+    count: animalCounts.chicken
+  }];
   const sortedAnimals = useMemo(() => {
     if (!Array.isArray(animals)) return [];
     let copy = [...animals];
-
     if (selectedType !== "all") {
-      copy = copy.filter((a) => {
+      copy = copy.filter(a => {
         const s = (a.species || "").toLowerCase();
         if (selectedType === "cows") return s === "cow" || s === "cows";
         if (selectedType === "buffaloes") return s === "buffalo" || s === "buffaloes";
@@ -6631,40 +7049,29 @@ function AnimalsView({ animals, onOpenAnimal, onBack, onAddAnimal, onRemoveAnima
         return true;
       });
     }
-
     switch (sortBy) {
       case "name":
         return copy.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
-
       case "health":
         return copy.sort((a, b) => {
-          const aAttn = (a.healthStatus && a.healthStatus !== "healthy") ||
-                        Boolean(a.treatment) ||
-                        Boolean(a.vaccination && a.vaccination.dueDate && daysUntil(a.vaccination.dueDate) <= 0);
-          const bAttn = (b.healthStatus && b.healthStatus !== "healthy") ||
-                        Boolean(b.treatment) ||
-                        Boolean(b.vaccination && b.vaccination.dueDate && daysUntil(b.vaccination.dueDate) <= 0);
-
+          const aAttn = a.healthStatus && a.healthStatus !== "healthy" || Boolean(a.treatment) || Boolean(a.vaccination && a.vaccination.dueDate && daysUntil(a.vaccination.dueDate) <= 0);
+          const bAttn = b.healthStatus && b.healthStatus !== "healthy" || Boolean(b.treatment) || Boolean(b.vaccination && b.vaccination.dueDate && daysUntil(b.vaccination.dueDate) <= 0);
           if (aAttn && !bAttn) return -1;
           if (!aAttn && bAttn) return 1;
-
           if (aAttn && bAttn) {
             if (a.healthStatus === "urgent" && b.healthStatus !== "urgent") return -1;
             if (b.healthStatus === "urgent" && a.healthStatus !== "urgent") return 1;
           }
           return 0;
         });
-
       case "vaccination":
         return copy.sort((a, b) => {
-          const daysA = (a.vaccination && a.vaccination.dueDate) ? daysUntil(a.vaccination.dueDate) : Infinity;
-          const daysB = (b.vaccination && b.vaccination.dueDate) ? daysUntil(b.vaccination.dueDate) : Infinity;
+          const daysA = a.vaccination && a.vaccination.dueDate ? daysUntil(a.vaccination.dueDate) : Infinity;
+          const daysB = b.vaccination && b.vaccination.dueDate ? daysUntil(b.vaccination.dueDate) : Infinity;
           return daysA - daysB;
         });
-
       case "age":
         return copy.sort((a, b) => (b.age || 0) - (a.age || 0));
-
       case "recent":
       default:
         return copy.sort((a, b) => {
@@ -6677,201 +7084,325 @@ function AnimalsView({ animals, onOpenAnimal, onBack, onAddAnimal, onRemoveAnima
         });
     }
   }, [animals, sortBy, selectedType]);
-
-  return (
-    <div>
-      <div className="page-header" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <button className="back-btn" onClick={onBack} aria-label={t ? t("common_back") : "Back"}><ArrowLeft size={18} /></button>
-          <h1 className="page-title">{t ? t("nav_myAnimals") : "My Animals"}</h1>
-        </div>
-
-        <div className="sort-control">
-          <label htmlFor="animal-sort-select" style={{ fontSize: "calc(13px * var(--text-scale, 1))", fontWeight: 700, color: "var(--ink-soft)", display: "inline-flex", alignItems: "center", gap: 5, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}>
-            <ArrowUpDown size={14} color="var(--accent)" style={{ verticalAlign: -1 }} />
-            <span>{t ? t("sort_label") : "Sort by"}:</span>
-          </label>
-          <div className="sort-select-wrapper">
-            <select
-              id="animal-sort-select"
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value)}
-              className="sort-select-btn"
-              aria-label={t ? t("sort_label") : "Sort by"}
-            >
-              <option value="recent">{t ? t("sort_recent") : "Recently added (newest first)"}</option>
-              <option value="name">{t ? t("sort_name") : "Name (A–Z)"}</option>
-              <option value="health">{t ? t("sort_health") : "Health status (Attention needed first)"}</option>
-              <option value="vaccination">{t ? t("sort_vaccination") : "Vaccination due date (soonest first)"}</option>
-              <option value="age">{t ? t("sort_age") : "Age (oldest/youngest first)"}</option>
-            </select>
-            <ChevronDown
-              size={14}
-              color="var(--ink-soft)"
-              style={{ position: "absolute", right: 12, pointerEvents: "none" }}
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Type of Animal filter section */}
-      <div className="animal-type-section" style={{ margin: "6px 0 16px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
-          <PawPrint size={15} color="var(--brand)" />
-          <span style={{ fontSize: "calc(13px * var(--text-scale, 1))", fontWeight: 700, color: "var(--ink-soft)" }}>
-            {t ? t("animal_typeTitle") : "Type of Animal"}
-          </span>
-        </div>
-        <div
-          role="tablist"
-          aria-label={t ? t("animal_typeTitle") : "Type of Animal"}
-          style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}
-        >
-          {animalTypes.map((type) => {
-            const isSelected = selectedType === type.id;
-            const TypeIcon = type.Icon;
-            return (
-              <button
-                key={type.id}
-                type="button"
-                role="tab"
-                aria-selected={isSelected}
-                className={`chip ${isSelected ? "selected" : ""}`}
-                onClick={() => setSelectedType(type.id)}
-                style={{
-                  cursor: "pointer",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 7,
-                  padding: "8px 14px",
-                  transition: "all 0.15s ease",
-                }}
-              >
-                <TypeIcon size={16} color="currentColor" />
-                <span>{type.label}</span>
-                <span style={{ opacity: isSelected ? 0.9 : 0.65, fontSize: "0.88em", fontWeight: 700 }}>
-                  ({type.count})
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", margin: "14px 0" }}>
-        <button className="btn-primary" onClick={onAddAnimal} style={{ display: "inline-flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}>
-          <PlusCircle size={16} />
-          {t ? t("animal_add") : "Add animal"}
-        </button>
-        <button
-          className={removeMode ? "btn-outline" : "btn-emergency"}
-          onClick={toggleRemoveMode}
-          style={{ display: "inline-flex", alignItems: "center", gap: 6, whiteSpace: "nowrap", borderRadius: 11 }}
-        >
-          {removeMode ? <X size={16} /> : <Trash2 size={16} />}
-          {removeMode ? (t ? t("animal_removeCancel") : "Cancel") : (t ? t("animal_remove") : "Remove animal")}
-        </button>
-        {removeMode && (
-          <button
-            className="btn-emergency"
-            onClick={handleRemoveSelectedClick}
-            style={{ display: "inline-flex", alignItems: "center", gap: 6, whiteSpace: "nowrap", borderRadius: 11 }}
-          >
-            <Trash2 size={16} />
-            {t ? t("animal_removeSelected") : "Remove selected"}{selectedIds.size > 0 ? ` (${selectedIds.size})` : ""}
-          </button>
-        )}
-      </div>
-
-      {removeMode && selectionNotice && (
-        <p role="alert" style={{ margin: "0 0 12px", color: "var(--urgent-fg, var(--urgent))", fontSize: "calc(13px * var(--text-scale, 1))", fontWeight: 600 }}>
-          {selectionNotice}
-        </p>
-      )}
-
-      <Card>
-        {sortedAnimals.length === 0 && (
-          <p style={{ margin: 0, color: "var(--ink-soft)" }}>
-            {selectedType === "all"
-              ? (t ? t("animal_empty") : 'No animals added yet. Use "Add animal" to register your first animal.')
-              : `No ${animalTypes.find(at => at.id === selectedType)?.label || "animals"} found in this category.`}
-          </p>
-        )}
-        {sortedAnimals.map((a) => {
-          const selected = selectedIds.has(a.id);
-          return (
-            <div
-              key={a.id}
-              className="animal-row psk-card-clickable"
-              style={{ cursor: "pointer", background: removeMode && selected ? "var(--urgent-soft)" : undefined, borderRadius: removeMode && selected ? 10 : undefined }}
-              onClick={() => (removeMode ? toggleSelected(a.id) : onOpenAnimal(a.id))}
-              role={removeMode ? "checkbox" : "button"}
-              aria-checked={removeMode ? selected : undefined}
-              tabIndex={0}
-              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); removeMode ? toggleSelected(a.id) : onOpenAnimal(a.id); } }}
-            >
-              {removeMode && (
-                <input
-                  type="checkbox"
-                  checked={selected}
-                  onChange={() => toggleSelected(a.id)}
-                  onClick={(e) => e.stopPropagation()}
-                  aria-label={`${t ? t("animal_removeSelected") : "Select"} ${a.name}`}
-                  style={{ width: 18, height: 18, marginRight: 2, flexShrink: 0, cursor: "pointer" }}
-                />
-              )}
-              <AnimalAvatar animal={a} />
-              <div className="animal-row-info">
-                <p className="animal-row-name">{a.name}</p>
-                <p className="animal-row-meta">
-                  {formatSpecies(a.species, t)}    {a.age} {t ? t("animal_yrs") : "yrs"}    {a.gender === "Female" ? (t ? t("gender_female") : a.gender) : (t ? t("gender_male") : a.gender)}
-                </p>
-                <div style={{ marginTop: 6, display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  <StatusBadge status={a.healthStatus} t={t} />
-                  {a.treatment && <span className="badge badge-attention"><Stethoscope size={13} /> {t ? t("badge_inTreatment") : "In treatment"}</span>}
-                  {(a.vaccination.status !== "upToDate" || daysUntil(a.vaccination.dueDate) <= 0) && <span className="badge badge-attention"><Syringe size={13} /> {t ? t("badge_vaccinationDue") : "Vaccination due"}</span>}
-                </div>
-              </div>
-              {!removeMode && <ChevronRight size={19} color="var(--ink-soft)" />}
-            </div>
-          );
-        })}
-      </Card>
-
-      {confirmRemoveOpen && (
-        <SettingsModal
-          title={t ? t("animal_removeConfirmTitle") : "Remove selected animals?"}
-          icon={Trash2}
-          onClose={() => setConfirmRemoveOpen(false)}
-          labelledId="remove-animals-modal-title"
-        >
-          <div style={{ display: "grid", gap: 14 }}>
-            <div role="alert" style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "12px", background: "var(--urgent-soft)", borderRadius: 10, border: "1px solid var(--urgent)" }}>
-              <AlertTriangle size={18} color="var(--urgent-fg, var(--urgent))" style={{ flexShrink: 0, marginTop: 2 }} />
-              <p style={{ color: "var(--urgent-fg, var(--urgent))", fontSize: "calc(13.5px * var(--text-scale, 1))", lineHeight: 1.5, margin: 0 }}>
-                {t ? t("animal_removeConfirmBody") : "This will permanently remove the selected animal(s) and their records. This action cannot be undone."}
-              </p>
-            </div>
-            <p style={{ margin: 0, fontWeight: 700, fontSize: "calc(14px * var(--text-scale, 1))" }}>
-              {selectedIds.size} {selectedIds.size === 1 ? (t ? t("animal_removeCountSingular") : "animal") : (t ? t("animal_removeCountPlural") : "animals")} selected
-            </p>
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <button className="btn-emergency" style={{ flex: "1 1 auto" }} onClick={confirmRemove}>
-                <Trash2 size={15} /> {t ? t("animal_removeConfirmBtn") : "Remove"}
-              </button>
-              <button className="btn-outline" style={{ flex: "1 1 auto" }} onClick={() => setConfirmRemoveOpen(false)}>{t ? t("common_cancel") : "Cancel"}</button>
-            </div>
-          </div>
-        </SettingsModal>
-      )}
-    </div>
-  );
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    className: "page-header",
+    style: {
+      justifyContent: "space-between",
+      flexWrap: "wrap",
+      gap: 12
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 12
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "back-btn",
+    onClick: onBack,
+    "aria-label": t ? t("common_back") : "Back"
+  }, /*#__PURE__*/React.createElement(ArrowLeft, {
+    size: 18
+  })), /*#__PURE__*/React.createElement("h1", {
+    className: "page-title"
+  }, t ? t("nav_myAnimals") : "My Animals")), /*#__PURE__*/React.createElement("div", {
+    className: "sort-control"
+  }, /*#__PURE__*/React.createElement("label", {
+    htmlFor: "animal-sort-select",
+    style: {
+      fontSize: "calc(13px * var(--text-scale, 1))",
+      fontWeight: 700,
+      color: "var(--ink-soft)",
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 5,
+      cursor: "pointer",
+      whiteSpace: "nowrap",
+      flexShrink: 0
+    }
+  }, /*#__PURE__*/React.createElement(ArrowUpDown, {
+    size: 14,
+    color: "var(--accent)",
+    style: {
+      verticalAlign: -1
+    }
+  }), /*#__PURE__*/React.createElement("span", null, t ? t("sort_label") : "Sort by", ":")), /*#__PURE__*/React.createElement("div", {
+    className: "sort-select-wrapper"
+  }, /*#__PURE__*/React.createElement("select", {
+    id: "animal-sort-select",
+    value: sortBy,
+    onChange: e => setSortBy(e.target.value),
+    className: "sort-select-btn",
+    "aria-label": t ? t("sort_label") : "Sort by"
+  }, /*#__PURE__*/React.createElement("option", {
+    value: "recent"
+  }, t ? t("sort_recent") : "Recently added (newest first)"), /*#__PURE__*/React.createElement("option", {
+    value: "name"
+  }, t ? t("sort_name") : "Name (A–Z)"), /*#__PURE__*/React.createElement("option", {
+    value: "health"
+  }, t ? t("sort_health") : "Health status (Attention needed first)"), /*#__PURE__*/React.createElement("option", {
+    value: "vaccination"
+  }, t ? t("sort_vaccination") : "Vaccination due date (soonest first)"), /*#__PURE__*/React.createElement("option", {
+    value: "age"
+  }, t ? t("sort_age") : "Age (oldest/youngest first)")), /*#__PURE__*/React.createElement(ChevronDown, {
+    size: 14,
+    color: "var(--ink-soft)",
+    style: {
+      position: "absolute",
+      right: 12,
+      pointerEvents: "none"
+    }
+  })))), /*#__PURE__*/React.createElement("div", {
+    className: "animal-type-section",
+    style: {
+      margin: "6px 0 16px"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 6,
+      marginBottom: 8
+    }
+  }, /*#__PURE__*/React.createElement(PawPrint, {
+    size: 15,
+    color: "var(--brand)"
+  }), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: "calc(13px * var(--text-scale, 1))",
+      fontWeight: 700,
+      color: "var(--ink-soft)"
+    }
+  }, t ? t("animal_typeTitle") : "Type of Animal")), /*#__PURE__*/React.createElement("div", {
+    role: "tablist",
+    "aria-label": t ? t("animal_typeTitle") : "Type of Animal",
+    style: {
+      display: "flex",
+      gap: 8,
+      flexWrap: "wrap",
+      alignItems: "center"
+    }
+  }, animalTypes.map(type => {
+    const isSelected = selectedType === type.id;
+    const TypeIcon = type.Icon;
+    return /*#__PURE__*/React.createElement("button", {
+      key: type.id,
+      type: "button",
+      role: "tab",
+      "aria-selected": isSelected,
+      className: `chip ${isSelected ? "selected" : ""}`,
+      onClick: () => setSelectedType(type.id),
+      style: {
+        cursor: "pointer",
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 7,
+        padding: "8px 14px",
+        transition: "all 0.15s ease"
+      }
+    }, /*#__PURE__*/React.createElement(TypeIcon, {
+      size: 16,
+      color: "currentColor"
+    }), /*#__PURE__*/React.createElement("span", null, type.label), /*#__PURE__*/React.createElement("span", {
+      style: {
+        opacity: isSelected ? 0.9 : 0.65,
+        fontSize: "0.88em",
+        fontWeight: 700
+      }
+    }, "(", type.count, ")"));
+  }))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 10,
+      flexWrap: "wrap",
+      margin: "14px 0"
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn-primary",
+    onClick: onAddAnimal,
+    style: {
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 6,
+      whiteSpace: "nowrap"
+    }
+  }, /*#__PURE__*/React.createElement(PlusCircle, {
+    size: 16
+  }), t ? t("animal_add") : "Add animal"), /*#__PURE__*/React.createElement("button", {
+    className: removeMode ? "btn-outline" : "btn-emergency",
+    onClick: toggleRemoveMode,
+    style: {
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 6,
+      whiteSpace: "nowrap",
+      borderRadius: 11
+    }
+  }, removeMode ? /*#__PURE__*/React.createElement(X, {
+    size: 16
+  }) : /*#__PURE__*/React.createElement(Trash2, {
+    size: 16
+  }), removeMode ? t ? t("animal_removeCancel") : "Cancel" : t ? t("animal_remove") : "Remove animal"), removeMode && /*#__PURE__*/React.createElement("button", {
+    className: "btn-emergency",
+    onClick: handleRemoveSelectedClick,
+    style: {
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 6,
+      whiteSpace: "nowrap",
+      borderRadius: 11
+    }
+  }, /*#__PURE__*/React.createElement(Trash2, {
+    size: 16
+  }), t ? t("animal_removeSelected") : "Remove selected", selectedIds.size > 0 ? ` (${selectedIds.size})` : "")), removeMode && selectionNotice && /*#__PURE__*/React.createElement("p", {
+    role: "alert",
+    style: {
+      margin: "0 0 12px",
+      color: "var(--urgent-fg, var(--urgent))",
+      fontSize: "calc(13px * var(--text-scale, 1))",
+      fontWeight: 600
+    }
+  }, selectionNotice), /*#__PURE__*/React.createElement(Card, null, sortedAnimals.length === 0 && /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      color: "var(--ink-soft)"
+    }
+  }, selectedType === "all" ? t ? t("animal_empty") : 'No animals added yet. Use "Add animal" to register your first animal.' : `No ${animalTypes.find(at => at.id === selectedType)?.label || "animals"} found in this category.`), sortedAnimals.map(a => {
+    const selected = selectedIds.has(a.id);
+    return /*#__PURE__*/React.createElement("div", {
+      key: a.id,
+      className: "animal-row psk-card-clickable",
+      style: {
+        cursor: "pointer",
+        background: removeMode && selected ? "var(--urgent-soft)" : undefined,
+        borderRadius: removeMode && selected ? 10 : undefined
+      },
+      onClick: () => removeMode ? toggleSelected(a.id) : onOpenAnimal(a.id),
+      role: removeMode ? "checkbox" : "button",
+      "aria-checked": removeMode ? selected : undefined,
+      tabIndex: 0,
+      onKeyDown: e => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          removeMode ? toggleSelected(a.id) : onOpenAnimal(a.id);
+        }
+      }
+    }, removeMode && /*#__PURE__*/React.createElement("input", {
+      type: "checkbox",
+      checked: selected,
+      onChange: () => toggleSelected(a.id),
+      onClick: e => e.stopPropagation(),
+      "aria-label": `${t ? t("animal_removeSelected") : "Select"} ${a.name}`,
+      style: {
+        width: 18,
+        height: 18,
+        marginRight: 2,
+        flexShrink: 0,
+        cursor: "pointer"
+      }
+    }), /*#__PURE__*/React.createElement(AnimalAvatar, {
+      animal: a
+    }), /*#__PURE__*/React.createElement("div", {
+      className: "animal-row-info"
+    }, /*#__PURE__*/React.createElement("p", {
+      className: "animal-row-name"
+    }, a.name), /*#__PURE__*/React.createElement("p", {
+      className: "animal-row-meta"
+    }, formatSpecies(a.species, t), "    ", a.age, " ", t ? t("animal_yrs") : "yrs", "    ", a.gender === "Female" ? t ? t("gender_female") : a.gender : t ? t("gender_male") : a.gender), /*#__PURE__*/React.createElement("div", {
+      style: {
+        marginTop: 6,
+        display: "flex",
+        gap: 6,
+        flexWrap: "wrap"
+      }
+    }, /*#__PURE__*/React.createElement(StatusBadge, {
+      status: a.healthStatus,
+      t: t
+    }), a.treatment && /*#__PURE__*/React.createElement("span", {
+      className: "badge badge-attention"
+    }, /*#__PURE__*/React.createElement(Stethoscope, {
+      size: 13
+    }), " ", t ? t("badge_inTreatment") : "In treatment"), (a.vaccination.status !== "upToDate" || daysUntil(a.vaccination.dueDate) <= 0) && /*#__PURE__*/React.createElement("span", {
+      className: "badge badge-attention"
+    }, /*#__PURE__*/React.createElement(Syringe, {
+      size: 13
+    }), " ", t ? t("badge_vaccinationDue") : "Vaccination due"))), !removeMode && /*#__PURE__*/React.createElement(ChevronRight, {
+      size: 19,
+      color: "var(--ink-soft)"
+    }));
+  })), confirmRemoveOpen && /*#__PURE__*/React.createElement(SettingsModal, {
+    title: t ? t("animal_removeConfirmTitle") : "Remove selected animals?",
+    icon: Trash2,
+    onClose: () => setConfirmRemoveOpen(false),
+    labelledId: "remove-animals-modal-title"
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "grid",
+      gap: 14
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    role: "alert",
+    style: {
+      display: "flex",
+      alignItems: "flex-start",
+      gap: 10,
+      padding: "12px",
+      background: "var(--urgent-soft)",
+      borderRadius: 10,
+      border: "1px solid var(--urgent)"
+    }
+  }, /*#__PURE__*/React.createElement(AlertTriangle, {
+    size: 18,
+    color: "var(--urgent-fg, var(--urgent))",
+    style: {
+      flexShrink: 0,
+      marginTop: 2
+    }
+  }), /*#__PURE__*/React.createElement("p", {
+    style: {
+      color: "var(--urgent-fg, var(--urgent))",
+      fontSize: "calc(13.5px * var(--text-scale, 1))",
+      lineHeight: 1.5,
+      margin: 0
+    }
+  }, t ? t("animal_removeConfirmBody") : "This will permanently remove the selected animal(s) and their records. This action cannot be undone.")), /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      fontWeight: 700,
+      fontSize: "calc(14px * var(--text-scale, 1))"
+    }
+  }, selectedIds.size, " ", selectedIds.size === 1 ? t ? t("animal_removeCountSingular") : "animal" : t ? t("animal_removeCountPlural") : "animals", " selected"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 10,
+      flexWrap: "wrap"
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn-emergency",
+    style: {
+      flex: "1 1 auto"
+    },
+    onClick: confirmRemove
+  }, /*#__PURE__*/React.createElement(Trash2, {
+    size: 15
+  }), " ", t ? t("animal_removeConfirmBtn") : "Remove"), /*#__PURE__*/React.createElement("button", {
+    className: "btn-outline",
+    style: {
+      flex: "1 1 auto"
+    },
+    onClick: () => setConfirmRemoveOpen(false)
+  }, t ? t("common_cancel") : "Cancel")))));
 }
 
 /* ------------------------------------------------------------------ */
 /* Add Animal modal                                                    */
 /* ------------------------------------------------------------------ */
-function AddAnimalModal({ onClose, onSave, t }) {
+function AddAnimalModal({
+  onClose,
+  onSave,
+  t
+}) {
   const [name, setName] = useState("");
   const [species, setSpecies] = useState("Cow");
   const [breed, setBreed] = useState("");
@@ -6880,7 +7411,6 @@ function AddAnimalModal({ onClose, onSave, t }) {
   const [vaccName, setVaccName] = useState("");
   const [vaccDate, setVaccDate] = useState("");
   const [error, setError] = useState("");
-
   const submit = () => {
     if (!name.trim()) {
       setError(t ? t("animal_addNameRequired") : "Please enter the animal's name.");
@@ -6896,391 +7426,638 @@ function AddAnimalModal({ onClose, onSave, t }) {
       gender,
       healthStatus: "healthy",
       treatment: null,
-      vaccination: vaccName.trim()
-        ? { name: vaccName.trim(), dueDate: vaccDate || null, status: "due" }
-        : { name: "", dueDate: farFutureDateStr(), status: "upToDate" },
+      vaccination: vaccName.trim() ? {
+        name: vaccName.trim(),
+        dueDate: vaccDate || null,
+        status: "due"
+      } : {
+        name: "",
+        dueDate: farFutureDateStr(),
+        status: "upToDate"
+      },
       lastScreening: null,
       createdAt: new Date().toISOString(),
-      history: [],
+      history: []
     };
     onSave(newAnimal);
   };
-
-  return (
-    <SettingsModal title={t ? t("animal_addTitle") : "Add a new animal"} icon={PawPrint} onClose={onClose} labelledId="add-animal-modal-title">
-      <div style={{ display: "grid", gap: 14 }}>
-        <div>
-          <label className="field-label" htmlFor="add-animal-name">{t ? t("animal_addName") : "Animal name"}</label>
-          <input
-            id="add-animal-name"
-            type="text"
-            className="field-input"
-            value={name}
-            placeholder={t ? t("animal_addNamePlaceholder") : "e.g. Gauri"}
-            onChange={(e) => { setName(e.target.value); setError(""); }}
-          />
-        </div>
-
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-          <div>
-            <label className="field-label" htmlFor="add-animal-species">{t ? t("animal_addSpecies") : "Species"}</label>
-            <select id="add-animal-species" className="field-input" value={species} onChange={(e) => setSpecies(e.target.value)}>
-              <option value="Cow">{t ? t("species_cow") : "Cow"}</option>
-              <option value="Buffalo">{t ? t("species_buffalo") : "Buffalo"}</option>
-              <option value="Goat">{t ? t("species_goat") : "Goat"}</option>
-              <option value="Sheep">{t ? t("species_sheep") : "Sheep"}</option>
-              <option value="Chicken">{t ? t("species_chicken") : "Chicken"}</option>
-            </select>
-          </div>
-          <div>
-            <label className="field-label" htmlFor="add-animal-gender">{t ? t("animal_addGender") : "Gender"}</label>
-            <select id="add-animal-gender" className="field-input" value={gender} onChange={(e) => setGender(e.target.value)}>
-              <option value="Female">{t ? t("gender_female") : "Female"}</option>
-              <option value="Male">{t ? t("gender_male") : "Male"}</option>
-            </select>
-          </div>
-        </div>
-
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-          <div>
-            <label className="field-label" htmlFor="add-animal-breed">{t ? t("animal_addBreed") : "Breed"}</label>
-            <input
-              id="add-animal-breed"
-              type="text"
-              className="field-input"
-              value={breed}
-              placeholder={t ? t("animal_addBreedPlaceholder") : "e.g. Gir, Murrah, Sahiwal"}
-              onChange={(e) => setBreed(e.target.value)}
-            />
-          </div>
-          <div>
-            <label className="field-label" htmlFor="add-animal-age">{t ? t("animal_addAge") : "Age (years)"}</label>
-            <input
-              id="add-animal-age"
-              type="number"
-              min="0"
-              className="field-input"
-              value={age}
-              onChange={(e) => setAge(e.target.value)}
-            />
-          </div>
-        </div>
-
-        <div>
-          <label className="field-label" htmlFor="add-animal-vacc-name">{t ? t("animal_addVaccinationName") : "Upcoming vaccination (optional)"}</label>
-          <input
-            id="add-animal-vacc-name"
-            type="text"
-            className="field-input"
-            value={vaccName}
-            placeholder={t ? t("animal_addVaccinationNamePlaceholder") : "e.g. FMD (Foot & Mouth Disease)"}
-            onChange={(e) => setVaccName(e.target.value)}
-          />
-        </div>
-        <div>
-          <label className="field-label" htmlFor="add-animal-vacc-date">{t ? t("animal_addVaccinationDate") : "Vaccination due date (optional)"}</label>
-          <input
-            id="add-animal-vacc-date"
-            type="date"
-            className="field-input"
-            value={vaccDate}
-            onChange={(e) => setVaccDate(e.target.value)}
-          />
-        </div>
-
-        {error && (
-          <div role="alert" style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", background: "var(--urgent-soft)", borderRadius: 8, border: "1px solid var(--urgent)" }}>
-            <AlertCircle size={16} color="var(--urgent-fg, var(--urgent))" style={{ flexShrink: 0 }} />
-            <p style={{ color: "var(--urgent-fg, var(--urgent))", fontSize: "calc(13px * var(--text-scale, 1))", margin: 0, fontWeight: 600 }}>{error}</p>
-          </div>
-        )}
-
-        <div style={{ display: "flex", gap: 10, marginTop: 4, flexWrap: "wrap" }}>
-          <button className="btn-primary" onClick={submit} style={{ flex: "1 1 auto" }}>{t ? t("animal_addBtn") : "Add animal"}</button>
-          <button className="btn-outline" onClick={onClose} style={{ flex: "1 1 auto" }}>{t ? t("common_cancel") : "Cancel"}</button>
-        </div>
-      </div>
-    </SettingsModal>
-  );
+  return /*#__PURE__*/React.createElement(SettingsModal, {
+    title: t ? t("animal_addTitle") : "Add a new animal",
+    icon: PawPrint,
+    onClose: onClose,
+    labelledId: "add-animal-modal-title"
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "grid",
+      gap: 14
+    }
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+    className: "field-label",
+    htmlFor: "add-animal-name"
+  }, t ? t("animal_addName") : "Animal name"), /*#__PURE__*/React.createElement("input", {
+    id: "add-animal-name",
+    type: "text",
+    className: "field-input",
+    value: name,
+    placeholder: t ? t("animal_addNamePlaceholder") : "e.g. Gauri",
+    onChange: e => {
+      setName(e.target.value);
+      setError("");
+    }
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "grid",
+      gridTemplateColumns: "1fr 1fr",
+      gap: 12
+    }
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+    className: "field-label",
+    htmlFor: "add-animal-species"
+  }, t ? t("animal_addSpecies") : "Species"), /*#__PURE__*/React.createElement("select", {
+    id: "add-animal-species",
+    className: "field-input",
+    value: species,
+    onChange: e => setSpecies(e.target.value)
+  }, /*#__PURE__*/React.createElement("option", {
+    value: "Cow"
+  }, t ? t("species_cow") : "Cow"), /*#__PURE__*/React.createElement("option", {
+    value: "Buffalo"
+  }, t ? t("species_buffalo") : "Buffalo"), /*#__PURE__*/React.createElement("option", {
+    value: "Goat"
+  }, t ? t("species_goat") : "Goat"), /*#__PURE__*/React.createElement("option", {
+    value: "Sheep"
+  }, t ? t("species_sheep") : "Sheep"), /*#__PURE__*/React.createElement("option", {
+    value: "Chicken"
+  }, t ? t("species_chicken") : "Chicken"))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+    className: "field-label",
+    htmlFor: "add-animal-gender"
+  }, t ? t("animal_addGender") : "Gender"), /*#__PURE__*/React.createElement("select", {
+    id: "add-animal-gender",
+    className: "field-input",
+    value: gender,
+    onChange: e => setGender(e.target.value)
+  }, /*#__PURE__*/React.createElement("option", {
+    value: "Female"
+  }, t ? t("gender_female") : "Female"), /*#__PURE__*/React.createElement("option", {
+    value: "Male"
+  }, t ? t("gender_male") : "Male")))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "grid",
+      gridTemplateColumns: "1fr 1fr",
+      gap: 12
+    }
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+    className: "field-label",
+    htmlFor: "add-animal-breed"
+  }, t ? t("animal_addBreed") : "Breed"), /*#__PURE__*/React.createElement("input", {
+    id: "add-animal-breed",
+    type: "text",
+    className: "field-input",
+    value: breed,
+    placeholder: t ? t("animal_addBreedPlaceholder") : "e.g. Gir, Murrah, Sahiwal",
+    onChange: e => setBreed(e.target.value)
+  })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+    className: "field-label",
+    htmlFor: "add-animal-age"
+  }, t ? t("animal_addAge") : "Age (years)"), /*#__PURE__*/React.createElement("input", {
+    id: "add-animal-age",
+    type: "number",
+    min: "0",
+    className: "field-input",
+    value: age,
+    onChange: e => setAge(e.target.value)
+  }))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+    className: "field-label",
+    htmlFor: "add-animal-vacc-name"
+  }, t ? t("animal_addVaccinationName") : "Upcoming vaccination (optional)"), /*#__PURE__*/React.createElement("input", {
+    id: "add-animal-vacc-name",
+    type: "text",
+    className: "field-input",
+    value: vaccName,
+    placeholder: t ? t("animal_addVaccinationNamePlaceholder") : "e.g. FMD (Foot & Mouth Disease)",
+    onChange: e => setVaccName(e.target.value)
+  })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+    className: "field-label",
+    htmlFor: "add-animal-vacc-date"
+  }, t ? t("animal_addVaccinationDate") : "Vaccination due date (optional)"), /*#__PURE__*/React.createElement("input", {
+    id: "add-animal-vacc-date",
+    type: "date",
+    className: "field-input",
+    value: vaccDate,
+    onChange: e => setVaccDate(e.target.value)
+  })), error && /*#__PURE__*/React.createElement("div", {
+    role: "alert",
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 8,
+      padding: "10px 12px",
+      background: "var(--urgent-soft)",
+      borderRadius: 8,
+      border: "1px solid var(--urgent)"
+    }
+  }, /*#__PURE__*/React.createElement(AlertCircle, {
+    size: 16,
+    color: "var(--urgent-fg, var(--urgent))",
+    style: {
+      flexShrink: 0
+    }
+  }), /*#__PURE__*/React.createElement("p", {
+    style: {
+      color: "var(--urgent-fg, var(--urgent))",
+      fontSize: "calc(13px * var(--text-scale, 1))",
+      margin: 0,
+      fontWeight: 600
+    }
+  }, error)), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 10,
+      marginTop: 4,
+      flexWrap: "wrap"
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn-primary",
+    onClick: submit,
+    style: {
+      flex: "1 1 auto"
+    }
+  }, t ? t("animal_addBtn") : "Add animal"), /*#__PURE__*/React.createElement("button", {
+    className: "btn-outline",
+    onClick: onClose,
+    style: {
+      flex: "1 1 auto"
+    }
+  }, t ? t("common_cancel") : "Cancel"))));
 }
 
 /* ------------------------------------------------------------------ */
 /* Upcoming Vaccination view                                           */
 /* ------------------------------------------------------------------ */
-function UpcomingVaccinationView({ animals, onBack, onOpenAnimal, t }) {
-  return (
-    <div>
-      <div className="page-header">
-        <button className="back-btn" onClick={onBack} aria-label={t ? t("common_back") : "Back"}><ArrowLeft size={18} /></button>
-        <h1 className="page-title">{t ? t("nav_upcomingVaccination") : "Upcoming Vaccination"}</h1>
-      </div>
-      <Card>
-        {animals.length === 0 ? (
-          <p style={{ margin: 0, color: "var(--ink-soft)" }}>{t ? t("dash_noVaccinationsDue") : "No vaccinations due right now."}</p>
-        ) : animals.map((a, i) => (
-          <div
-            key={a.id}
-            className="animal-row psk-card-clickable"
-            style={{ cursor: "pointer", borderBottom: i === animals.length - 1 ? "none" : undefined }}
-            onClick={() => onOpenAnimal(a.id, "vaccination")}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpenAnimal(a.id, "vaccination"); } }}
-          >
-            <div style={{ width: 42, height: 42, borderRadius: 11, background: "var(--accent-soft)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-              <Syringe size={19} color="var(--accent)" />
-            </div>
-            <div className="animal-row-info">
-              <p className="animal-row-name">{a.name}</p>
-              <p className="animal-row-meta">
-                {formatSpecies(a.species, t)}    {a.vaccination.name}
-              </p>
-              <p className="animal-row-meta">{t ? t("dash_due") : "Due"} {formatDate(a.vaccination.dueDate)}    {relativeDay(a.vaccination.dueDate, t)}</p>
-              <div style={{ marginTop: 6 }}>
-                <span className="badge badge-attention"><Syringe size={13} /> {t ? t("badge_vaccinationDue") : "Vaccination due"}</span>
-              </div>
-            </div>
-            <ChevronRight size={19} color="var(--ink-soft)" />
-          </div>
-        ))}
-      </Card>
-    </div>
-  );
+function UpcomingVaccinationView({
+  animals,
+  onBack,
+  onOpenAnimal,
+  t
+}) {
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    className: "page-header"
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "back-btn",
+    onClick: onBack,
+    "aria-label": t ? t("common_back") : "Back"
+  }, /*#__PURE__*/React.createElement(ArrowLeft, {
+    size: 18
+  })), /*#__PURE__*/React.createElement("h1", {
+    className: "page-title"
+  }, t ? t("nav_upcomingVaccination") : "Upcoming Vaccination")), /*#__PURE__*/React.createElement(Card, null, animals.length === 0 ? /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      color: "var(--ink-soft)"
+    }
+  }, t ? t("dash_noVaccinationsDue") : "No vaccinations due right now.") : animals.map((a, i) => /*#__PURE__*/React.createElement("div", {
+    key: a.id,
+    className: "animal-row psk-card-clickable",
+    style: {
+      cursor: "pointer",
+      borderBottom: i === animals.length - 1 ? "none" : undefined
+    },
+    onClick: () => onOpenAnimal(a.id, "vaccination"),
+    role: "button",
+    tabIndex: 0,
+    onKeyDown: e => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        onOpenAnimal(a.id, "vaccination");
+      }
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: 42,
+      height: 42,
+      borderRadius: 11,
+      background: "var(--accent-soft)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      flexShrink: 0
+    }
+  }, /*#__PURE__*/React.createElement(Syringe, {
+    size: 19,
+    color: "var(--accent)"
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "animal-row-info"
+  }, /*#__PURE__*/React.createElement("p", {
+    className: "animal-row-name"
+  }, a.name), /*#__PURE__*/React.createElement("p", {
+    className: "animal-row-meta"
+  }, formatSpecies(a.species, t), "    ", a.vaccination.name), /*#__PURE__*/React.createElement("p", {
+    className: "animal-row-meta"
+  }, t ? t("dash_due") : "Due", " ", formatDate(a.vaccination.dueDate), "    ", relativeDay(a.vaccination.dueDate, t)), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 6
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "badge badge-attention"
+  }, /*#__PURE__*/React.createElement(Syringe, {
+    size: 13
+  }), " ", t ? t("badge_vaccinationDue") : "Vaccination due"))), /*#__PURE__*/React.createElement(ChevronRight, {
+    size: 19,
+    color: "var(--ink-soft)"
+  })))));
 }
 
 /* ------------------------------------------------------------------ */
 /* Active Treatment view                                               */
 /* ------------------------------------------------------------------ */
-function ActiveTreatmentView({ animals, onBack, onOpenAnimal, t }) {
-  return (
-    <div>
-      <div className="page-header">
-        <button className="back-btn" onClick={onBack} aria-label={t ? t("common_back") : "Back"}><ArrowLeft size={18} /></button>
-        <h1 className="page-title">{t ? t("nav_activeTreatment") : "Active Treatment"}</h1>
-      </div>
-      <Card>
-        {animals.length === 0 ? (
-          <p style={{ margin: 0, color: "var(--ink-soft)" }}>{t ? t("dash_noActiveTreatments") : "No animals are under treatment right now."}</p>
-        ) : animals.map((a, i) => (
-          <div
-            key={a.id}
-            className="animal-row psk-card-clickable"
-            style={{ cursor: "pointer", borderBottom: i === animals.length - 1 ? "none" : undefined }}
-            onClick={() => onOpenAnimal(a.id, "treatment")}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpenAnimal(a.id, "treatment"); } }}
-          >
-            <div style={{ width: 42, height: 42, borderRadius: 11, background: "var(--attention-soft)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-              <Stethoscope size={19} color="var(--attention-fg, var(--attention))" />
-            </div>
-            <div className="animal-row-info">
-              <p className="animal-row-name">{a.name}</p>
-              <p className="animal-row-meta">
-                {formatSpecies(a.species, t)}    {a.treatment.condition}
-              </p>
-              <p className="animal-row-meta">{t ? t("treatment_started") : "Started"} {formatDate(a.treatment.started)}    {t ? t("treatment_followUp") : "Follow-up"} {formatDate(a.treatment.followUp)} ({relativeDay(a.treatment.followUp, t)})</p>
-              <p className="animal-row-meta">{a.treatment.medicine}</p>
-              <div style={{ marginTop: 6 }}>
-                <span className="badge badge-attention"><Stethoscope size={13} /> {t ? t("badge_inTreatment") : "In treatment"}</span>
-              </div>
-            </div>
-            <ChevronRight size={19} color="var(--ink-soft)" />
-          </div>
-        ))}
-      </Card>
-    </div>
-  );
+function ActiveTreatmentView({
+  animals,
+  onBack,
+  onOpenAnimal,
+  t
+}) {
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    className: "page-header"
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "back-btn",
+    onClick: onBack,
+    "aria-label": t ? t("common_back") : "Back"
+  }, /*#__PURE__*/React.createElement(ArrowLeft, {
+    size: 18
+  })), /*#__PURE__*/React.createElement("h1", {
+    className: "page-title"
+  }, t ? t("nav_activeTreatment") : "Active Treatment")), /*#__PURE__*/React.createElement(Card, null, animals.length === 0 ? /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      color: "var(--ink-soft)"
+    }
+  }, t ? t("dash_noActiveTreatments") : "No animals are under treatment right now.") : animals.map((a, i) => /*#__PURE__*/React.createElement("div", {
+    key: a.id,
+    className: "animal-row psk-card-clickable",
+    style: {
+      cursor: "pointer",
+      borderBottom: i === animals.length - 1 ? "none" : undefined
+    },
+    onClick: () => onOpenAnimal(a.id, "treatment"),
+    role: "button",
+    tabIndex: 0,
+    onKeyDown: e => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        onOpenAnimal(a.id, "treatment");
+      }
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: 42,
+      height: 42,
+      borderRadius: 11,
+      background: "var(--attention-soft)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      flexShrink: 0
+    }
+  }, /*#__PURE__*/React.createElement(Stethoscope, {
+    size: 19,
+    color: "var(--attention-fg, var(--attention))"
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "animal-row-info"
+  }, /*#__PURE__*/React.createElement("p", {
+    className: "animal-row-name"
+  }, a.name), /*#__PURE__*/React.createElement("p", {
+    className: "animal-row-meta"
+  }, formatSpecies(a.species, t), "    ", a.treatment.condition), /*#__PURE__*/React.createElement("p", {
+    className: "animal-row-meta"
+  }, t ? t("treatment_started") : "Started", " ", formatDate(a.treatment.started), "    ", t ? t("treatment_followUp") : "Follow-up", " ", formatDate(a.treatment.followUp), " (", relativeDay(a.treatment.followUp, t), ")"), /*#__PURE__*/React.createElement("p", {
+    className: "animal-row-meta"
+  }, a.treatment.medicine), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 6
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "badge badge-attention"
+  }, /*#__PURE__*/React.createElement(Stethoscope, {
+    size: 13
+  }), " ", t ? t("badge_inTreatment") : "In treatment"))), /*#__PURE__*/React.createElement(ChevronRight, {
+    size: 19,
+    color: "var(--ink-soft)"
+  })))));
 }
 
 /* ------------------------------------------------------------------ */
 /* Animal detail view                                                  */
 /* ------------------------------------------------------------------ */
-function AnimalDetailView({ animal, tab, setTab, onBack, onScreen, onChat, t }) {
+function AnimalDetailView({
+  animal,
+  tab,
+  setTab,
+  onBack,
+  onScreen,
+  onChat,
+  t
+}) {
   if (!animal) {
-    return (
-      <div>
-        <div className="page-header">
-          <button className="back-btn" onClick={onBack} aria-label={t ? t("common_back") : "Back"}><ArrowLeft size={18} /></button>
-          <h1 className="page-title">{t ? t("nav_myAnimals") : "My Animals"}</h1>
-        </div>
-        <Card><p style={{ margin: 0, color: "var(--ink-soft)" }}>Animal not found.</p></Card>
-      </div>
-    );
+    return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+      className: "page-header"
+    }, /*#__PURE__*/React.createElement("button", {
+      className: "back-btn",
+      onClick: onBack,
+      "aria-label": t ? t("common_back") : "Back"
+    }, /*#__PURE__*/React.createElement(ArrowLeft, {
+      size: 18
+    })), /*#__PURE__*/React.createElement("h1", {
+      className: "page-title"
+    }, t ? t("nav_myAnimals") : "My Animals")), /*#__PURE__*/React.createElement(Card, null, /*#__PURE__*/React.createElement("p", {
+      style: {
+        margin: 0,
+        color: "var(--ink-soft)"
+      }
+    }, "Animal not found.")));
   }
-  const tabs = [
-    { id: "overview", label: t ? t("tab_overview") : "Overview" },
-    { id: "vaccination", label: t ? t("tab_vaccination") : "Vaccination" },
-    { id: "treatment", label: t ? t("tab_treatment") : "Treatment" },
-    { id: "history", label: t ? t("tab_history") : "History" },
-  ];
-  return (
-    <div>
-      <div className="page-header">
-        <button className="back-btn" onClick={onBack} aria-label={t ? t("common_back") : "Back"}><ArrowLeft size={18} /></button>
-        <h1 className="page-title">{animal.name}</h1>
-      </div>
-
-      <Card style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 18, flexWrap: "wrap" }}>
-        <AnimalAvatar animal={animal} size={64} />
-        <div style={{ flex: "1 1 140px", minWidth: 0 }}>
-          <p style={{ margin: "0 0 4px", fontWeight: 700, fontSize: "calc(17px * var(--text-scale, 1))" }}>
-            {animal.breed} {formatSpecies(animal.species, t)}
-          </p>
-          <p style={{ margin: 0, color: "var(--ink-soft)", fontSize: "calc(13.5px * var(--text-scale, 1))" }}>
-            {animal.age} {t ? t("animal_yearsOld") : "years old"}    {animal.gender === "Female" ? (t ? t("gender_female") : animal.gender) : (t ? t("gender_male") : animal.gender)}
-          </p>
-          <div style={{ marginTop: 8 }}><StatusBadge status={animal.healthStatus} t={t} /></div>
-        </div>
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", width: "100%" }}>
-          <button className="btn-secondary" onClick={onScreen}><Stethoscope size={16} /> {t ? t("nav_aiScreening") : "AI Screening"}</button>
-          <button className="btn-primary" onClick={onChat}><MessageCircle size={16} /> {t ? t("nav_chatWithVet") : "Chat with Vet"}</button>
-        </div>
-      </Card>
-
-      <div className="tabs" role="tablist">
-        {tabs.map((tb) => (
-          <button
-            key={tb.id}
-            role="tab"
-            aria-selected={tab === tb.id}
-            className={`tab-btn ${tab === tb.id ? "active" : ""}`}
-            onClick={() => setTab(tb.id)}
-          >
-            {tb.label}
-          </button>
-        ))}
-      </div>
-
-      {tab === "overview" && (
-        <Card>
-          <p style={{ margin: "0 0 12px", fontWeight: 700 }}>{t ? t("detail_areTheyOkay") : "Are they okay?"}</p>
-          <p style={{ margin: "0 0 18px", color: "var(--ink-soft)", lineHeight: 1.6 }}>
-            {animal.healthStatus === "healthy" && !animal.treatment
-              ? `${animal.name} ${t ? t("detail_healthyStatus") : "is currently healthy with no treatment underway."}`
-              : `${animal.name} ${t ? t("detail_attentionStatus") : "needs some attention  —  see the Treatment tab for details."}`}
-          </p>
-          <p style={{ margin: "0 0 6px", fontWeight: 700 }}>{t ? t("detail_nextVaccination") : "Next vaccination"}</p>
-          <p style={{ margin: "0 0 18px", color: "var(--ink-soft)" }}>{animal.vaccination.name}  —  {formatDate(animal.vaccination.dueDate)} ({relativeDay(animal.vaccination.dueDate, t)})</p>
-          {animal.lastScreening && (
-            <>
-              <p style={{ margin: "0 0 6px", fontWeight: 700 }}>{t ? t("detail_lastScreening") : "Last AI screening"}</p>
-              <p style={{ margin: "0 0 6px", color: "var(--ink-soft)" }}>{formatDate(animal.lastScreening)}</p>
-              <p style={{ margin: 0, fontSize: "calc(12px * var(--text-scale, 1))", color: "var(--ink-soft)", lineHeight: 1.45 }}>
-                {t ? t("screen_resultDisclaimer") : "AI-assisted screening result. This is not a confirmed medical diagnosis. Final assessment must be made by a qualified veterinarian."}
-              </p>
-            </>
-          )}
-        </Card>
-      )}
-
-      {tab === "vaccination" && (
-        <Card>
-          <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
-            <div style={{ width: 44, height: 44, borderRadius: 11, background: "var(--accent-soft)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-              <Syringe size={20} color="var(--accent)" />
-            </div>
-            <div>
-              <p style={{ margin: "0 0 4px", fontWeight: 700, fontSize: "calc(15.5px * var(--text-scale, 1))" }}>{animal.vaccination.name}</p>
-              <p style={{ margin: 0, color: "var(--ink-soft)" }}>
-                {(animal.vaccination.status === "upToDate" && daysUntil(animal.vaccination.dueDate) > 0) ? (t ? t("detail_upToDate") : "Up to date") : `${t ? t("dash_due") : "Due"} ${formatDate(animal.vaccination.dueDate)} (${relativeDay(animal.vaccination.dueDate, t)})`}
-              </p>
-            </div>
-          </div>
-        </Card>
-      )}
-
-      {tab === "treatment" && (
-        <Card>
-          {animal.treatment ? (
-            <>
-              <p style={{ margin: "0 0 6px", fontWeight: 700 }}>{animal.treatment.condition}</p>
-              <p style={{ margin: "0 0 4px", color: "var(--ink-soft)" }}>{t ? t("treatment_started") : "Started"} {formatDate(animal.treatment.started)}</p>
-              <p style={{ margin: "0 0 4px", color: "var(--ink-soft)" }}>{t ? t("treatment_followUp") : "Follow-up"} {formatDate(animal.treatment.followUp)} ({relativeDay(animal.treatment.followUp, t)})</p>
-              <p style={{ margin: 0, color: "var(--ink-soft)" }}>{animal.treatment.medicine}</p>
-            </>
-          ) : (
-            <p style={{ margin: 0, color: "var(--ink-soft)" }}>{t ? t("detail_noTreatmentUnderway") : "No treatment underway right now."}</p>
-          )}
-        </Card>
-      )}
-
-      {tab === "history" && (
-        <Card>
-          {animal.history.map((h, i) => (
-            <div key={h.id} className="animal-row" style={{ borderBottom: i === animal.history.length - 1 ? "none" : undefined }}>
-              <ActivityIcon type={h.type} />
-              <div style={{ flex: 1 }}>
-                <p className="animal-row-name">{h.label}</p>
-                <p className="animal-row-meta">{h.detail}</p>
-                {h.type === "screening" && (
-                  <p style={{ margin: "4px 0 0", fontSize: "calc(11.5px * var(--text-scale, 1))", color: "var(--ink-soft)", lineHeight: 1.4 }}>
-                    {t ? t("screen_resultDisclaimer") : "AI-assisted screening result. This is not a confirmed medical diagnosis. Final assessment must be made by a qualified veterinarian."}
-                  </p>
-                )}
-                <p className="animal-row-meta">{formatDate(h.date)}</p>
-              </div>
-            </div>
-          ))}
-        </Card>
-      )}
-    </div>
-  );
+  const tabs = [{
+    id: "overview",
+    label: t ? t("tab_overview") : "Overview"
+  }, {
+    id: "vaccination",
+    label: t ? t("tab_vaccination") : "Vaccination"
+  }, {
+    id: "treatment",
+    label: t ? t("tab_treatment") : "Treatment"
+  }, {
+    id: "history",
+    label: t ? t("tab_history") : "History"
+  }];
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    className: "page-header"
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "back-btn",
+    onClick: onBack,
+    "aria-label": t ? t("common_back") : "Back"
+  }, /*#__PURE__*/React.createElement(ArrowLeft, {
+    size: 18
+  })), /*#__PURE__*/React.createElement("h1", {
+    className: "page-title"
+  }, animal.name)), /*#__PURE__*/React.createElement(Card, {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 16,
+      marginBottom: 18,
+      flexWrap: "wrap"
+    }
+  }, /*#__PURE__*/React.createElement(AnimalAvatar, {
+    animal: animal,
+    size: 64
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: "1 1 140px",
+      minWidth: 0
+    }
+  }, /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: "0 0 4px",
+      fontWeight: 700,
+      fontSize: "calc(17px * var(--text-scale, 1))"
+    }
+  }, animal.breed, " ", formatSpecies(animal.species, t)), /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      color: "var(--ink-soft)",
+      fontSize: "calc(13.5px * var(--text-scale, 1))"
+    }
+  }, animal.age, " ", t ? t("animal_yearsOld") : "years old", "    ", animal.gender === "Female" ? t ? t("gender_female") : animal.gender : t ? t("gender_male") : animal.gender), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 8
+    }
+  }, /*#__PURE__*/React.createElement(StatusBadge, {
+    status: animal.healthStatus,
+    t: t
+  }))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 10,
+      flexWrap: "wrap",
+      width: "100%"
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn-secondary",
+    onClick: onScreen
+  }, /*#__PURE__*/React.createElement(Stethoscope, {
+    size: 16
+  }), " ", t ? t("nav_aiScreening") : "AI Screening"), /*#__PURE__*/React.createElement("button", {
+    className: "btn-primary",
+    onClick: onChat
+  }, /*#__PURE__*/React.createElement(MessageCircle, {
+    size: 16
+  }), " ", t ? t("nav_chatWithVet") : "Chat with Vet"))), /*#__PURE__*/React.createElement("div", {
+    className: "tabs",
+    role: "tablist"
+  }, tabs.map(tb => /*#__PURE__*/React.createElement("button", {
+    key: tb.id,
+    role: "tab",
+    "aria-selected": tab === tb.id,
+    className: `tab-btn ${tab === tb.id ? "active" : ""}`,
+    onClick: () => setTab(tb.id)
+  }, tb.label))), tab === "overview" && /*#__PURE__*/React.createElement(Card, null, /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: "0 0 12px",
+      fontWeight: 700
+    }
+  }, t ? t("detail_areTheyOkay") : "Are they okay?"), /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: "0 0 18px",
+      color: "var(--ink-soft)",
+      lineHeight: 1.6
+    }
+  }, animal.healthStatus === "healthy" && !animal.treatment ? `${animal.name} ${t ? t("detail_healthyStatus") : "is currently healthy with no treatment underway."}` : `${animal.name} ${t ? t("detail_attentionStatus") : "needs some attention  —  see the Treatment tab for details."}`), /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: "0 0 6px",
+      fontWeight: 700
+    }
+  }, t ? t("detail_nextVaccination") : "Next vaccination"), /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: "0 0 18px",
+      color: "var(--ink-soft)"
+    }
+  }, animal.vaccination.name, "  \u2014  ", formatDate(animal.vaccination.dueDate), " (", relativeDay(animal.vaccination.dueDate, t), ")"), animal.lastScreening && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: "0 0 6px",
+      fontWeight: 700
+    }
+  }, t ? t("detail_lastScreening") : "Last AI screening"), /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: "0 0 6px",
+      color: "var(--ink-soft)"
+    }
+  }, formatDate(animal.lastScreening)), /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: "calc(12px * var(--text-scale, 1))",
+      color: "var(--ink-soft)",
+      lineHeight: 1.45
+    }
+  }, t ? t("screen_resultDisclaimer") : "AI-assisted screening result. This is not a confirmed medical diagnosis. Final assessment must be made by a qualified veterinarian."))), tab === "vaccination" && /*#__PURE__*/React.createElement(Card, null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 14,
+      alignItems: "flex-start"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: 44,
+      height: 44,
+      borderRadius: 11,
+      background: "var(--accent-soft)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      flexShrink: 0
+    }
+  }, /*#__PURE__*/React.createElement(Syringe, {
+    size: 20,
+    color: "var(--accent)"
+  })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: "0 0 4px",
+      fontWeight: 700,
+      fontSize: "calc(15.5px * var(--text-scale, 1))"
+    }
+  }, animal.vaccination.name), /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      color: "var(--ink-soft)"
+    }
+  }, animal.vaccination.status === "upToDate" && daysUntil(animal.vaccination.dueDate) > 0 ? t ? t("detail_upToDate") : "Up to date" : `${t ? t("dash_due") : "Due"} ${formatDate(animal.vaccination.dueDate)} (${relativeDay(animal.vaccination.dueDate, t)})`)))), tab === "treatment" && /*#__PURE__*/React.createElement(Card, null, animal.treatment ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: "0 0 6px",
+      fontWeight: 700
+    }
+  }, animal.treatment.condition), /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: "0 0 4px",
+      color: "var(--ink-soft)"
+    }
+  }, t ? t("treatment_started") : "Started", " ", formatDate(animal.treatment.started)), /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: "0 0 4px",
+      color: "var(--ink-soft)"
+    }
+  }, t ? t("treatment_followUp") : "Follow-up", " ", formatDate(animal.treatment.followUp), " (", relativeDay(animal.treatment.followUp, t), ")"), /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      color: "var(--ink-soft)"
+    }
+  }, animal.treatment.medicine)) : /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      color: "var(--ink-soft)"
+    }
+  }, t ? t("detail_noTreatmentUnderway") : "No treatment underway right now.")), tab === "history" && /*#__PURE__*/React.createElement(Card, null, animal.history.map((h, i) => /*#__PURE__*/React.createElement("div", {
+    key: h.id,
+    className: "animal-row",
+    style: {
+      borderBottom: i === animal.history.length - 1 ? "none" : undefined
+    }
+  }, /*#__PURE__*/React.createElement(ActivityIcon, {
+    type: h.type
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1
+    }
+  }, /*#__PURE__*/React.createElement("p", {
+    className: "animal-row-name"
+  }, h.label), /*#__PURE__*/React.createElement("p", {
+    className: "animal-row-meta"
+  }, h.detail), h.type === "screening" && /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: "4px 0 0",
+      fontSize: "calc(11.5px * var(--text-scale, 1))",
+      color: "var(--ink-soft)",
+      lineHeight: 1.4
+    }
+  }, t ? t("screen_resultDisclaimer") : "AI-assisted screening result. This is not a confirmed medical diagnosis. Final assessment must be made by a qualified veterinarian."), /*#__PURE__*/React.createElement("p", {
+    className: "animal-row-meta"
+  }, formatDate(h.date)))))));
 }
 
 /* ------------------------------------------------------------------ */
 /* ================================================================== */
 /* AI Help: Integrated Symptom Screening, Disease Detection & Audio    */
 /* ================================================================== */
-function runAIHelp({ animalId, photo, voiceNote, symptoms, appetite, temperature, activity, notes }, t) {
+function runAIHelp({
+  animalId,
+  photo,
+  voiceNote,
+  symptoms,
+  appetite,
+  temperature,
+  activity,
+  notes
+}, t) {
   let score = 0;
   const factors = [];
   const indicators = [];
   const nextSteps = [];
-
   const heavy = ["sym_breathing", "sym_discharge", "sym_chewingCud", "Difficulty breathing", "Unusual discharge", "Not chewing cud"];
   const medium = ["sym_fever", "sym_diarrhea", "sym_limping", "Fever / warm body", "Diarrhea", "Limping / difficulty walking"];
-  
-  (symptoms || []).forEach((s) => {
-    if (heavy.includes(s)) { score += 3; factors.push(s); }
-    else if (medium.includes(s)) { score += 2; factors.push(s); }
-    else { score += 1; factors.push(s); }
+  (symptoms || []).forEach(s => {
+    if (heavy.includes(s)) {
+      score += 3;
+      factors.push(s);
+    } else if (medium.includes(s)) {
+      score += 2;
+      factors.push(s);
+    } else {
+      score += 1;
+      factors.push(s);
+    }
   });
-
-  if (temperature === "High") { score += 3; factors.push("High temperature"); }
-  else if (temperature === "Slightly high") { score += 1; factors.push("Slightly high temperature"); }
-
-  if (appetite === "Not eating") { score += 3; factors.push("Complete loss of appetite"); }
-  else if (appetite === "Reduced") { score += 1; factors.push("Reduced appetite"); }
-
-  if (activity === "Not moving") { score += 3; factors.push("Animal recumbent / unable to rise"); }
-  else if (activity === "Very low") { score += 2; factors.push("Marked lethargy"); }
-  else if (activity === "Low") { score += 1; factors.push("Reduced activity"); }
-
+  if (temperature === "High") {
+    score += 3;
+    factors.push("High temperature");
+  } else if (temperature === "Slightly high") {
+    score += 1;
+    factors.push("Slightly high temperature");
+  }
+  if (appetite === "Not eating") {
+    score += 3;
+    factors.push("Complete loss of appetite");
+  } else if (appetite === "Reduced") {
+    score += 1;
+    factors.push("Reduced appetite");
+  }
+  if (activity === "Not moving") {
+    score += 3;
+    factors.push("Animal recumbent / unable to rise");
+  } else if (activity === "Very low") {
+    score += 2;
+    factors.push("Marked lethargy");
+  } else if (activity === "Low") {
+    score += 1;
+    factors.push("Reduced activity");
+  }
   let photoFinding = null;
   if (photo) {
-    if (animalId === "a2" || (notes && /nodule|lumpy|pox/i.test(notes))) {
+    if (animalId === "a2" || notes && /nodule|lumpy|pox/i.test(notes)) {
       photoFinding = "nodular";
       score += 5;
-    } else if (animalId === "a1" || (notes && /skin|rash|dermatitis|hair/i.test(notes))) {
+    } else if (animalId === "a1" || notes && /skin|rash|dermatitis|hair/i.test(notes)) {
       photoFinding = "dermatitis";
       score += 3;
-    } else if (animalId === "a3" || (notes && /wound|cut|abrasion/i.test(notes))) {
+    } else if (animalId === "a3" || notes && /wound|cut|abrasion/i.test(notes)) {
       photoFinding = "abrasion";
       score += 2;
     } else {
       photoFinding = "clear";
     }
   }
-
   if (voiceNote) {
     indicators.push("Voice message analyzed: acoustic tone, respiration cadence, and recorded description evaluated");
   }
-
   let level = "healthy";
   let title = "Low Risk / General Healthy Profile";
   let confidence = 92;
-
   if (photoFinding === "nodular" || score >= 7) {
     level = "urgent";
     confidence = 91;
@@ -7344,22 +8121,30 @@ function runAIHelp({ animalId, photo, voiceNote, symptoms, appetite, temperature
     nextSteps.push("Ensure scheduled bi-monthly preventive vaccinations remain up to date");
     nextSteps.push("Re-screen if the animal shows behavioral distress, fever, or skin irritation");
   }
-
   return {
     level,
     title,
     confidence,
     hasPhoto: Boolean(photo),
     hasVoice: Boolean(voiceNote),
-    hasSymptoms: (symptoms && symptoms.length > 0) || appetite !== "Normal" || temperature !== "Normal" || activity !== "Normal",
+    hasSymptoms: symptoms && symptoms.length > 0 || appetite !== "Normal" || temperature !== "Normal" || activity !== "Normal",
     indicators,
     nextSteps,
     symptomsCount: (symptoms || []).length,
     factors
   };
 }
-
-function AIHelpView({ animals, preselectedId, setSelectedAnimalId, result, setResult, onDone, onBack, onDiscussWithVet, t }) {
+function AIHelpView({
+  animals,
+  preselectedId,
+  setSelectedAnimalId,
+  result,
+  setResult,
+  onDone,
+  onBack,
+  onDiscussWithVet,
+  t
+}) {
   const [animalId, setAnimalId] = useState(preselectedId || animals[0]?.id);
 
   // Photo state
@@ -7384,24 +8169,19 @@ function AIHelpView({ animals, preselectedId, setSelectedAnimalId, result, setRe
   const [temperature, setTemperature] = useState("Normal");
   const [activity, setActivity] = useState("Normal");
   const [notes, setNotes] = useState("");
-
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [error, setError] = useState(null);
-
   useEffect(() => {
     if (preselectedId) setAnimalId(preselectedId);
   }, [preselectedId]);
-
-  const handleAnimalChange = (id) => {
+  const handleAnimalChange = id => {
     setAnimalId(id);
     if (setSelectedAnimalId) setSelectedAnimalId(id);
   };
-
-  const toggleSymptom = (s) => {
-    setSymptoms((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]));
+  const toggleSymptom = s => {
+    setSymptoms(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]);
   };
-
-  const validateAndLoadFile = (file) => {
+  const validateAndLoadFile = file => {
     setError(null);
     if (!file) return;
     const isImage = file.type.startsWith("image/") || /\.(jpe?g|png|webp|bmp|gif)$/i.test(file.name);
@@ -7414,53 +8194,56 @@ function AIHelpView({ animals, preselectedId, setSelectedAnimalId, result, setRe
       return;
     }
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = e => {
       setSelectedImage(e.target.result);
-      const sizeStr = file.size > 1024 * 1024 
-        ? `${(file.size / (1024 * 1024)).toFixed(1)} MB` 
-        : `${Math.round(file.size / 1024)} KB`;
-      setImageMeta({ name: file.name, size: sizeStr });
+      const sizeStr = file.size > 1024 * 1024 ? `${(file.size / (1024 * 1024)).toFixed(1)} MB` : `${Math.round(file.size / 1024)} KB`;
+      setImageMeta({
+        name: file.name,
+        size: sizeStr
+      });
     };
     reader.readAsDataURL(file);
   };
-
   const startVoiceRecording = async () => {
     setError(null);
     audioChunksRef.current = [];
     setRecordSeconds(0);
     try {
       if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: true
+        });
         const recorder = new MediaRecorder(stream);
         mediaRecorderRef.current = recorder;
-        recorder.ondataavailable = (e) => {
+        recorder.ondataavailable = e => {
           if (e.data && e.data.size > 0) audioChunksRef.current.push(e.data);
         };
         recorder.onstop = () => {
-          const blob = new Blob(audioChunksRef.current, { type: "audio/webm" });
+          const blob = new Blob(audioChunksRef.current, {
+            type: "audio/webm"
+          });
           setVoiceAudioUrl(URL.createObjectURL(blob));
-          stream.getTracks().forEach((track) => track.stop());
+          stream.getTracks().forEach(track => track.stop());
         };
         recorder.start();
         setIsRecording(true);
         timerIntervalRef.current = setInterval(() => {
-          setRecordSeconds((prev) => prev + 1);
+          setRecordSeconds(prev => prev + 1);
         }, 1000);
       } else {
         setIsRecording(true);
         timerIntervalRef.current = setInterval(() => {
-          setRecordSeconds((prev) => prev + 1);
+          setRecordSeconds(prev => prev + 1);
         }, 1000);
       }
     } catch (err) {
       console.warn("Audio recording prompt fallback:", err);
       setIsRecording(true);
       timerIntervalRef.current = setInterval(() => {
-        setRecordSeconds((prev) => prev + 1);
+        setRecordSeconds(prev => prev + 1);
       }, 1000);
     }
   };
-
   const stopVoiceRecording = () => {
     if (timerIntervalRef.current) {
       clearInterval(timerIntervalRef.current);
@@ -7468,12 +8251,13 @@ function AIHelpView({ animals, preselectedId, setSelectedAnimalId, result, setRe
     }
     setIsRecording(false);
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
-      try { mediaRecorderRef.current.stop(); } catch (e) {}
+      try {
+        mediaRecorderRef.current.stop();
+      } catch (e) {}
     } else {
       setVoiceAudioUrl("mock_audio");
     }
   };
-
   const removeVoiceRecording = () => {
     if (timerIntervalRef.current) {
       clearInterval(timerIntervalRef.current);
@@ -7484,7 +8268,6 @@ function AIHelpView({ animals, preselectedId, setSelectedAnimalId, result, setRe
     setVoiceAudioUrl(null);
     setIsPlayingVoice(false);
   };
-
   const togglePlayVoice = () => {
     if (voiceAudioUrl && voiceAudioUrl !== "mock_audio") {
       if (!audioPlayerRef.current) {
@@ -7503,11 +8286,9 @@ function AIHelpView({ animals, preselectedId, setSelectedAnimalId, result, setRe
       setTimeout(() => setIsPlayingVoice(false), 2200);
     }
   };
-
   const submit = () => {
     setError(null);
     setIsAnalyzing(true);
-
     setTimeout(async () => {
       setIsAnalyzing(false);
       const r = runAIHelp({
@@ -7520,9 +8301,7 @@ function AIHelpView({ animals, preselectedId, setSelectedAnimalId, result, setRe
         activity,
         notes
       }, t);
-
       setResult(r);
-
       if (window.PashuSakhiApi) {
         try {
           await window.PashuSakhiApi.submitSymptomScreening({
@@ -7537,15 +8316,14 @@ function AIHelpView({ animals, preselectedId, setSelectedAnimalId, result, setRe
           console.warn('Backend AI Help sync error:', err);
         }
       }
-
       if (window.PashuSakhiBridge) {
         const sess = window.PashuSakhiBridge.getSession();
         const curAnimal = (animals || []).find(a => a.id === animalId);
         window.PashuSakhiBridge.addReport({
           type: selectedImage ? 'detection' : 'screening',
           animalId,
-          animalName: (curAnimal && curAnimal.name) || 'Livestock',
-          farmerName: (sess && sess.name) || "Suresh Patil",
+          animalName: curAnimal && curAnimal.name || 'Livestock',
+          farmerName: sess && sess.name || "Suresh Patil",
           date: new Date().toISOString().split('T')[0],
           condition: r.title,
           severity: r.level,
@@ -7554,11 +8332,9 @@ function AIHelpView({ animals, preselectedId, setSelectedAnimalId, result, setRe
           details: r
         });
       }
-
       onDone && onDone(animalId, r);
     }, 600);
   };
-
   const reset = () => {
     setSelectedImage(null);
     setImageMeta(null);
@@ -7571,7 +8347,6 @@ function AIHelpView({ animals, preselectedId, setSelectedAnimalId, result, setRe
     setResult(null);
     setError(null);
   };
-
   const handleBack = () => {
     if (result) {
       setResult(null);
@@ -7579,454 +8354,852 @@ function AIHelpView({ animals, preselectedId, setSelectedAnimalId, result, setRe
       onBack();
     }
   };
-
-  const currentAnimal = animals.find((a) => a.id === animalId) || animals[0];
+  const currentAnimal = animals.find(a => a.id === animalId) || animals[0];
   const animalName = currentAnimal?.name || "Animal";
-
-  return (
-    <div>
-      <div className="page-header">
-        <button className="back-btn" onClick={handleBack} aria-label={t ? t("common_back") : "Back"}><ArrowLeft size={18} /></button>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <Sparkles size={22} color="var(--brand)" />
-          <h1 className="page-title">{t ? t("nav_aiHelp", "AI Help") : "AI Help"}</h1>
-        </div>
-      </div>
-
-      <Card style={{ marginBottom: 16, display: "flex", gap: 10, alignItems: "flex-start", background: "var(--brand-soft)" }}>
-        <Info size={18} color="var(--brand-ink, var(--brand-dark))" style={{ flexShrink: 0, marginTop: 2 }} />
-        <p style={{ margin: 0, fontSize: "calc(13.5px * var(--text-scale, 1))", color: "var(--brand-ink, var(--brand-dark))", lineHeight: 1.5 }}>
-          Unified AI Health Assistant: upload animal photos for visual disease inspection, record a voice message, or select observed symptoms.
-        </p>
-      </Card>
-
-      {error && (
-        <Card style={{ marginBottom: 16, background: "var(--urgent-soft)", color: "var(--urgent)", border: "1px solid var(--urgent)" }}>
-          <p style={{ margin: 0, fontWeight: 600 }}>{error}</p>
-        </Card>
-      )}
-
-      {isAnalyzing && (
-        <Card style={{ textAlign: "center", padding: "40px 20px", marginBottom: 16 }}>
-          <Loader size={36} className="spinning" style={{ color: "var(--brand)", margin: "0 auto 16px" }} />
-          <h3 style={{ margin: "0 0 8px", fontSize: "18px" }}>Analyzing with AI Help...</h3>
-          <p style={{ margin: 0, color: "var(--ink-soft)", fontSize: "14px" }}>Processing visual features, audio characteristics, and clinical vitals</p>
-        </Card>
-      )}
-
-      {!result && !isAnalyzing && (
-        <div>
-          {/* Section 1: Animal Selection */}
-          <Card style={{ marginBottom: 14 }}>
-            <label className="field-label" style={{ fontWeight: 700, marginBottom: 8, display: "block" }}>Select Animal</label>
-            <select className="field-input" value={animalId} onChange={(e) => handleAnimalChange(e.target.value)}>
-              {animals.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.name}  —  {formatSpecies(a.species, t)}
-                </option>
-              ))}
-            </select>
-          </Card>
-
-          {/* Section 2: Photo Upload & Camera (AI Disease Detection) */}
-          <Card style={{ marginBottom: 14 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-              <Camera size={18} color="var(--brand)" />
-              <label className="field-label" style={{ margin: 0, fontWeight: 700 }}>Animal Photo</label>
-            </div>
-            <input
-              type="file"
-              ref={cameraInputRef}
-              accept="image/*"
-              capture="environment"
-              style={{ display: "none" }}
-              onChange={(e) => { validateAndLoadFile(e.target.files && e.target.files[0]); e.target.value = ""; }}
-            />
-            <input
-              type="file"
-              ref={uploadInputRef}
-              accept="image/*"
-              style={{ display: "none" }}
-              onChange={(e) => { validateAndLoadFile(e.target.files && e.target.files[0]); e.target.value = ""; }}
-            />
-
-            {!selectedImage ? (
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: 10,
-                    padding: "24px 16px",
-                    minHeight: 110,
-                    borderRadius: 14,
-                    border: "2px dashed var(--brand)",
-                    background: "var(--brand-soft)",
-                    cursor: "pointer",
-                    boxShadow: "0 2px 6px rgba(0,0,0,0.03)",
-                    transition: "all 0.2s ease"
-                  }}
-                  onClick={() => cameraInputRef.current?.click()}
-                >
-                  <div style={{ width: 44, height: 44, borderRadius: "50%", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 6px rgba(0,0,0,0.08)" }}>
-                    <Camera size={24} color="var(--brand)" />
-                  </div>
-                  <span style={{ fontSize: "16px", fontWeight: 800, color: "var(--ink)" }}>Take Photo</span>
-                  <span style={{ fontSize: "12px", color: "var(--ink-soft)", marginTop: -4 }}>Use device camera</span>
-                </button>
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: 10,
-                    padding: "24px 16px",
-                    minHeight: 110,
-                    borderRadius: 14,
-                    border: "2px dashed var(--line)",
-                    background: "var(--paper-soft)",
-                    cursor: "pointer",
-                    boxShadow: "0 2px 6px rgba(0,0,0,0.03)",
-                    transition: "all 0.2s ease"
-                  }}
-                  onClick={() => uploadInputRef.current?.click()}
-                >
-                  <div style={{ width: 44, height: 44, borderRadius: "50%", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 6px rgba(0,0,0,0.08)" }}>
-                    <Upload size={24} color="var(--brand)" />
-                  </div>
-                  <span style={{ fontSize: "16px", fontWeight: 800, color: "var(--ink)" }}>Upload Image</span>
-                  <span style={{ fontSize: "12px", color: "var(--ink-soft)", marginTop: -4 }}>Browse files / gallery</span>
-                </button>
-              </div>
-            ) : (
-              <div style={{ background: "var(--paper-soft)", border: "1px solid var(--line)", borderRadius: 10, padding: 12 }}>
-                <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-                  <img src={selectedImage} alt="Uploaded Animal" style={{ width: 80, height: 80, objectFit: "cover", borderRadius: 8, border: "1px solid var(--line)" }} />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{ margin: "0 0 4px", fontWeight: 700, fontSize: "14px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {imageMeta?.name || "photo.jpg"}
-                    </p>
-                    <p style={{ margin: 0, fontSize: "12px", color: "var(--ink-soft)" }}>{imageMeta?.size || "Ready for AI visual analysis"}</p>
-                  </div>
-                  <button
-                    type="button"
-                    className="btn-outline"
-                    onClick={() => { setSelectedImage(null); setImageMeta(null); }}
-                    style={{ padding: "6px 12px", fontSize: "12px", display: "inline-flex", alignItems: "center", gap: 4 }}
-                  >
-                    <Trash2 size={14} /> Remove
-                  </button>
-                </div>
-              </div>
-            )}
-          </Card>
-
-          {/* Section 3: Voice Recording Message */}
-          <Card style={{ marginBottom: 14 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-              <Mic size={18} color="var(--brand)" />
-              <label className="field-label" style={{ margin: 0, fontWeight: 700 }}>Voice Message</label>
-            </div>
-
-            {!isRecording && !voiceAudioUrl && (
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={startVoiceRecording}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 14,
-                  width: "100%",
-                  padding: "18px 20px",
-                  minHeight: 72,
-                  borderRadius: 14,
-                  border: "2px dashed var(--accent)",
-                  background: "var(--accent-soft)",
-                  cursor: "pointer",
-                  boxShadow: "0 2px 6px rgba(0,0,0,0.03)",
-                  transition: "all 0.2s ease"
-                }}
-              >
-                <div style={{ width: 44, height: 44, borderRadius: "50%", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 6px rgba(0,0,0,0.08)" }}>
-                  <Mic size={24} color="var(--accent)" />
-                </div>
-                <div style={{ textAlign: "left" }}>
-                  <div style={{ fontSize: "16px", fontWeight: 800, color: "var(--ink)" }}>Record Voice Message</div>
-                  <div style={{ fontSize: "12px", color: "var(--ink-soft)" }}>Tap to speak symptoms or notes in any language</div>
-                </div>
-              </button>
-            )}
-
-            {isRecording && (
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "rgba(179, 64, 42, 0.08)", border: "1.5px solid var(--urgent)", borderRadius: 10, padding: "10px 14px" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <span style={{ width: 12, height: 12, borderRadius: "50%", background: "var(--urgent)", display: "inline-block", animation: "pulse 1s infinite" }}></span>
-                  <span style={{ fontWeight: 700, color: "var(--urgent)", fontSize: "14px" }}>
-                    Recording... {Math.floor(recordSeconds / 60)}:{String(recordSeconds % 60).padStart(2, "0")}
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  className="btn-primary"
-                  onClick={stopVoiceRecording}
-                  style={{ background: "var(--urgent)", borderColor: "var(--urgent)", padding: "7px 14px", fontSize: "13px", display: "inline-flex", alignItems: "center", gap: 6 }}
-                >
-                  <Square size={14} /> Stop
-                </button>
-              </div>
-            )}
-
-            {voiceAudioUrl && !isRecording && (
-              <div style={{ background: "var(--healthy-soft)", border: "1px solid var(--healthy)", borderRadius: 10, padding: 12, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <Volume2 size={18} color="var(--healthy)" />
-                  <div>
-                    <span style={{ fontWeight: 700, fontSize: "13.5px", color: "var(--healthy-fg, var(--healthy))", display: "block" }}>
-                      Voice message attached ({recordSeconds > 0 ? recordSeconds : 6}s)
-                    </span>
-                    <span style={{ fontSize: "11.5px", color: "var(--ink-soft)" }}>Ready for AI audio assessment</span>
-                  </div>
-                </div>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button
-                    type="button"
-                    className="btn-secondary"
-                    onClick={togglePlayVoice}
-                    style={{ padding: "6px 12px", fontSize: "12px", display: "inline-flex", alignItems: "center", gap: 5 }}
-                  >
-                    {isPlayingVoice ? <Square size={13} /> : <Play size={13} />}
-                    {isPlayingVoice ? "Pause" : "Play"}
-                  </button>
-                  <button
-                    type="button"
-                    className="btn-outline"
-                    onClick={removeVoiceRecording}
-                    style={{ padding: "6px 10px", fontSize: "12px" }}
-                  >
-                    <Trash2 size={13} />
-                  </button>
-                </div>
-              </div>
-            )}
-          </Card>
-
-          {/* Section 4: Observed Symptoms */}
-          <Card style={{ marginBottom: 14 }}>
-            <label className="field-label" style={{ fontWeight: 700, marginBottom: 8, display: "block" }}>Observed Symptoms</label>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-              {SYMPTOMS_LIST.map((s) => (
-                <button
-                  key={s.id}
-                  type="button"
-                  className={`chip ${symptoms.includes(s.id) || symptoms.includes(s.en) ? "selected" : ""}`}
-                  onClick={() => toggleSymptom(s.id)}
-                >
-                  {t ? t(s.id) : s.en}
-                </button>
-              ))}
-            </div>
-          </Card>
-
-          {/* Section 5: Animal Vitals */}
-          <Card style={{ marginBottom: 14 }}>
-            <label className="field-label" style={{ fontWeight: 700, marginBottom: 10, display: "block" }}>Animal Vitals</label>
-            <div className="grid-2" style={{ marginBottom: 12 }}>
-              <div>
-                <label className="field-label"><Utensils size={13} style={{ verticalAlign: -2 }} /> Appetite</label>
-                <select className="field-input" value={appetite} onChange={(e) => setAppetite(e.target.value)}>
-                  <option value="Normal">Normal</option>
-                  <option value="Reduced">Reduced</option>
-                  <option value="Not eating">Not eating</option>
-                </select>
-              </div>
-              <div>
-                <label className="field-label"><Thermometer size={13} style={{ verticalAlign: -2 }} /> Body temperature</label>
-                <select className="field-input" value={temperature} onChange={(e) => setTemperature(e.target.value)}>
-                  <option value="Normal">Normal</option>
-                  <option value="Slightly high">Slightly high</option>
-                  <option value="High">High</option>
-                </select>
-              </div>
-            </div>
-            <div>
-              <label className="field-label"><Zap size={13} style={{ verticalAlign: -2 }} /> Activity level</label>
-              <select className="field-input" value={activity} onChange={(e) => setActivity(e.target.value)}>
-                <option value="Normal">Normal</option>
-                <option value="Low">Low</option>
-                <option value="Very low">Very low</option>
-                <option value="Not moving">Not moving</option>
-              </select>
-            </div>
-          </Card>
-
-          {/* Section 6: Additional Notes */}
-          <Card style={{ marginBottom: 20 }}>
-            <label className="field-label" style={{ fontWeight: 700, marginBottom: 8, display: "block" }}>Additional Notes</label>
-            <textarea
-              className="field-input"
-              rows={3}
-              style={{ resize: "vertical" }}
-              placeholder="Describe any other changes or observations..."
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-            />
-          </Card>
-
-          {/* Analyze with AI Help Button */}
-          <button
-            type="button"
-            className="btn-primary"
-            style={{ width: "100%", padding: "14px 20px", fontSize: "16px", fontWeight: "700", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 9 }}
-            onClick={submit}
-          >
-            <Sparkles size={18} /> Analyze with AI Help
-          </button>
-        </div>
-      )}
-
-      {/* Result Display */}
-      {result && !isAnalyzing && (
-        <div>
-          <Card className={`result-card result-${result.level === "urgent" ? "urgent" : result.level === "attention" ? "attention" : "healthy"}`}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
-              <span className="badge" style={{ fontSize: "calc(12px * var(--text-scale, 1))", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.5px", padding: "4px 9px", borderRadius: 6, background: "rgba(0,0,0,0.08)", color: "var(--ink)" }}>
-                AI Help Assessment Result
-              </span>
-              <span style={{ fontSize: "calc(13.5px * var(--text-scale, 1))", fontWeight: 700, color: "var(--ink-soft)" }}>
-                {animalName}
-              </span>
-            </div>
-
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-              {result.level === "urgent" && <AlertTriangle size={24} color="var(--urgent-fg, var(--urgent))" />}
-              {result.level === "attention" && <AlertCircle size={24} color="var(--attention-fg, var(--attention))" />}
-              {result.level === "healthy" && <CheckCircle2 size={24} color="var(--healthy-fg, var(--healthy))" />}
-              <div>
-                <h3 style={{ margin: 0, fontWeight: 800, fontSize: "calc(18px * var(--text-scale, 1))" }}>
-                  {result.title}
-                </h3>
-                <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--ink-soft)" }}>Confidence: {result.confidence}%</span>
-              </div>
-            </div>
-
-            {/* Evaluated Inputs Pills */}
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", margin: "10px 0 14px" }}>
-              {result.hasPhoto && (
-                <span style={{ fontSize: "11.5px", fontWeight: 700, background: "var(--paper-soft)", padding: "3px 8px", borderRadius: 12, border: "1px solid var(--line)", display: "inline-flex", alignItems: "center", gap: 4 }}>
-                  <Camera size={12} /> Photo Analyzed
-                </span>
-              )}
-              {result.hasVoice && (
-                <span style={{ fontSize: "11.5px", fontWeight: 700, background: "var(--paper-soft)", padding: "3px 8px", borderRadius: 12, border: "1px solid var(--line)", display: "inline-flex", alignItems: "center", gap: 4 }}>
-                  <Mic size={12} /> Voice Note Evaluated
-                </span>
-              )}
-              {result.hasSymptoms && (
-                <span style={{ fontSize: "11.5px", fontWeight: 700, background: "var(--paper-soft)", padding: "3px 8px", borderRadius: 12, border: "1px solid var(--line)", display: "inline-flex", alignItems: "center", gap: 4 }}>
-                  <ClipboardList size={12} /> Symptoms Triaged
-                </span>
-              )}
-            </div>
-
-            {/* Indicators */}
-            {result.indicators && result.indicators.length > 0 && (
-              <div style={{ marginBottom: 14 }}>
-                <h4 style={{ margin: "0 0 6px", fontSize: "13.5px", fontWeight: 700 }}>Key Clinical Indicators:</h4>
-                <ul style={{ margin: 0, paddingLeft: 18, fontSize: "13px", lineHeight: 1.5 }}>
-                  {result.indicators.map((ind, idx) => (
-                    <li key={idx} style={{ marginBottom: 4 }}>{ind}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {/* Recommended Next Steps */}
-            {result.nextSteps && result.nextSteps.length > 0 && (
-              <div>
-                <h4 style={{ margin: "0 0 6px", fontSize: "13.5px", fontWeight: 700 }}>Recommended Next Steps:</h4>
-                <ul style={{ margin: 0, paddingLeft: 18, fontSize: "13px", lineHeight: 1.5 }}>
-                  {result.nextSteps.map((step, idx) => (
-                    <li key={idx} style={{ marginBottom: 4 }}>{step}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </Card>
-
-          <div
-            className="screening-disclaimer-card"
-            style={{
-              display: "flex",
-              alignItems: "flex-start",
-              gap: 10,
-              background: "var(--paper-soft)",
-              border: "1.5px solid var(--line)",
-              borderRadius: 10,
-              padding: "13px 15px",
-              margin: "14px 0 20px",
-            }}
-          >
-            <ShieldCheck size={19} color="var(--brand)" style={{ flexShrink: 0, marginTop: 1 }} />
-            <p style={{ margin: 0, fontSize: "calc(13px * var(--text-scale, 1))", lineHeight: 1.55, color: "var(--ink)", fontWeight: 600 }}>
-              AI Help provides early decision-support screening and disease detection. It does not replace in-person veterinary diagnosis. Always consult a licensed veterinarian for clinical verification and treatment prescription.
-            </p>
-          </div>
-
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", width: "100%" }}>
-            <button className="btn-outline" onClick={reset} style={{ flex: "1 1 auto" }}>
-              Assess Another Animal
-            </button>
-            <button
-              className="btn-primary"
-              onClick={() => onDiscussWithVet && onDiscussWithVet(animalId, animalName)}
-              style={{ flex: "1 1 auto", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7 }}
-            >
-              <MessageCircle size={16} /> Discuss with Vet
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    className: "page-header"
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "back-btn",
+    onClick: handleBack,
+    "aria-label": t ? t("common_back") : "Back"
+  }, /*#__PURE__*/React.createElement(ArrowLeft, {
+    size: 18
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 8
+    }
+  }, /*#__PURE__*/React.createElement(Sparkles, {
+    size: 22,
+    color: "var(--brand)"
+  }), /*#__PURE__*/React.createElement("h1", {
+    className: "page-title"
+  }, t ? t("nav_aiHelp", "AI Help") : "AI Help"))), /*#__PURE__*/React.createElement(Card, {
+    style: {
+      marginBottom: 16,
+      display: "flex",
+      gap: 10,
+      alignItems: "flex-start",
+      background: "var(--brand-soft)"
+    }
+  }, /*#__PURE__*/React.createElement(Info, {
+    size: 18,
+    color: "var(--brand-ink, var(--brand-dark))",
+    style: {
+      flexShrink: 0,
+      marginTop: 2
+    }
+  }), /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: "calc(13.5px * var(--text-scale, 1))",
+      color: "var(--brand-ink, var(--brand-dark))",
+      lineHeight: 1.5
+    }
+  }, "Unified AI Health Assistant: upload animal photos for visual disease inspection, record a voice message, or select observed symptoms.")), error && /*#__PURE__*/React.createElement(Card, {
+    style: {
+      marginBottom: 16,
+      background: "var(--urgent-soft)",
+      color: "var(--urgent)",
+      border: "1px solid var(--urgent)"
+    }
+  }, /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      fontWeight: 600
+    }
+  }, error)), isAnalyzing && /*#__PURE__*/React.createElement(Card, {
+    style: {
+      textAlign: "center",
+      padding: "40px 20px",
+      marginBottom: 16
+    }
+  }, /*#__PURE__*/React.createElement(Loader, {
+    size: 36,
+    className: "spinning",
+    style: {
+      color: "var(--brand)",
+      margin: "0 auto 16px"
+    }
+  }), /*#__PURE__*/React.createElement("h3", {
+    style: {
+      margin: "0 0 8px",
+      fontSize: "18px"
+    }
+  }, "Analyzing with AI Help..."), /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      color: "var(--ink-soft)",
+      fontSize: "14px"
+    }
+  }, "Processing visual features, audio characteristics, and clinical vitals")), !result && !isAnalyzing && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(Card, {
+    style: {
+      marginBottom: 14
+    }
+  }, /*#__PURE__*/React.createElement("label", {
+    className: "field-label",
+    style: {
+      fontWeight: 700,
+      marginBottom: 8,
+      display: "block"
+    }
+  }, "Select Animal"), /*#__PURE__*/React.createElement("select", {
+    className: "field-input",
+    value: animalId,
+    onChange: e => handleAnimalChange(e.target.value)
+  }, animals.map(a => /*#__PURE__*/React.createElement("option", {
+    key: a.id,
+    value: a.id
+  }, a.name, "  \u2014  ", formatSpecies(a.species, t))))), /*#__PURE__*/React.createElement(Card, {
+    style: {
+      marginBottom: 14
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 8,
+      marginBottom: 10
+    }
+  }, /*#__PURE__*/React.createElement(Camera, {
+    size: 18,
+    color: "var(--brand)"
+  }), /*#__PURE__*/React.createElement("label", {
+    className: "field-label",
+    style: {
+      margin: 0,
+      fontWeight: 700
+    }
+  }, "Animal Photo")), /*#__PURE__*/React.createElement("input", {
+    type: "file",
+    ref: cameraInputRef,
+    accept: "image/*",
+    capture: "environment",
+    style: {
+      display: "none"
+    },
+    onChange: e => {
+      validateAndLoadFile(e.target.files && e.target.files[0]);
+      e.target.value = "";
+    }
+  }), /*#__PURE__*/React.createElement("input", {
+    type: "file",
+    ref: uploadInputRef,
+    accept: "image/*",
+    style: {
+      display: "none"
+    },
+    onChange: e => {
+      validateAndLoadFile(e.target.files && e.target.files[0]);
+      e.target.value = "";
+    }
+  }), !selectedImage ? /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "grid",
+      gridTemplateColumns: "1fr 1fr",
+      gap: 14
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: "btn-secondary",
+    style: {
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 10,
+      padding: "24px 16px",
+      minHeight: 110,
+      borderRadius: 14,
+      border: "2px dashed var(--brand)",
+      background: "var(--brand-soft)",
+      cursor: "pointer",
+      boxShadow: "0 2px 6px rgba(0,0,0,0.03)",
+      transition: "all 0.2s ease"
+    },
+    onClick: () => cameraInputRef.current?.click()
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: 44,
+      height: 44,
+      borderRadius: "50%",
+      background: "#fff",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      boxShadow: "0 2px 6px rgba(0,0,0,0.08)"
+    }
+  }, /*#__PURE__*/React.createElement(Camera, {
+    size: 24,
+    color: "var(--brand)"
+  })), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: "16px",
+      fontWeight: 800,
+      color: "var(--ink)"
+    }
+  }, "Take Photo"), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: "12px",
+      color: "var(--ink-soft)",
+      marginTop: -4
+    }
+  }, "Use device camera")), /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: "btn-secondary",
+    style: {
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 10,
+      padding: "24px 16px",
+      minHeight: 110,
+      borderRadius: 14,
+      border: "2px dashed var(--line)",
+      background: "var(--paper-soft)",
+      cursor: "pointer",
+      boxShadow: "0 2px 6px rgba(0,0,0,0.03)",
+      transition: "all 0.2s ease"
+    },
+    onClick: () => uploadInputRef.current?.click()
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: 44,
+      height: 44,
+      borderRadius: "50%",
+      background: "#fff",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      boxShadow: "0 2px 6px rgba(0,0,0,0.08)"
+    }
+  }, /*#__PURE__*/React.createElement(Upload, {
+    size: 24,
+    color: "var(--brand)"
+  })), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: "16px",
+      fontWeight: 800,
+      color: "var(--ink)"
+    }
+  }, "Upload Image"), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: "12px",
+      color: "var(--ink-soft)",
+      marginTop: -4
+    }
+  }, "Browse files / gallery"))) : /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: "var(--paper-soft)",
+      border: "1px solid var(--line)",
+      borderRadius: 10,
+      padding: 12
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 12,
+      alignItems: "center"
+    }
+  }, /*#__PURE__*/React.createElement("img", {
+    src: selectedImage,
+    alt: "Uploaded Animal",
+    style: {
+      width: 80,
+      height: 80,
+      objectFit: "cover",
+      borderRadius: 8,
+      border: "1px solid var(--line)"
+    }
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1,
+      minWidth: 0
+    }
+  }, /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: "0 0 4px",
+      fontWeight: 700,
+      fontSize: "14px",
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+      whiteSpace: "nowrap"
+    }
+  }, imageMeta?.name || "photo.jpg"), /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: "12px",
+      color: "var(--ink-soft)"
+    }
+  }, imageMeta?.size || "Ready for AI visual analysis")), /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: "btn-outline",
+    onClick: () => {
+      setSelectedImage(null);
+      setImageMeta(null);
+    },
+    style: {
+      padding: "6px 12px",
+      fontSize: "12px",
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 4
+    }
+  }, /*#__PURE__*/React.createElement(Trash2, {
+    size: 14
+  }), " Remove")))), /*#__PURE__*/React.createElement(Card, {
+    style: {
+      marginBottom: 14
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 8,
+      marginBottom: 10
+    }
+  }, /*#__PURE__*/React.createElement(Mic, {
+    size: 18,
+    color: "var(--brand)"
+  }), /*#__PURE__*/React.createElement("label", {
+    className: "field-label",
+    style: {
+      margin: 0,
+      fontWeight: 700
+    }
+  }, "Voice Message")), !isRecording && !voiceAudioUrl && /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: "btn-secondary",
+    onClick: startVoiceRecording,
+    style: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 14,
+      width: "100%",
+      padding: "18px 20px",
+      minHeight: 72,
+      borderRadius: 14,
+      border: "2px dashed var(--accent)",
+      background: "var(--accent-soft)",
+      cursor: "pointer",
+      boxShadow: "0 2px 6px rgba(0,0,0,0.03)",
+      transition: "all 0.2s ease"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: 44,
+      height: 44,
+      borderRadius: "50%",
+      background: "#fff",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      boxShadow: "0 2px 6px rgba(0,0,0,0.08)"
+    }
+  }, /*#__PURE__*/React.createElement(Mic, {
+    size: 24,
+    color: "var(--accent)"
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      textAlign: "left"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: "16px",
+      fontWeight: 800,
+      color: "var(--ink)"
+    }
+  }, "Record Voice Message"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: "12px",
+      color: "var(--ink-soft)"
+    }
+  }, "Tap to speak symptoms or notes in any language"))), isRecording && /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      background: "rgba(179, 64, 42, 0.08)",
+      border: "1.5px solid var(--urgent)",
+      borderRadius: 10,
+      padding: "10px 14px"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 10
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      width: 12,
+      height: 12,
+      borderRadius: "50%",
+      background: "var(--urgent)",
+      display: "inline-block",
+      animation: "pulse 1s infinite"
+    }
+  }), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontWeight: 700,
+      color: "var(--urgent)",
+      fontSize: "14px"
+    }
+  }, "Recording... ", Math.floor(recordSeconds / 60), ":", String(recordSeconds % 60).padStart(2, "0"))), /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: "btn-primary",
+    onClick: stopVoiceRecording,
+    style: {
+      background: "var(--urgent)",
+      borderColor: "var(--urgent)",
+      padding: "7px 14px",
+      fontSize: "13px",
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 6
+    }
+  }, /*#__PURE__*/React.createElement(Square, {
+    size: 14
+  }), " Stop")), voiceAudioUrl && !isRecording && /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: "var(--healthy-soft)",
+      border: "1px solid var(--healthy)",
+      borderRadius: 10,
+      padding: 12,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      flexWrap: "wrap",
+      gap: 10
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 8
+    }
+  }, /*#__PURE__*/React.createElement(Volume2, {
+    size: 18,
+    color: "var(--healthy)"
+  }), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontWeight: 700,
+      fontSize: "13.5px",
+      color: "var(--healthy-fg, var(--healthy))",
+      display: "block"
+    }
+  }, "Voice message attached (", recordSeconds > 0 ? recordSeconds : 6, "s)"), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: "11.5px",
+      color: "var(--ink-soft)"
+    }
+  }, "Ready for AI audio assessment"))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 8
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: "btn-secondary",
+    onClick: togglePlayVoice,
+    style: {
+      padding: "6px 12px",
+      fontSize: "12px",
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 5
+    }
+  }, isPlayingVoice ? /*#__PURE__*/React.createElement(Square, {
+    size: 13
+  }) : /*#__PURE__*/React.createElement(Play, {
+    size: 13
+  }), isPlayingVoice ? "Pause" : "Play"), /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: "btn-outline",
+    onClick: removeVoiceRecording,
+    style: {
+      padding: "6px 10px",
+      fontSize: "12px"
+    }
+  }, /*#__PURE__*/React.createElement(Trash2, {
+    size: 13
+  }))))), /*#__PURE__*/React.createElement(Card, {
+    style: {
+      marginBottom: 14
+    }
+  }, /*#__PURE__*/React.createElement("label", {
+    className: "field-label",
+    style: {
+      fontWeight: 700,
+      marginBottom: 8,
+      display: "block"
+    }
+  }, "Observed Symptoms"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      flexWrap: "wrap",
+      gap: 8
+    }
+  }, SYMPTOMS_LIST.map(s => /*#__PURE__*/React.createElement("button", {
+    key: s.id,
+    type: "button",
+    className: `chip ${symptoms.includes(s.id) || symptoms.includes(s.en) ? "selected" : ""}`,
+    onClick: () => toggleSymptom(s.id)
+  }, t ? t(s.id) : s.en)))), /*#__PURE__*/React.createElement(Card, {
+    style: {
+      marginBottom: 14
+    }
+  }, /*#__PURE__*/React.createElement("label", {
+    className: "field-label",
+    style: {
+      fontWeight: 700,
+      marginBottom: 10,
+      display: "block"
+    }
+  }, "Animal Vitals"), /*#__PURE__*/React.createElement("div", {
+    className: "grid-2",
+    style: {
+      marginBottom: 12
+    }
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+    className: "field-label"
+  }, /*#__PURE__*/React.createElement(Utensils, {
+    size: 13,
+    style: {
+      verticalAlign: -2
+    }
+  }), " Appetite"), /*#__PURE__*/React.createElement("select", {
+    className: "field-input",
+    value: appetite,
+    onChange: e => setAppetite(e.target.value)
+  }, /*#__PURE__*/React.createElement("option", {
+    value: "Normal"
+  }, "Normal"), /*#__PURE__*/React.createElement("option", {
+    value: "Reduced"
+  }, "Reduced"), /*#__PURE__*/React.createElement("option", {
+    value: "Not eating"
+  }, "Not eating"))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+    className: "field-label"
+  }, /*#__PURE__*/React.createElement(Thermometer, {
+    size: 13,
+    style: {
+      verticalAlign: -2
+    }
+  }), " Body temperature"), /*#__PURE__*/React.createElement("select", {
+    className: "field-input",
+    value: temperature,
+    onChange: e => setTemperature(e.target.value)
+  }, /*#__PURE__*/React.createElement("option", {
+    value: "Normal"
+  }, "Normal"), /*#__PURE__*/React.createElement("option", {
+    value: "Slightly high"
+  }, "Slightly high"), /*#__PURE__*/React.createElement("option", {
+    value: "High"
+  }, "High")))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+    className: "field-label"
+  }, /*#__PURE__*/React.createElement(Zap, {
+    size: 13,
+    style: {
+      verticalAlign: -2
+    }
+  }), " Activity level"), /*#__PURE__*/React.createElement("select", {
+    className: "field-input",
+    value: activity,
+    onChange: e => setActivity(e.target.value)
+  }, /*#__PURE__*/React.createElement("option", {
+    value: "Normal"
+  }, "Normal"), /*#__PURE__*/React.createElement("option", {
+    value: "Low"
+  }, "Low"), /*#__PURE__*/React.createElement("option", {
+    value: "Very low"
+  }, "Very low"), /*#__PURE__*/React.createElement("option", {
+    value: "Not moving"
+  }, "Not moving")))), /*#__PURE__*/React.createElement(Card, {
+    style: {
+      marginBottom: 20
+    }
+  }, /*#__PURE__*/React.createElement("label", {
+    className: "field-label",
+    style: {
+      fontWeight: 700,
+      marginBottom: 8,
+      display: "block"
+    }
+  }, "Additional Notes"), /*#__PURE__*/React.createElement("textarea", {
+    className: "field-input",
+    rows: 3,
+    style: {
+      resize: "vertical"
+    },
+    placeholder: "Describe any other changes or observations...",
+    value: notes,
+    onChange: e => setNotes(e.target.value)
+  })), /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: "btn-primary",
+    style: {
+      width: "100%",
+      padding: "14px 20px",
+      fontSize: "16px",
+      fontWeight: "700",
+      display: "inline-flex",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 9
+    },
+    onClick: submit
+  }, /*#__PURE__*/React.createElement(Sparkles, {
+    size: 18
+  }), " Analyze with AI Help")), result && !isAnalyzing && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(Card, {
+    className: `result-card result-${result.level === "urgent" ? "urgent" : result.level === "attention" ? "attention" : "healthy"}`
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 8,
+      flexWrap: "wrap",
+      marginBottom: 12
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "badge",
+    style: {
+      fontSize: "calc(12px * var(--text-scale, 1))",
+      fontWeight: 800,
+      textTransform: "uppercase",
+      letterSpacing: "0.5px",
+      padding: "4px 9px",
+      borderRadius: 6,
+      background: "rgba(0,0,0,0.08)",
+      color: "var(--ink)"
+    }
+  }, "AI Help Assessment Result"), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: "calc(13.5px * var(--text-scale, 1))",
+      fontWeight: 700,
+      color: "var(--ink-soft)"
+    }
+  }, animalName)), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 10,
+      marginBottom: 10
+    }
+  }, result.level === "urgent" && /*#__PURE__*/React.createElement(AlertTriangle, {
+    size: 24,
+    color: "var(--urgent-fg, var(--urgent))"
+  }), result.level === "attention" && /*#__PURE__*/React.createElement(AlertCircle, {
+    size: 24,
+    color: "var(--attention-fg, var(--attention))"
+  }), result.level === "healthy" && /*#__PURE__*/React.createElement(CheckCircle2, {
+    size: 24,
+    color: "var(--healthy-fg, var(--healthy))"
+  }), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h3", {
+    style: {
+      margin: 0,
+      fontWeight: 800,
+      fontSize: "calc(18px * var(--text-scale, 1))"
+    }
+  }, result.title), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: "12px",
+      fontWeight: 600,
+      color: "var(--ink-soft)"
+    }
+  }, "Confidence: ", result.confidence, "%"))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 6,
+      flexWrap: "wrap",
+      margin: "10px 0 14px"
+    }
+  }, result.hasPhoto && /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: "11.5px",
+      fontWeight: 700,
+      background: "var(--paper-soft)",
+      padding: "3px 8px",
+      borderRadius: 12,
+      border: "1px solid var(--line)",
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 4
+    }
+  }, /*#__PURE__*/React.createElement(Camera, {
+    size: 12
+  }), " Photo Analyzed"), result.hasVoice && /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: "11.5px",
+      fontWeight: 700,
+      background: "var(--paper-soft)",
+      padding: "3px 8px",
+      borderRadius: 12,
+      border: "1px solid var(--line)",
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 4
+    }
+  }, /*#__PURE__*/React.createElement(Mic, {
+    size: 12
+  }), " Voice Note Evaluated"), result.hasSymptoms && /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: "11.5px",
+      fontWeight: 700,
+      background: "var(--paper-soft)",
+      padding: "3px 8px",
+      borderRadius: 12,
+      border: "1px solid var(--line)",
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 4
+    }
+  }, /*#__PURE__*/React.createElement(ClipboardList, {
+    size: 12
+  }), " Symptoms Triaged")), result.indicators && result.indicators.length > 0 && /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginBottom: 14
+    }
+  }, /*#__PURE__*/React.createElement("h4", {
+    style: {
+      margin: "0 0 6px",
+      fontSize: "13.5px",
+      fontWeight: 700
+    }
+  }, "Key Clinical Indicators:"), /*#__PURE__*/React.createElement("ul", {
+    style: {
+      margin: 0,
+      paddingLeft: 18,
+      fontSize: "13px",
+      lineHeight: 1.5
+    }
+  }, result.indicators.map((ind, idx) => /*#__PURE__*/React.createElement("li", {
+    key: idx,
+    style: {
+      marginBottom: 4
+    }
+  }, ind)))), result.nextSteps && result.nextSteps.length > 0 && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h4", {
+    style: {
+      margin: "0 0 6px",
+      fontSize: "13.5px",
+      fontWeight: 700
+    }
+  }, "Recommended Next Steps:"), /*#__PURE__*/React.createElement("ul", {
+    style: {
+      margin: 0,
+      paddingLeft: 18,
+      fontSize: "13px",
+      lineHeight: 1.5
+    }
+  }, result.nextSteps.map((step, idx) => /*#__PURE__*/React.createElement("li", {
+    key: idx,
+    style: {
+      marginBottom: 4
+    }
+  }, step))))), /*#__PURE__*/React.createElement("div", {
+    className: "screening-disclaimer-card",
+    style: {
+      display: "flex",
+      alignItems: "flex-start",
+      gap: 10,
+      background: "var(--paper-soft)",
+      border: "1.5px solid var(--line)",
+      borderRadius: 10,
+      padding: "13px 15px",
+      margin: "14px 0 20px"
+    }
+  }, /*#__PURE__*/React.createElement(ShieldCheck, {
+    size: 19,
+    color: "var(--brand)",
+    style: {
+      flexShrink: 0,
+      marginTop: 1
+    }
+  }), /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: "calc(13px * var(--text-scale, 1))",
+      lineHeight: 1.55,
+      color: "var(--ink)",
+      fontWeight: 600
+    }
+  }, "AI Help provides early decision-support screening and disease detection. It does not replace in-person veterinary diagnosis. Always consult a licensed veterinarian for clinical verification and treatment prescription.")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 10,
+      flexWrap: "wrap",
+      width: "100%"
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn-outline",
+    onClick: reset,
+    style: {
+      flex: "1 1 auto"
+    }
+  }, "Assess Another Animal"), /*#__PURE__*/React.createElement("button", {
+    className: "btn-primary",
+    onClick: () => onDiscussWithVet && onDiscussWithVet(animalId, animalName),
+    style: {
+      flex: "1 1 auto",
+      display: "inline-flex",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 7
+    }
+  }, /*#__PURE__*/React.createElement(MessageCircle, {
+    size: 16
+  }), " Discuss with Vet"))));
 }
 
 // Backward compatibility aliases
 const ScreeningView = AIHelpView;
 const DiseaseDetectionView = AIHelpView;
 
-
 /* ------------------------------------------------------------------ */
 /* Chat view                                                           */
 /* ------------------------------------------------------------------ */
-function ChatView({ animals, selectedAnimalId, setSelectedAnimalId, chats, onSend, onBack, t }) {
+function ChatView({
+  animals,
+  selectedAnimalId,
+  setSelectedAnimalId,
+  chats,
+  onSend,
+  onBack,
+  t
+}) {
   const [chatTab, setChatTab] = useState("current"); // "current" | "previous"
   const [activeTranscript, setActiveTranscript] = useState(null);
   const animalId = selectedAnimalId || animals[0]?.id;
-  const animal = animals.find((a) => a.id === animalId);
-  const chat = chats[animalId] || { messages: [], typing: false };
+  const animal = animals.find(a => a.id === animalId);
+  const chat = chats[animalId] || {
+    messages: [],
+    typing: false
+  };
   const [text, setText] = useState("");
   const scrollRef = useRef(null);
-
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [chat.messages.length, chat.typing, chatTab]);
-
-  const quickActions = [
-    { id: "symptoms", label: t ? t("chat_qa_symptoms_label") : "Share symptoms", text: `${animal?.name} ${t ? t("chat_qa_symptoms_text") : "isn't behaving normally, I'd like to describe the symptoms."}` },
-    { id: "treatment", label: t ? t("chat_qa_treatment_label") : "Ask about treatment", text: t ? t("chat_qa_treatment_text") : `Can you tell me more about ${animal?.name}'s current treatment?` },
-    { id: "vaccination", label: t ? t("chat_qa_vaccination_label") : "Ask about vaccination", text: t ? t("chat_qa_vaccination_text") : `When is ${animal?.name}'s next vaccination due?` },
-    { id: "consultation", label: t ? t("chat_qa_consultation_label") : "Request a consultation", text: t ? t("chat_qa_consultation_text") : `Could we schedule a vet consultation for ${animal?.name}?` },
-  ];
-
+  const quickActions = [{
+    id: "symptoms",
+    label: t ? t("chat_qa_symptoms_label") : "Share symptoms",
+    text: `${animal?.name} ${t ? t("chat_qa_symptoms_text") : "isn't behaving normally, I'd like to describe the symptoms."}`
+  }, {
+    id: "treatment",
+    label: t ? t("chat_qa_treatment_label") : "Ask about treatment",
+    text: t ? t("chat_qa_treatment_text") : `Can you tell me more about ${animal?.name}'s current treatment?`
+  }, {
+    id: "vaccination",
+    label: t ? t("chat_qa_vaccination_label") : "Ask about vaccination",
+    text: t ? t("chat_qa_vaccination_text") : `When is ${animal?.name}'s next vaccination due?`
+  }, {
+    id: "consultation",
+    label: t ? t("chat_qa_consultation_label") : "Request a consultation",
+    text: t ? t("chat_qa_consultation_text") : `Could we schedule a vet consultation for ${animal?.name}?`
+  }];
   const handleSend = (msgText, category) => {
     onSend(animalId, msgText, category);
     setText("");
@@ -8036,439 +9209,700 @@ function ChatView({ animals, selectedAnimalId, setSelectedAnimalId, chats, onSen
   const previousMessages = useMemo(() => {
     return chat.messages.filter(m => m.session === "previous");
   }, [chat.messages]);
-
   const currentMessages = useMemo(() => {
     return chat.messages.filter(m => m.session !== "previous");
   }, [chat.messages]);
 
   // Historical consultations database
   const pastConsultations = useMemo(() => {
-    return [
-      {
-        id: "past_101",
-        animalId: "a1",
-        animalName: "Gauri (Cow)",
-        date: "10 Sept 2026",
-        vetName: "Dr. Kavita Rao",
-        role: "Senior Veterinary Surgeon",
-        condition: "Suspected Bovine Dermatitis / Skin Lesions",
-        status: "Resolved",
-        badgeColor: "var(--healthy)",
-        badgeBg: "var(--healthy-soft)",
-        summary: "Dr. Rao inspected skin lesion photos. Prescribed Neoclovet ointment 2x daily after milking, clean wash, and fly protection. 3-day recovery completed.",
-        messages: [
-          { sender: "farmer", text: "Namaste Dr. Rao, Gauri ke gardan ke pass halki soojan aur khujli dikh rahi hai.", time: "10 Sept 2026, 10:15 AM" },
-          { sender: "vet", text: "Namaste Suresh ji. Maine photo dekha. Yeh mild skin dermatitis lag raha hai. Aap Neoclovet ointment din me do baar lagayein aur paani saaf rakhein.", time: "10 Sept 2026, 10:22 AM" },
-          { sender: "farmer", text: "Theek hai doctor sahiba. Aur doodh nikaalna jaari rakh sakte hain?", time: "10 Sept 2026, 10:28 AM" },
-          { sender: "vet", text: "Haan bilkul, doodh nikaalne ke baad ointment lagayein. 3 din baad batayein kaisa sudhaar hai.", time: "10 Sept 2026, 10:30 AM" },
-        ]
-      },
-      {
-        id: "past_102",
-        animalId: "a2",
-        animalName: "Raju (Bullock)",
-        date: "05 Sept 2026",
-        vetName: "Dr. Kavita Rao",
-        role: "Senior Veterinary Surgeon",
-        condition: "Mild Bloat & Colic Emergency Relief",
-        status: "Completed",
-        badgeColor: "var(--accent)",
-        badgeBg: "var(--accent-soft)",
-        summary: "Warm water with asafoetida (hing) & carom seed (ajwain) drench given. Kept in shaded ventilated shed. Bowel movement normalized in 4 hours.",
-        messages: [
-          { sender: "farmer", text: "Doctor sahiba, Raju aaj subah se chara kam kha raha hai aur pet me thodi garmi lag rahi hai.", time: "05 Sept 2026, 08:30 AM" },
-          { sender: "vet", text: "Suresh ji, Raju ko turant thoda gunguna paani aur hing-ajwain ka ghol dein. Dhoop me mat baandhiye.", time: "05 Sept 2026, 08:45 AM" },
-          { sender: "farmer", text: "Ji doctor sahiba, ghol de diya hai, abhi aaram se baitha hai.", time: "05 Sept 2026, 11:00 AM" },
-          { sender: "vet", text: "Bahut badhiya. Sham tak observation rakhein aur taaza hara chara dein.", time: "05 Sept 2026, 11:05 AM" },
-        ]
-      },
-      {
-        id: "past_103",
-        animalId: "a3",
-        animalName: "Lakshmi (Buffalo)",
-        date: "24 Aug 2026",
-        vetName: "Dr. Rajesh Sharma",
-        role: "Veterinary Officer",
-        condition: "Post-Calving Dietary Supplement & Mineral Mixture",
-        status: "Completed",
-        badgeColor: "var(--brand)",
-        badgeBg: "var(--brand-soft)",
-        summary: "Advised 50g daily Chelated Mineral Mixture mixed with grain husk to prevent milk fever and optimize lactation persistency.",
-        messages: [
-          { sender: "farmer", text: "Doctor sahiba, Lakshmi (Buffalo) ke liye calving ke baad mineral mixture kitna dena chahiye?", time: "24 Aug 2026, 04:15 PM" },
-          { sender: "vet", text: "Namaste Suresh ji. Calving ke baad 50 gram daily Chelated Mineral Mixture chane ke daane ya daane ke chhilke me mila kar dein.", time: "24 Aug 2026, 04:30 PM" },
-          { sender: "farmer", text: "Dhanyawaad doctor sahiba.", time: "24 Aug 2026, 04:35 PM" },
-        ]
-      }
-    ];
+    return [{
+      id: "past_101",
+      animalId: "a1",
+      animalName: "Gauri (Cow)",
+      date: "10 Sept 2026",
+      vetName: "Dr. Kavita Rao",
+      role: "Senior Veterinary Surgeon",
+      condition: "Suspected Bovine Dermatitis / Skin Lesions",
+      status: "Resolved",
+      badgeColor: "var(--healthy)",
+      badgeBg: "var(--healthy-soft)",
+      summary: "Dr. Rao inspected skin lesion photos. Prescribed Neoclovet ointment 2x daily after milking, clean wash, and fly protection. 3-day recovery completed.",
+      messages: [{
+        sender: "farmer",
+        text: "Namaste Dr. Rao, Gauri ke gardan ke pass halki soojan aur khujli dikh rahi hai.",
+        time: "10 Sept 2026, 10:15 AM"
+      }, {
+        sender: "vet",
+        text: "Namaste Suresh ji. Maine photo dekha. Yeh mild skin dermatitis lag raha hai. Aap Neoclovet ointment din me do baar lagayein aur paani saaf rakhein.",
+        time: "10 Sept 2026, 10:22 AM"
+      }, {
+        sender: "farmer",
+        text: "Theek hai doctor sahiba. Aur doodh nikaalna jaari rakh sakte hain?",
+        time: "10 Sept 2026, 10:28 AM"
+      }, {
+        sender: "vet",
+        text: "Haan bilkul, doodh nikaalne ke baad ointment lagayein. 3 din baad batayein kaisa sudhaar hai.",
+        time: "10 Sept 2026, 10:30 AM"
+      }]
+    }, {
+      id: "past_102",
+      animalId: "a2",
+      animalName: "Raju (Bullock)",
+      date: "05 Sept 2026",
+      vetName: "Dr. Kavita Rao",
+      role: "Senior Veterinary Surgeon",
+      condition: "Mild Bloat & Colic Emergency Relief",
+      status: "Completed",
+      badgeColor: "var(--accent)",
+      badgeBg: "var(--accent-soft)",
+      summary: "Warm water with asafoetida (hing) & carom seed (ajwain) drench given. Kept in shaded ventilated shed. Bowel movement normalized in 4 hours.",
+      messages: [{
+        sender: "farmer",
+        text: "Doctor sahiba, Raju aaj subah se chara kam kha raha hai aur pet me thodi garmi lag rahi hai.",
+        time: "05 Sept 2026, 08:30 AM"
+      }, {
+        sender: "vet",
+        text: "Suresh ji, Raju ko turant thoda gunguna paani aur hing-ajwain ka ghol dein. Dhoop me mat baandhiye.",
+        time: "05 Sept 2026, 08:45 AM"
+      }, {
+        sender: "farmer",
+        text: "Ji doctor sahiba, ghol de diya hai, abhi aaram se baitha hai.",
+        time: "05 Sept 2026, 11:00 AM"
+      }, {
+        sender: "vet",
+        text: "Bahut badhiya. Sham tak observation rakhein aur taaza hara chara dein.",
+        time: "05 Sept 2026, 11:05 AM"
+      }]
+    }, {
+      id: "past_103",
+      animalId: "a3",
+      animalName: "Lakshmi (Buffalo)",
+      date: "24 Aug 2026",
+      vetName: "Dr. Rajesh Sharma",
+      role: "Veterinary Officer",
+      condition: "Post-Calving Dietary Supplement & Mineral Mixture",
+      status: "Completed",
+      badgeColor: "var(--brand)",
+      badgeBg: "var(--brand-soft)",
+      summary: "Advised 50g daily Chelated Mineral Mixture mixed with grain husk to prevent milk fever and optimize lactation persistency.",
+      messages: [{
+        sender: "farmer",
+        text: "Doctor sahiba, Lakshmi (Buffalo) ke liye calving ke baad mineral mixture kitna dena chahiye?",
+        time: "24 Aug 2026, 04:15 PM"
+      }, {
+        sender: "vet",
+        text: "Namaste Suresh ji. Calving ke baad 50 gram daily Chelated Mineral Mixture chane ke daane ya daane ke chhilke me mila kar dein.",
+        time: "24 Aug 2026, 04:30 PM"
+      }, {
+        sender: "farmer",
+        text: "Dhanyawaad doctor sahiba.",
+        time: "24 Aug 2026, 04:35 PM"
+      }]
+    }];
   }, []);
-
-  return (
-    <div>
-      {/* Header */}
-      <div className="page-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <button className="back-btn" onClick={onBack} aria-label={t ? t("common_back") : "Back"}><ArrowLeft size={18} /></button>
-          <div>
-            <h1 className="page-title" style={{ margin: 0 }}>{t ? t("nav_chatWithVet") : "Chat with Vet"}</h1>
-            <p style={{ margin: "2px 0 0", fontSize: "13px", color: "var(--ink-soft)" }}>Consult certified veterinarians & view historical consultation chats</p>
-          </div>
-        </div>
-        <a
-          href="tel:1962"
-          className="btn-secondary"
-          style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "8px 16px", borderRadius: 999, textDecoration: "none", color: "var(--ink)", fontWeight: 700, fontSize: "13px" }}
-        >
-          <Phone size={15} color="var(--urgent)" /> Call Toll-Free 1962
-        </a>
-      </div>
-
-      {/* Tabs: Current Chat vs Previous Chats */}
-      <div style={{ display: "flex", gap: 10, margin: "14px 0 16px", background: "var(--paper-soft)", padding: 5, borderRadius: 14, border: "1.5px solid var(--line)", width: "fit-content" }}>
-        <button
-          type="button"
-          onClick={() => setChatTab("current")}
-          style={{
-            padding: "9px 20px",
-            borderRadius: 10,
-            fontWeight: 800,
-            fontSize: "14px",
-            border: "none",
-            background: chatTab === "current" ? "var(--brand)" : "transparent",
-            color: chatTab === "current" ? "#fff" : "var(--ink)",
-            cursor: "pointer",
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 8,
-            boxShadow: chatTab === "current" ? "0 2px 6px rgba(0,0,0,0.12)" : "none",
-            transition: "all 0.15s ease"
-          }}
-        >
-          <MessageCircle size={16} /> Current Chat
-        </button>
-        <button
-          type="button"
-          onClick={() => setChatTab("previous")}
-          style={{
-            padding: "9px 20px",
-            borderRadius: 10,
-            fontWeight: 800,
-            fontSize: "14px",
-            border: "none",
-            background: chatTab === "previous" ? "var(--brand)" : "transparent",
-            color: chatTab === "previous" ? "#fff" : "var(--ink)",
-            cursor: "pointer",
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 8,
-            boxShadow: chatTab === "previous" ? "0 2px 6px rgba(0,0,0,0.12)" : "none",
-            transition: "all 0.15s ease"
-          }}
-        >
-          <Clock size={16} /> Previous Chats ({pastConsultations.length})
-        </button>
-      </div>
-
-      {/* TAB 1: CURRENT CHAT */}
-      {chatTab === "current" && (
-        <div>
-          {/* Doctor Banner & Animal Selector */}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12, marginBottom: 12 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div style={{ width: 42, height: 42, borderRadius: "50%", background: "var(--brand-soft)", border: "2px solid var(--brand)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <Stethoscope size={20} color="var(--brand)" />
-              </div>
-              <div>
-                <div style={{ fontWeight: 800, fontSize: "14.5px", color: "var(--ink)" }}>Dr. Kavita Rao (B.V.Sc & A.H.)</div>
-                <div style={{ fontSize: "12px", color: "var(--healthy)", display: "flex", alignItems: "center", gap: 5, fontWeight: 700 }}>
-                  <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--healthy)", display: "inline-block" }}></span>
-                  Online Now • Wagholi Government Dispensary
-                </div>
-              </div>
-            </div>
-
-            <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-              <label className="field-label" style={{ margin: 0, fontWeight: 700, fontSize: "13px", whiteSpace: "nowrap" }}>
-                {t ? t("chat_talkingAbout") : "Animal:"}
-              </label>
-              <select
-                className="field-input"
-                style={{ minWidth: 200, padding: "7px 12px", fontWeight: 700 }}
-                value={animalId}
-                onChange={(e) => setSelectedAnimalId(e.target.value)}
-              >
-                {animals.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.name} — {formatSpecies(a.species, t)}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          {/* Chat Window with BOTH Previous and Current Messages */}
-          <div className="chat-window" style={{ minHeight: 520 }}>
-            <div className="chat-messages" ref={scrollRef}>
-              
-              {/* PREVIOUS CHATS SECTION IN STREAM */}
-              {previousMessages.length > 0 && (
-                <>
-                  <div style={{ textAlign: "center", margin: "10px 0 8px" }}>
-                    <span style={{
-                      background: "var(--paper-soft)",
-                      border: "1px solid var(--line)",
-                      padding: "5px 14px",
-                      borderRadius: 20,
-                      fontSize: "12px",
-                      fontWeight: 800,
-                      color: "var(--ink-soft)",
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 6
-                    }}>
-                      <Clock size={13} color="var(--brand)" /> Previous Consultation • {previousMessages[0]?.sessionDate || "10 Sept 2026"}
-                    </span>
-                  </div>
-
-                  {previousMessages.map((m) => (
-                    <div
-                      key={m.id}
-                      className={`bubble ${m.sender}`}
-                      style={{
-                        background: m.sender === "farmer" ? "rgba(31, 93, 80, 0.85)" : "#fff",
-                        border: m.sender === "vet" ? "1.5px solid var(--line)" : "none",
-                        boxShadow: "0 1px 3px rgba(0,0,0,0.04)"
-                      }}
-                    >
-                      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
-                        <span style={{ fontSize: "10px", fontWeight: 800, padding: "1px 5px", borderRadius: 4, background: m.sender === "farmer" ? "rgba(255,255,255,0.25)" : "var(--paper-soft)", color: m.sender === "farmer" ? "#fff" : "var(--ink-soft)", textTransform: "uppercase" }}>
-                          Past Chat
-                        </span>
-                      </div>
-                      {m.text}
-                      <div className="bubble-time">
-                        {m.sender === "vet" ? (t ? t("chat_vetName") : "Dr. Kavita Rao") : (t ? t("chat_you") : "You")} • {m.time}
-                      </div>
-                    </div>
-                  ))}
-
-                  <div style={{ textAlign: "center", margin: "12px 0 16px" }}>
-                    <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "var(--healthy-soft)", border: "1px dashed var(--healthy)", color: "var(--healthy)", padding: "5px 14px", borderRadius: 16, fontSize: "12px", fontWeight: 700 }}>
-                      <CheckCircle2 size={13} /> Past Consultation Resolved & Closed
-                    </div>
-                  </div>
-                </>
-              )}
-
-              {/* CURRENT LIVE CHAT SECTION IN STREAM */}
-              <div style={{ textAlign: "center", margin: "14px 0 10px" }}>
-                <span style={{
-                  background: "var(--brand-soft)",
-                  border: "1.5px solid var(--brand)",
-                  padding: "6px 18px",
-                  borderRadius: 20,
-                  fontSize: "12.5px",
-                  fontWeight: 800,
-                  color: "var(--brand)",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6
-                }}>
-                  <Sparkles size={14} /> Current Live Chat • Today
-                </span>
-              </div>
-
-              {currentMessages.length === 0 && (
-                <div className="bubble vet">
-                  {t ? t("chat_welcome") : `Namaste! I'm Dr. Kavita Rao. How can I help with ${animal?.name} today?`}
-                  <div className="bubble-time">{t ? t("chat_vetName") : "Dr. Kavita Rao"} • Just now</div>
-                </div>
-              )}
-
-              {currentMessages.map((m) => (
-                <div key={m.id} className={`bubble ${m.sender}`}>
-                  {m.text}
-                  <div className="bubble-time">
-                    {m.sender === "vet" ? (t ? t("chat_vetName") : "Dr. Kavita Rao") : (t ? t("chat_you") : "You")} • {m.time === "Just now" && t ? t("time_justNow") : m.time}
-                  </div>
-                </div>
-              ))}
-
-              {chat.typing && (
-                <div className="bubble vet" style={{ color: "var(--ink-soft)", display: "inline-flex", alignItems: "center", gap: 6 }}>
-                  <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--brand)", animation: "pulse 1s infinite" }}></span>
-                  {t ? t("chat_vetTyping") : "Dr. Kavita Rao is typing advice..."}
-                </div>
-              )}
-            </div>
-
-            {/* Quick action suggestion chips */}
-            <div className="quick-actions">
-              {quickActions.map((q) => (
-                <button key={q.id} className="chip" onClick={() => handleSend(q.text, q.id)}>{q.label}</button>
-              ))}
-            </div>
-
-            {/* Input Row */}
-            <div className="chat-input-row">
-              <input
-                className="field-input"
-                aria-label={t ? t("chat_inputPlaceholder") : "Type your message..."}
-                placeholder={t ? t("chat_inputPlaceholder") : "Type your message to Dr. Rao..."}
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter" && text.trim()) handleSend(text, "symptoms"); }}
-              />
-              <button
-                className="btn-primary"
-                onClick={() => text.trim() && handleSend(text, "symptoms")}
-                aria-label={t ? t("common_send") : "Send"}
-                style={{ padding: "10px 20px", display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 700 }}
-              >
-                <Send size={16} /> Send
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* TAB 2: ALL PREVIOUS CHATS (HISTORY) */}
-      {chatTab === "previous" && (
-        <div>
-          <div style={{ marginBottom: 16 }}>
-            <h2 style={{ margin: "0 0 4px", fontSize: "18px", fontWeight: 800 }}>Previous Consultations History</h2>
-            <p style={{ margin: 0, color: "var(--ink-soft)", fontSize: "13.5px" }}>
-              All completed chat sessions, veterinarian instructions, and prescriptions across your herd.
-            </p>
-          </div>
-
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 14 }}>
-            {pastConsultations.map((sess) => (
-              <Card key={sess.id} style={{ display: "flex", flexDirection: "column", justifyContent: "space-between", border: "1.5px solid var(--line)" }}>
-                <div>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
-                    <div>
-                      <span className="badge" style={{ background: "var(--paper-soft)", color: "var(--ink)", fontWeight: 800, fontSize: "12px", border: "1px solid var(--line)" }}>
-                        {sess.animalName}
-                      </span>
-                      <div style={{ fontSize: "12px", color: "var(--ink-soft)", marginTop: 4 }}>
-                        📅 {sess.date}
-                      </div>
-                    </div>
-                    <span className="badge" style={{ background: sess.badgeBg, color: sess.badgeColor, fontWeight: 800, fontSize: "12px" }}>
-                      {sess.status}
-                    </span>
-                  </div>
-
-                  <h3 style={{ margin: "0 0 6px", fontSize: "15.5px", fontWeight: 800, color: "var(--ink)" }}>
-                    {sess.condition}
-                  </h3>
-
-                  <p style={{ margin: "0 0 10px", fontSize: "13px", color: "var(--ink-soft)", lineHeight: 1.45 }}>
-                    {sess.summary}
-                  </p>
-
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "12px", color: "var(--ink-soft)", background: "var(--paper-soft)", padding: "6px 10px", borderRadius: 8, marginBottom: 14 }}>
-                    <Stethoscope size={14} color="var(--brand)" />
-                    <span>Attending Vet: <strong>{sess.vetName}</strong> ({sess.role})</span>
-                  </div>
-                </div>
-
-                <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-                  <button
-                    type="button"
-                    className="btn-secondary"
-                    onClick={() => setActiveTranscript(sess)}
-                    style={{ flex: 1, padding: "8px 12px", fontSize: "13px", fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6 }}
-                  >
-                    <FileText size={15} /> View Transcript
-                  </button>
-                  <button
-                    type="button"
-                    className="btn-primary"
-                    onClick={() => {
-                      setSelectedAnimalId(sess.animalId);
-                      setChatTab("current");
-                    }}
-                    style={{ flex: 1, padding: "8px 12px", fontSize: "13px", fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6 }}
-                  >
-                    <MessageCircle size={15} /> Open Chat
-                  </button>
-                </div>
-              </Card>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* TRANSCRIPT MODAL */}
-      {activeTranscript && (
-        <div style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-          <div style={{ background: "#fff", width: "100%", maxWidth: 600, maxHeight: "90vh", borderRadius: 16, overflow: "hidden", display: "flex", flexDirection: "column", boxShadow: "0 10px 30px rgba(0,0,0,0.2)" }}>
-            <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--line)", display: "flex", justifyContent: "space-between", alignItems: "center", background: "var(--paper-soft)" }}>
-              <div>
-                <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 800 }}>
-                  Consultation Transcript • {activeTranscript.animalName}
-                </h3>
-                <p style={{ margin: "2px 0 0", fontSize: "12px", color: "var(--ink-soft)" }}>
-                  {activeTranscript.date} with {activeTranscript.vetName}
-                </p>
-              </div>
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => setActiveTranscript(null)}
-                style={{ padding: "6px 12px", borderRadius: "50%", minWidth: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center" }}
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <div style={{ padding: 18, overflowY: "auto", flex: 1, display: "flex", flexDirection: "column", gap: 10 }}>
-              <div style={{ background: "var(--brand-soft)", padding: 12, borderRadius: 10, marginBottom: 8 }}>
-                <div style={{ fontWeight: 800, fontSize: "13px", color: "var(--brand)" }}>Clinical Condition:</div>
-                <div style={{ fontSize: "13.5px", color: "var(--ink)" }}>{activeTranscript.condition}</div>
-                <div style={{ fontSize: "12px", color: "var(--ink-soft)", marginTop: 4 }}>{activeTranscript.summary}</div>
-              </div>
-
-              {activeTranscript.messages.map((m, idx) => (
-                <div key={idx} className={`bubble ${m.sender}`} style={{ alignSelf: m.sender === "farmer" ? "flex-end" : "flex-start" }}>
-                  <div style={{ fontSize: "11px", fontWeight: 800, marginBottom: 2, opacity: 0.8 }}>
-                    {m.sender === "farmer" ? "Suresh Patil (Farmer)" : activeTranscript.vetName}
-                  </div>
-                  {m.text}
-                  <div className="bubble-time">{m.time}</div>
-                </div>
-              ))}
-            </div>
-
-            <div style={{ padding: "12px 18px", borderTop: "1px solid var(--line)", background: "var(--paper-soft)", display: "flex", justifyContent: "flex-end", gap: 10 }}>
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => setActiveTranscript(null)}
-                style={{ padding: "8px 16px", fontSize: "13px", fontWeight: 700 }}
-              >
-                Close
-              </button>
-              <button
-                type="button"
-                className="btn-primary"
-                onClick={() => {
-                  setSelectedAnimalId(activeTranscript.animalId);
-                  setActiveTranscript(null);
-                  setChatTab("current");
-                }}
-                style={{ padding: "8px 18px", fontSize: "13px", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 6 }}
-              >
-                <MessageCircle size={15} /> Continue in Current Chat
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    className: "page-header",
+    style: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      flexWrap: "wrap",
+      gap: 12
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 12
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "back-btn",
+    onClick: onBack,
+    "aria-label": t ? t("common_back") : "Back"
+  }, /*#__PURE__*/React.createElement(ArrowLeft, {
+    size: 18
+  })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h1", {
+    className: "page-title",
+    style: {
+      margin: 0
+    }
+  }, t ? t("nav_chatWithVet") : "Chat with Vet"), /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: "2px 0 0",
+      fontSize: "13px",
+      color: "var(--ink-soft)"
+    }
+  }, "Consult certified veterinarians & view historical consultation chats"))), /*#__PURE__*/React.createElement("a", {
+    href: "tel:1962",
+    className: "btn-secondary",
+    style: {
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 7,
+      padding: "8px 16px",
+      borderRadius: 999,
+      textDecoration: "none",
+      color: "var(--ink)",
+      fontWeight: 700,
+      fontSize: "13px"
+    }
+  }, /*#__PURE__*/React.createElement(Phone, {
+    size: 15,
+    color: "var(--urgent)"
+  }), " Call Toll-Free 1962")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 10,
+      margin: "14px 0 16px",
+      background: "var(--paper-soft)",
+      padding: 5,
+      borderRadius: 14,
+      border: "1.5px solid var(--line)",
+      width: "fit-content"
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    onClick: () => setChatTab("current"),
+    style: {
+      padding: "9px 20px",
+      borderRadius: 10,
+      fontWeight: 800,
+      fontSize: "14px",
+      border: "none",
+      background: chatTab === "current" ? "var(--brand)" : "transparent",
+      color: chatTab === "current" ? "#fff" : "var(--ink)",
+      cursor: "pointer",
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 8,
+      boxShadow: chatTab === "current" ? "0 2px 6px rgba(0,0,0,0.12)" : "none",
+      transition: "all 0.15s ease"
+    }
+  }, /*#__PURE__*/React.createElement(MessageCircle, {
+    size: 16
+  }), " Current Chat"), /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    onClick: () => setChatTab("previous"),
+    style: {
+      padding: "9px 20px",
+      borderRadius: 10,
+      fontWeight: 800,
+      fontSize: "14px",
+      border: "none",
+      background: chatTab === "previous" ? "var(--brand)" : "transparent",
+      color: chatTab === "previous" ? "#fff" : "var(--ink)",
+      cursor: "pointer",
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 8,
+      boxShadow: chatTab === "previous" ? "0 2px 6px rgba(0,0,0,0.12)" : "none",
+      transition: "all 0.15s ease"
+    }
+  }, /*#__PURE__*/React.createElement(Clock, {
+    size: 16
+  }), " Previous Chats (", pastConsultations.length, ")")), chatTab === "current" && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      flexWrap: "wrap",
+      gap: 12,
+      marginBottom: 12
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 10
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: 42,
+      height: 42,
+      borderRadius: "50%",
+      background: "var(--brand-soft)",
+      border: "2px solid var(--brand)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center"
+    }
+  }, /*#__PURE__*/React.createElement(Stethoscope, {
+    size: 20,
+    color: "var(--brand)"
+  })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontWeight: 800,
+      fontSize: "14.5px",
+      color: "var(--ink)"
+    }
+  }, "Dr. Kavita Rao (B.V.Sc & A.H.)"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: "12px",
+      color: "var(--healthy)",
+      display: "flex",
+      alignItems: "center",
+      gap: 5,
+      fontWeight: 700
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      width: 8,
+      height: 8,
+      borderRadius: "50%",
+      background: "var(--healthy)",
+      display: "inline-block"
+    }
+  }), "Online Now \u2022 Wagholi Government Dispensary"))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 8
+    }
+  }, /*#__PURE__*/React.createElement("label", {
+    className: "field-label",
+    style: {
+      margin: 0,
+      fontWeight: 700,
+      fontSize: "13px",
+      whiteSpace: "nowrap"
+    }
+  }, t ? t("chat_talkingAbout") : "Animal:"), /*#__PURE__*/React.createElement("select", {
+    className: "field-input",
+    style: {
+      minWidth: 200,
+      padding: "7px 12px",
+      fontWeight: 700
+    },
+    value: animalId,
+    onChange: e => setSelectedAnimalId(e.target.value)
+  }, animals.map(a => /*#__PURE__*/React.createElement("option", {
+    key: a.id,
+    value: a.id
+  }, a.name, " \u2014 ", formatSpecies(a.species, t)))))), /*#__PURE__*/React.createElement("div", {
+    className: "chat-window",
+    style: {
+      minHeight: 520
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "chat-messages",
+    ref: scrollRef
+  }, previousMessages.length > 0 && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      textAlign: "center",
+      margin: "10px 0 8px"
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      background: "var(--paper-soft)",
+      border: "1px solid var(--line)",
+      padding: "5px 14px",
+      borderRadius: 20,
+      fontSize: "12px",
+      fontWeight: 800,
+      color: "var(--ink-soft)",
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 6
+    }
+  }, /*#__PURE__*/React.createElement(Clock, {
+    size: 13,
+    color: "var(--brand)"
+  }), " Previous Consultation \u2022 ", previousMessages[0]?.sessionDate || "10 Sept 2026")), previousMessages.map(m => /*#__PURE__*/React.createElement("div", {
+    key: m.id,
+    className: `bubble ${m.sender}`,
+    style: {
+      background: m.sender === "farmer" ? "rgba(31, 93, 80, 0.85)" : "#fff",
+      border: m.sender === "vet" ? "1.5px solid var(--line)" : "none",
+      boxShadow: "0 1px 3px rgba(0,0,0,0.04)"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 6,
+      marginBottom: 4
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: "10px",
+      fontWeight: 800,
+      padding: "1px 5px",
+      borderRadius: 4,
+      background: m.sender === "farmer" ? "rgba(255,255,255,0.25)" : "var(--paper-soft)",
+      color: m.sender === "farmer" ? "#fff" : "var(--ink-soft)",
+      textTransform: "uppercase"
+    }
+  }, "Past Chat")), m.text, /*#__PURE__*/React.createElement("div", {
+    className: "bubble-time"
+  }, m.sender === "vet" ? t ? t("chat_vetName") : "Dr. Kavita Rao" : t ? t("chat_you") : "You", " \u2022 ", m.time))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      textAlign: "center",
+      margin: "12px 0 16px"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 6,
+      background: "var(--healthy-soft)",
+      border: "1px dashed var(--healthy)",
+      color: "var(--healthy)",
+      padding: "5px 14px",
+      borderRadius: 16,
+      fontSize: "12px",
+      fontWeight: 700
+    }
+  }, /*#__PURE__*/React.createElement(CheckCircle2, {
+    size: 13
+  }), " Past Consultation Resolved & Closed"))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      textAlign: "center",
+      margin: "14px 0 10px"
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      background: "var(--brand-soft)",
+      border: "1.5px solid var(--brand)",
+      padding: "6px 18px",
+      borderRadius: 20,
+      fontSize: "12.5px",
+      fontWeight: 800,
+      color: "var(--brand)",
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 6
+    }
+  }, /*#__PURE__*/React.createElement(Sparkles, {
+    size: 14
+  }), " Current Live Chat \u2022 Today")), currentMessages.length === 0 && /*#__PURE__*/React.createElement("div", {
+    className: "bubble vet"
+  }, t ? t("chat_welcome") : `Namaste! I'm Dr. Kavita Rao. How can I help with ${animal?.name} today?`, /*#__PURE__*/React.createElement("div", {
+    className: "bubble-time"
+  }, t ? t("chat_vetName") : "Dr. Kavita Rao", " \u2022 Just now")), currentMessages.map(m => /*#__PURE__*/React.createElement("div", {
+    key: m.id,
+    className: `bubble ${m.sender}`
+  }, m.text, /*#__PURE__*/React.createElement("div", {
+    className: "bubble-time"
+  }, m.sender === "vet" ? t ? t("chat_vetName") : "Dr. Kavita Rao" : t ? t("chat_you") : "You", " \u2022 ", m.time === "Just now" && t ? t("time_justNow") : m.time))), chat.typing && /*#__PURE__*/React.createElement("div", {
+    className: "bubble vet",
+    style: {
+      color: "var(--ink-soft)",
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 6
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      width: 8,
+      height: 8,
+      borderRadius: "50%",
+      background: "var(--brand)",
+      animation: "pulse 1s infinite"
+    }
+  }), t ? t("chat_vetTyping") : "Dr. Kavita Rao is typing advice...")), /*#__PURE__*/React.createElement("div", {
+    className: "quick-actions"
+  }, quickActions.map(q => /*#__PURE__*/React.createElement("button", {
+    key: q.id,
+    className: "chip",
+    onClick: () => handleSend(q.text, q.id)
+  }, q.label))), /*#__PURE__*/React.createElement("div", {
+    className: "chat-input-row"
+  }, /*#__PURE__*/React.createElement("input", {
+    className: "field-input",
+    "aria-label": t ? t("chat_inputPlaceholder") : "Type your message...",
+    placeholder: t ? t("chat_inputPlaceholder") : "Type your message to Dr. Rao...",
+    value: text,
+    onChange: e => setText(e.target.value),
+    onKeyDown: e => {
+      if (e.key === "Enter" && text.trim()) handleSend(text, "symptoms");
+    }
+  }), /*#__PURE__*/React.createElement("button", {
+    className: "btn-primary",
+    onClick: () => text.trim() && handleSend(text, "symptoms"),
+    "aria-label": t ? t("common_send") : "Send",
+    style: {
+      padding: "10px 20px",
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 6,
+      fontWeight: 700
+    }
+  }, /*#__PURE__*/React.createElement(Send, {
+    size: 16
+  }), " Send")))), chatTab === "previous" && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginBottom: 16
+    }
+  }, /*#__PURE__*/React.createElement("h2", {
+    style: {
+      margin: "0 0 4px",
+      fontSize: "18px",
+      fontWeight: 800
+    }
+  }, "Previous Consultations History"), /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      color: "var(--ink-soft)",
+      fontSize: "13.5px"
+    }
+  }, "All completed chat sessions, veterinarian instructions, and prescriptions across your herd.")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "grid",
+      gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",
+      gap: 14
+    }
+  }, pastConsultations.map(sess => /*#__PURE__*/React.createElement(Card, {
+    key: sess.id,
+    style: {
+      display: "flex",
+      flexDirection: "column",
+      justifyContent: "space-between",
+      border: "1.5px solid var(--line)"
+    }
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "flex-start",
+      marginBottom: 10
+    }
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", {
+    className: "badge",
+    style: {
+      background: "var(--paper-soft)",
+      color: "var(--ink)",
+      fontWeight: 800,
+      fontSize: "12px",
+      border: "1px solid var(--line)"
+    }
+  }, sess.animalName), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: "12px",
+      color: "var(--ink-soft)",
+      marginTop: 4
+    }
+  }, "\uD83D\uDCC5 ", sess.date)), /*#__PURE__*/React.createElement("span", {
+    className: "badge",
+    style: {
+      background: sess.badgeBg,
+      color: sess.badgeColor,
+      fontWeight: 800,
+      fontSize: "12px"
+    }
+  }, sess.status)), /*#__PURE__*/React.createElement("h3", {
+    style: {
+      margin: "0 0 6px",
+      fontSize: "15.5px",
+      fontWeight: 800,
+      color: "var(--ink)"
+    }
+  }, sess.condition), /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: "0 0 10px",
+      fontSize: "13px",
+      color: "var(--ink-soft)",
+      lineHeight: 1.45
+    }
+  }, sess.summary), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 8,
+      fontSize: "12px",
+      color: "var(--ink-soft)",
+      background: "var(--paper-soft)",
+      padding: "6px 10px",
+      borderRadius: 8,
+      marginBottom: 14
+    }
+  }, /*#__PURE__*/React.createElement(Stethoscope, {
+    size: 14,
+    color: "var(--brand)"
+  }), /*#__PURE__*/React.createElement("span", null, "Attending Vet: ", /*#__PURE__*/React.createElement("strong", null, sess.vetName), " (", sess.role, ")"))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 8,
+      marginTop: 10
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: "btn-secondary",
+    onClick: () => setActiveTranscript(sess),
+    style: {
+      flex: 1,
+      padding: "8px 12px",
+      fontSize: "13px",
+      fontWeight: 700,
+      display: "inline-flex",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 6
+    }
+  }, /*#__PURE__*/React.createElement(FileText, {
+    size: 15
+  }), " View Transcript"), /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: "btn-primary",
+    onClick: () => {
+      setSelectedAnimalId(sess.animalId);
+      setChatTab("current");
+    },
+    style: {
+      flex: 1,
+      padding: "8px 12px",
+      fontSize: "13px",
+      fontWeight: 700,
+      display: "inline-flex",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 6
+    }
+  }, /*#__PURE__*/React.createElement(MessageCircle, {
+    size: 15
+  }), " Open Chat")))))), activeTranscript && /*#__PURE__*/React.createElement("div", {
+    style: {
+      position: "fixed",
+      inset: 0,
+      zIndex: 9999,
+      background: "rgba(0,0,0,0.5)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: 16
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: "#fff",
+      width: "100%",
+      maxWidth: 600,
+      maxHeight: "90vh",
+      borderRadius: 16,
+      overflow: "hidden",
+      display: "flex",
+      flexDirection: "column",
+      boxShadow: "0 10px 30px rgba(0,0,0,0.2)"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: "16px 20px",
+      borderBottom: "1px solid var(--line)",
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      background: "var(--paper-soft)"
+    }
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h3", {
+    style: {
+      margin: 0,
+      fontSize: "16px",
+      fontWeight: 800
+    }
+  }, "Consultation Transcript \u2022 ", activeTranscript.animalName), /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: "2px 0 0",
+      fontSize: "12px",
+      color: "var(--ink-soft)"
+    }
+  }, activeTranscript.date, " with ", activeTranscript.vetName)), /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: "btn-secondary",
+    onClick: () => setActiveTranscript(null),
+    style: {
+      padding: "6px 12px",
+      borderRadius: "50%",
+      minWidth: 36,
+      height: 36,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center"
+    }
+  }, /*#__PURE__*/React.createElement(X, {
+    size: 18
+  }))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: 18,
+      overflowY: "auto",
+      flex: 1,
+      display: "flex",
+      flexDirection: "column",
+      gap: 10
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: "var(--brand-soft)",
+      padding: 12,
+      borderRadius: 10,
+      marginBottom: 8
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontWeight: 800,
+      fontSize: "13px",
+      color: "var(--brand)"
+    }
+  }, "Clinical Condition:"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: "13.5px",
+      color: "var(--ink)"
+    }
+  }, activeTranscript.condition), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: "12px",
+      color: "var(--ink-soft)",
+      marginTop: 4
+    }
+  }, activeTranscript.summary)), activeTranscript.messages.map((m, idx) => /*#__PURE__*/React.createElement("div", {
+    key: idx,
+    className: `bubble ${m.sender}`,
+    style: {
+      alignSelf: m.sender === "farmer" ? "flex-end" : "flex-start"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: "11px",
+      fontWeight: 800,
+      marginBottom: 2,
+      opacity: 0.8
+    }
+  }, m.sender === "farmer" ? "Suresh Patil (Farmer)" : activeTranscript.vetName), m.text, /*#__PURE__*/React.createElement("div", {
+    className: "bubble-time"
+  }, m.time)))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: "12px 18px",
+      borderTop: "1px solid var(--line)",
+      background: "var(--paper-soft)",
+      display: "flex",
+      justifyContent: "flex-end",
+      gap: 10
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: "btn-secondary",
+    onClick: () => setActiveTranscript(null),
+    style: {
+      padding: "8px 16px",
+      fontSize: "13px",
+      fontWeight: 700
+    }
+  }, "Close"), /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: "btn-primary",
+    onClick: () => {
+      setSelectedAnimalId(activeTranscript.animalId);
+      setActiveTranscript(null);
+      setChatTab("current");
+    },
+    style: {
+      padding: "8px 18px",
+      fontSize: "13px",
+      fontWeight: 700,
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 6
+    }
+  }, /*#__PURE__*/React.createElement(MessageCircle, {
+    size: 15
+  }), " Continue in Current Chat")))));
 }
 
 /* ------------------------------------------------------------------ */
@@ -8482,7 +9916,7 @@ function getLocalizedNotif(n, t) {
       ...n,
       title: isEn ? `${t("notif_n1_title")} Gauri` : `Gauri ${t("notif_n1_title")}`,
       message: `FMD vaccination ${t("dash_due").toLowerCase()} ${relativeDay("2026-09-12", t)} (${formatDate("2026-09-12")}).`,
-      time: `${t("time_today")}, 8:00 AM`,
+      time: `${t("time_today")}, 8:00 AM`
     };
   }
   if (n.id === "n2") {
@@ -8490,7 +9924,7 @@ function getLocalizedNotif(n, t) {
       ...n,
       title: isEn ? `Raju's ${t("notif_n2_title")}` : `Raju ${t("notif_n2_title")}`,
       message: `${t("dash_followUp")} ${relativeDay("2026-09-05", t)}.`,
-      time: `${t("time_today")}, 7:30 AM`,
+      time: `${t("time_today")}, 7:30 AM`
     };
   }
   if (n.id === "n3") {
@@ -8498,7 +9932,7 @@ function getLocalizedNotif(n, t) {
       ...n,
       title: t("notif_n3_title"),
       message: t("notif_n3_msg"),
-      time: t("time_yesterday"),
+      time: t("time_yesterday")
     };
   }
   if (n.id === "n4") {
@@ -8506,7 +9940,7 @@ function getLocalizedNotif(n, t) {
       ...n,
       title: isEn ? `${t("notif_n4_title")} Lakshmi` : `Lakshmi ${t("notif_n4_title")}`,
       message: t("notif_n4_msg"),
-      time: `2 ${t("time_daysAgo")}`,
+      time: `2 ${t("time_daysAgo")}`
     };
   }
   if (n.id === "n5") {
@@ -8514,7 +9948,7 @@ function getLocalizedNotif(n, t) {
       ...n,
       title: `${t("notif_n5_title")} Moti`,
       message: t("notif_n5_msg"),
-      time: `2 ${t("time_daysAgo")}`,
+      time: `2 ${t("time_daysAgo")}`
     };
   }
   if (n.id === "n6") {
@@ -8522,78 +9956,169 @@ function getLocalizedNotif(n, t) {
       ...n,
       title: `${t("notif_n6_title")} Gauri`,
       message: t("notif_n6_msg"),
-      time: `3 ${t("time_daysAgo")}`,
+      time: `3 ${t("time_daysAgo")}`
     };
   }
   return n;
 }
-
-function NotificationsView({ notifications, onOpen, onBack, t }) {
+function NotificationsView({
+  notifications,
+  onOpen,
+  onBack,
+  t
+}) {
   const catMap = {
-    vaccination: { Icon: Syringe, bg: "var(--accent-soft)", color: "var(--accent)" },
-    treatment: { Icon: Stethoscope, bg: "var(--attention-soft)", color: "var(--attention-fg, var(--attention))" },
-    screening: { Icon: Activity, bg: "var(--brand-soft)", color: "var(--brand-fg, var(--brand))" },
-    consultation: { Icon: MessageCircle, bg: "var(--healthy-soft)", color: "var(--healthy-fg, var(--healthy))" },
-    checkup: { Icon: ClipboardList, bg: "var(--brand-soft)", color: "var(--brand-fg, var(--brand))" },
-    general: { Icon: Bell, bg: "var(--paper-soft)", color: "var(--ink-soft)" },
+    vaccination: {
+      Icon: Syringe,
+      bg: "var(--accent-soft)",
+      color: "var(--accent)"
+    },
+    treatment: {
+      Icon: Stethoscope,
+      bg: "var(--attention-soft)",
+      color: "var(--attention-fg, var(--attention))"
+    },
+    screening: {
+      Icon: Activity,
+      bg: "var(--brand-soft)",
+      color: "var(--brand-fg, var(--brand))"
+    },
+    consultation: {
+      Icon: MessageCircle,
+      bg: "var(--healthy-soft)",
+      color: "var(--healthy-fg, var(--healthy))"
+    },
+    checkup: {
+      Icon: ClipboardList,
+      bg: "var(--brand-soft)",
+      color: "var(--brand-fg, var(--brand))"
+    },
+    general: {
+      Icon: Bell,
+      bg: "var(--paper-soft)",
+      color: "var(--ink-soft)"
+    }
   };
-  const sorted = [...notifications].sort((a, b) => (a.read === b.read ? 0 : a.read ? 1 : -1));
-  return (
-    <div>
-      <div className="page-header">
-        <button className="back-btn" onClick={onBack} aria-label={t ? t("common_back") : "Back"}><ArrowLeft size={18} /></button>
-        <h1 className="page-title">{t ? t("nav_notifications") : "Notifications"}</h1>
-      </div>
-      <Card>
-        {sorted.length === 0 ? (
-          <div style={{ textAlign: "center", padding: "36px 16px", color: "var(--ink-soft)" }}>
-            <Bell size={32} style={{ opacity: 0.35, marginBottom: 10 }} />
-            <p style={{ margin: 0, fontWeight: 600, fontSize: "calc(14.5px * var(--text-scale, 1))" }}>
-              {t ? t("notif_empty") : "No notifications right now."}
-            </p>
-          </div>
-        ) : (
-          sorted.map((n, i) => {
-            const locN = getLocalizedNotif(n, t);
-            const c = catMap[n.category] || catMap.general || { Icon: Bell, bg: "var(--paper-soft)", color: "var(--ink-soft)" };
-            const { Icon } = c;
-            return (
-              <div
-                key={n.id}
-                className={`notif-item psk-card-clickable ${n.read ? "read" : "unread"}`}
-                style={{ cursor: "pointer", borderBottom: i === sorted.length - 1 ? "none" : undefined }}
-                onClick={() => onOpen(n)}
-                role="button"
-                tabIndex={0}
-                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(n); } }}
-              >
-                {!n.read && <div className="notif-dot" />}
-                {n.read && <div style={{ width: 9 }} />}
-                <div className="notif-icon" style={{ background: c.bg }}><Icon size={17} color={c.color} /></div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <p style={{ margin: "0 0 3px", fontWeight: n.read ? 600 : 800, fontSize: "calc(14.5px * var(--text-scale, 1))" }}>{locN.title}</p>
-                  <p style={{ margin: "0 0 4px", fontSize: "calc(13.5px * var(--text-scale, 1))", color: "var(--ink-soft)" }}>{locN.message}</p>
-                  <p style={{ margin: 0, fontSize: "calc(11.5px * var(--text-scale, 1))", color: "var(--ink-soft)" }}>{locN.time}</p>
-                </div>
-                <ChevronRight size={17} color="var(--ink-soft)" />
-              </div>
-            );
-          })
-        )}
-      </Card>
-    </div>
-  );
+  const sorted = [...notifications].sort((a, b) => a.read === b.read ? 0 : a.read ? 1 : -1);
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    className: "page-header"
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "back-btn",
+    onClick: onBack,
+    "aria-label": t ? t("common_back") : "Back"
+  }, /*#__PURE__*/React.createElement(ArrowLeft, {
+    size: 18
+  })), /*#__PURE__*/React.createElement("h1", {
+    className: "page-title"
+  }, t ? t("nav_notifications") : "Notifications")), /*#__PURE__*/React.createElement(Card, null, sorted.length === 0 ? /*#__PURE__*/React.createElement("div", {
+    style: {
+      textAlign: "center",
+      padding: "36px 16px",
+      color: "var(--ink-soft)"
+    }
+  }, /*#__PURE__*/React.createElement(Bell, {
+    size: 32,
+    style: {
+      opacity: 0.35,
+      marginBottom: 10
+    }
+  }), /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      fontWeight: 600,
+      fontSize: "calc(14.5px * var(--text-scale, 1))"
+    }
+  }, t ? t("notif_empty") : "No notifications right now.")) : sorted.map((n, i) => {
+    const locN = getLocalizedNotif(n, t);
+    const c = catMap[n.category] || catMap.general || {
+      Icon: Bell,
+      bg: "var(--paper-soft)",
+      color: "var(--ink-soft)"
+    };
+    const {
+      Icon
+    } = c;
+    return /*#__PURE__*/React.createElement("div", {
+      key: n.id,
+      className: `notif-item psk-card-clickable ${n.read ? "read" : "unread"}`,
+      style: {
+        cursor: "pointer",
+        borderBottom: i === sorted.length - 1 ? "none" : undefined
+      },
+      onClick: () => onOpen(n),
+      role: "button",
+      tabIndex: 0,
+      onKeyDown: e => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpen(n);
+        }
+      }
+    }, !n.read && /*#__PURE__*/React.createElement("div", {
+      className: "notif-dot"
+    }), n.read && /*#__PURE__*/React.createElement("div", {
+      style: {
+        width: 9
+      }
+    }), /*#__PURE__*/React.createElement("div", {
+      className: "notif-icon",
+      style: {
+        background: c.bg
+      }
+    }, /*#__PURE__*/React.createElement(Icon, {
+      size: 17,
+      color: c.color
+    })), /*#__PURE__*/React.createElement("div", {
+      style: {
+        flex: 1,
+        minWidth: 0
+      }
+    }, /*#__PURE__*/React.createElement("p", {
+      style: {
+        margin: "0 0 3px",
+        fontWeight: n.read ? 600 : 800,
+        fontSize: "calc(14.5px * var(--text-scale, 1))"
+      }
+    }, locN.title), /*#__PURE__*/React.createElement("p", {
+      style: {
+        margin: "0 0 4px",
+        fontSize: "calc(13.5px * var(--text-scale, 1))",
+        color: "var(--ink-soft)"
+      }
+    }, locN.message), /*#__PURE__*/React.createElement("p", {
+      style: {
+        margin: 0,
+        fontSize: "calc(11.5px * var(--text-scale, 1))",
+        color: "var(--ink-soft)"
+      }
+    }, locN.time)), /*#__PURE__*/React.createElement(ChevronRight, {
+      size: 17,
+      color: "var(--ink-soft)"
+    }));
+  })));
 }
 /* ------------------------------------------------------------------ */
 /* Profile view                                                        */
 /* ------------------------------------------------------------------ */
-function ProfileView({ profile, setProfile, animalCount, onSaved, onBack, t }) {
+function ProfileView({
+  profile,
+  setProfile,
+  animalCount,
+  onSaved,
+  onBack,
+  t
+}) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(profile);
-  useEffect(() => { setDraft(profile); }, [profile]);
-
+  useEffect(() => {
+    setDraft(profile);
+  }, [profile]);
   const [error, setError] = useState("");
-  const startEdit = () => { setDraft(profile); setError(""); setEditing(true); };
+  const startEdit = () => {
+    setDraft(profile);
+    setError("");
+    setEditing(true);
+  };
   const save = () => {
     if (!draft.name || !draft.name.trim()) {
       setError(t ? t("profile_nameRequired") : "Farmer name cannot be empty.");
@@ -8604,323 +10129,735 @@ function ProfileView({ profile, setProfile, animalCount, onSaved, onBack, t }) {
     setEditing(false);
     onSaved && onSaved();
   };
-  const cancel = () => { setDraft(profile); setError(""); setEditing(false); };
-
-  return (
-    <div>
-      <div className="page-header">
-        <button className="back-btn" onClick={onBack} aria-label={t ? t("common_back") : "Back"}><ArrowLeft size={18} /></button>
-        <h1 className="page-title">{t ? t("nav_profile") : "Profile"}</h1>
-      </div>
-      <Card>
-        <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 20, flexWrap: "wrap" }}>
-          <div style={{ width: 64, height: 64, borderRadius: "50%", background: "var(--brand)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Fraunces', serif", fontSize: 26, fontWeight: 600, flexShrink: 0 }}>
-            {profile.name.slice(0, 1)}
-          </div>
-          <div style={{ flex: "1 1 140px", minWidth: 0 }}>
-            <p style={{ margin: "0 0 2px", fontWeight: 700, fontSize: "calc(18px * var(--text-scale, 1))", overflowWrap: "break-word", wordBreak: "break-word" }}>{profile.name}</p>
-            <p style={{ margin: 0, fontSize: "calc(13.5px * var(--text-scale, 1))", color: "var(--ink-soft)" }}>{animalCount} {t ? t("profile_registeredAnimals") : "registered animals"}</p>
-            <div style={{ marginTop: 5 }}>
-              <span className="badge badge-neutral" style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: "calc(12px * var(--text-scale, 1))" }}>
-                <Info size={12} /> {t ? t("profile_demoNotice") : "Demo profile  Local prototype data"}
-              </span>
-            </div>
-          </div>
-          {!editing && <button className="btn-outline" onClick={startEdit} style={{ flexShrink: 0 }}><Edit3 size={14} style={{ verticalAlign: -2 }} /> {t ? t("profile_edit") : "Edit"}</button>}
-        </div>
-
-        <div style={{ display: "grid", gap: 16 }}>
-          <ProfileField label={t ? t("profile_farmerName") : "Farmer name"} icon={User} value={draft.name} editing={editing} onChange={(v) => setDraft({ ...draft, name: v })} />
-          <ProfileField label={t ? t("profile_mobileNumber") : "Mobile number"} icon={Phone} value={draft.mobile} editing={editing} onChange={(v) => setDraft({ ...draft, mobile: v })} />
-          <ProfileField label={t ? t("profile_villageLocation") : "Village / location"} icon={MapPin} value={draft.village} editing={editing} onChange={(v) => setDraft({ ...draft, village: v })} />
-          <ProfileField label={t ? t("profile_numberOfAnimals") : "Number of animals"} icon={PawPrint} value={String(animalCount)} editing={false} onChange={() => {}} />
-          <ProfileField label={t ? t("profile_registeredOn") : "Registered on"} icon={Calendar} value={formatDate(profile.registered)} editing={false} onChange={() => {}} />
-        </div>
-
-        {editing && (
-          <>
-            {error && (
-              <div role="alert" style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", background: "var(--urgent-soft)", borderRadius: 8, border: "1px solid var(--urgent)", marginTop: 14 }}>
-                <AlertCircle size={16} color="var(--urgent-fg, var(--urgent))" style={{ flexShrink: 0 }} />
-                <p style={{ color: "var(--urgent-fg, var(--urgent))", fontSize: "calc(13px * var(--text-scale, 1))", margin: 0, fontWeight: 600 }}>{error}</p>
-              </div>
-            )}
-            <div style={{ display: "flex", gap: 10, marginTop: 20, flexWrap: "wrap", width: "100%" }}>
-              <button className="btn-primary" onClick={save} style={{ flex: "1 1 auto" }}><Save size={15} /> {t ? t("common_save") : "Save changes"}</button>
-              <button className="btn-outline" onClick={cancel} style={{ flex: "1 1 auto" }}><X size={15} style={{ verticalAlign: -2 }} /> {t ? t("common_cancel") : "Cancel"}</button>
-            </div>
-          </>
-        )}
-      </Card>
-    </div>
-  );
+  const cancel = () => {
+    setDraft(profile);
+    setError("");
+    setEditing(false);
+  };
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    className: "page-header"
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "back-btn",
+    onClick: onBack,
+    "aria-label": t ? t("common_back") : "Back"
+  }, /*#__PURE__*/React.createElement(ArrowLeft, {
+    size: 18
+  })), /*#__PURE__*/React.createElement("h1", {
+    className: "page-title"
+  }, t ? t("nav_profile") : "Profile")), /*#__PURE__*/React.createElement(Card, null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 16,
+      marginBottom: 20,
+      flexWrap: "wrap"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: 64,
+      height: 64,
+      borderRadius: "50%",
+      background: "var(--brand)",
+      color: "#fff",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      fontFamily: "'Fraunces', serif",
+      fontSize: 26,
+      fontWeight: 600,
+      flexShrink: 0
+    }
+  }, profile.name.slice(0, 1)), /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: "1 1 140px",
+      minWidth: 0
+    }
+  }, /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: "0 0 2px",
+      fontWeight: 700,
+      fontSize: "calc(18px * var(--text-scale, 1))",
+      overflowWrap: "break-word",
+      wordBreak: "break-word"
+    }
+  }, profile.name), /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: "calc(13.5px * var(--text-scale, 1))",
+      color: "var(--ink-soft)"
+    }
+  }, animalCount, " ", t ? t("profile_registeredAnimals") : "registered animals"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 5
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "badge badge-neutral",
+    style: {
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 5,
+      fontSize: "calc(12px * var(--text-scale, 1))"
+    }
+  }, /*#__PURE__*/React.createElement(Info, {
+    size: 12
+  }), " ", t ? t("profile_demoNotice") : "Demo profile  Local prototype data"))), !editing && /*#__PURE__*/React.createElement("button", {
+    className: "btn-outline",
+    onClick: startEdit,
+    style: {
+      flexShrink: 0
+    }
+  }, /*#__PURE__*/React.createElement(Edit3, {
+    size: 14,
+    style: {
+      verticalAlign: -2
+    }
+  }), " ", t ? t("profile_edit") : "Edit")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "grid",
+      gap: 16
+    }
+  }, /*#__PURE__*/React.createElement(ProfileField, {
+    label: t ? t("profile_farmerName") : "Farmer name",
+    icon: User,
+    value: draft.name,
+    editing: editing,
+    onChange: v => setDraft({
+      ...draft,
+      name: v
+    })
+  }), /*#__PURE__*/React.createElement(ProfileField, {
+    label: t ? t("profile_mobileNumber") : "Mobile number",
+    icon: Phone,
+    value: draft.mobile,
+    editing: editing,
+    onChange: v => setDraft({
+      ...draft,
+      mobile: v
+    })
+  }), /*#__PURE__*/React.createElement(ProfileField, {
+    label: t ? t("profile_villageLocation") : "Village / location",
+    icon: MapPin,
+    value: draft.village,
+    editing: editing,
+    onChange: v => setDraft({
+      ...draft,
+      village: v
+    })
+  }), /*#__PURE__*/React.createElement(ProfileField, {
+    label: t ? t("profile_numberOfAnimals") : "Number of animals",
+    icon: PawPrint,
+    value: String(animalCount),
+    editing: false,
+    onChange: () => {}
+  }), /*#__PURE__*/React.createElement(ProfileField, {
+    label: t ? t("profile_registeredOn") : "Registered on",
+    icon: Calendar,
+    value: formatDate(profile.registered),
+    editing: false,
+    onChange: () => {}
+  })), editing && /*#__PURE__*/React.createElement(React.Fragment, null, error && /*#__PURE__*/React.createElement("div", {
+    role: "alert",
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 8,
+      padding: "10px 12px",
+      background: "var(--urgent-soft)",
+      borderRadius: 8,
+      border: "1px solid var(--urgent)",
+      marginTop: 14
+    }
+  }, /*#__PURE__*/React.createElement(AlertCircle, {
+    size: 16,
+    color: "var(--urgent-fg, var(--urgent))",
+    style: {
+      flexShrink: 0
+    }
+  }), /*#__PURE__*/React.createElement("p", {
+    style: {
+      color: "var(--urgent-fg, var(--urgent))",
+      fontSize: "calc(13px * var(--text-scale, 1))",
+      margin: 0,
+      fontWeight: 600
+    }
+  }, error)), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 10,
+      marginTop: 20,
+      flexWrap: "wrap",
+      width: "100%"
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn-primary",
+    onClick: save,
+    style: {
+      flex: "1 1 auto"
+    }
+  }, /*#__PURE__*/React.createElement(Save, {
+    size: 15
+  }), " ", t ? t("common_save") : "Save changes"), /*#__PURE__*/React.createElement("button", {
+    className: "btn-outline",
+    onClick: cancel,
+    style: {
+      flex: "1 1 auto"
+    }
+  }, /*#__PURE__*/React.createElement(X, {
+    size: 15,
+    style: {
+      verticalAlign: -2
+    }
+  }), " ", t ? t("common_cancel") : "Cancel")))));
 }
-
-function ProfileField({ label, icon: Icon, value, editing, onChange }) {
-  return (
-    <div>
-      <label className="field-label"><Icon size={13} style={{ verticalAlign: -2 }} /> {label}</label>
-      {editing ? (
-        <input className="field-input" aria-label={label} value={value} onChange={(e) => onChange(e.target.value)} />
-      ) : (
-        <p style={{ margin: 0, fontSize: "calc(15px * var(--text-scale, 1))", fontWeight: 600 }}>{value}</p>
-      )}
-    </div>
-  );
+function ProfileField({
+  label,
+  icon: Icon,
+  value,
+  editing,
+  onChange
+}) {
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+    className: "field-label"
+  }, /*#__PURE__*/React.createElement(Icon, {
+    size: 13,
+    style: {
+      verticalAlign: -2
+    }
+  }), " ", label), editing ? /*#__PURE__*/React.createElement("input", {
+    className: "field-input",
+    "aria-label": label,
+    value: value,
+    onChange: e => onChange(e.target.value)
+  }) : /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: "calc(15px * var(--text-scale, 1))",
+      fontWeight: 600
+    }
+  }, value));
 }
 
 /* ------------------------------------------------------------------ */
 /* Settings view                                                       */
 /* ------------------------------------------------------------------ */
 function SettingsView({
-  t, onBack, onManageProfile,
-  language, setLanguage, theme, setTheme, textSize, setTextSize,
-  highContrast, setHighContrast, notifPrefs, setNotifPrefs, reminderTiming, setReminderTiming,
-  onLogout, onDeleteAccount, showToast,
+  t,
+  onBack,
+  onManageProfile,
+  language,
+  setLanguage,
+  theme,
+  setTheme,
+  textSize,
+  setTextSize,
+  highContrast,
+  setHighContrast,
+  notifPrefs,
+  setNotifPrefs,
+  reminderTiming,
+  setReminderTiming,
+  onLogout,
+  onDeleteAccount,
+  showToast
 }) {
   const [modal, setModal] = useState(null); // which modal is open
 
-  const toggleNotif = (key) => setNotifPrefs((prev) => ({ ...prev, [key]: !prev[key] }));
-
-  const notifItems = [
-    { key: "vaccination", label: t("settings_vaccinationReminders"), desc: t("settings_vaccinationRemindersDesc") },
-    { key: "treatment", label: t("settings_treatmentReminders"), desc: t("settings_treatmentRemindersDesc") },
-    { key: "checkup", label: t("settings_healthCheckupReminders"), desc: t("settings_healthCheckupRemindersDesc") },
-    { key: "consultation", label: t("settings_vetConsultationUpdates"), desc: t("settings_vetConsultationUpdatesDesc") },
-    { key: "screening", label: t("settings_aiScreeningUpdates"), desc: t("settings_aiScreeningUpdatesDesc") },
-    { key: "general", label: t("settings_generalNotifications"), desc: t("settings_generalNotificationsDesc") },
-  ];
-
-  const reminderOptions = [
-    { value: "due", label: t("settings_onDueDate") },
-    { value: "1", label: t("settings_oneDayBefore") },
-    { value: "3", label: t("settings_threeDaysBefore") },
-    { value: "7", label: t("settings_sevenDaysBefore") },
-  ];
-
-  const themeOptions = [
-    { value: "light", label: t("settings_light"), Icon: Sun },
-    { value: "dark", label: t("settings_dark"), Icon: Moon },
-    { value: "system", label: t("settings_systemDefault"), Icon: Monitor },
-  ];
-
-  const textSizeOptions = [
-    { value: "small", label: t("settings_small") },
-    { value: "medium", label: t("settings_medium") },
-    { value: "large", label: t("settings_large") },
-  ];
-
-  return (
-    <div>
-      <div className="page-header">
-        <button className="back-btn" onClick={onBack} aria-label={t("common_back")}><ArrowLeft size={18} /></button>
-        <div>
-          <h1 className="page-title" style={{ display: "flex", alignItems: "center", gap: 9 }}>
-            <Settings size={20} color="var(--brand-fg, var(--brand))" /> {t("settings_title")}
-          </h1>
-        </div>
-      </div>
-      <p style={{ color: "var(--ink-soft)", fontSize: "calc(14px * var(--text-scale, 1))", margin: "-14px 0 22px" }}>{t("settings_subtitle")}</p>
-
-      {/* ACCOUNT */}
-      <SettingsSection title={t("settings_account")}>
-        <SettingsRow icon={User} label={t("settings_manageProfile")} desc={t("settings_manageProfileDesc")} onClick={onManageProfile} />
-        <SettingsRow icon={Lock} label={t("settings_changePassword")} desc={t("settings_changePasswordDesc")} onClick={() => setModal("password")} />
-        <SettingsRow icon={Trash2} label={t("settings_deleteAccount")} desc={t("settings_deleteAccountDesc")} onClick={() => setModal("delete")} danger />
-        <SettingsRow icon={LogOut} label={t("settings_logout")} desc={t("settings_logoutDesc")} onClick={() => setModal("logout")} last />
-      </SettingsSection>
-
-      {/* LANGUAGE & ACCESSIBILITY */}
-      <SettingsSection title={t("settings_languageAccessibility")}>
-        <div className="settings-row" style={{ flexDirection: "column", alignItems: "stretch", gap: 10 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <div className="settings-row-icon"><Globe size={18} /></div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <p className="settings-row-label">{t("settings_appLanguage")}</p>
-              <p className="settings-row-desc">{t("settings_appLanguageDesc")}</p>
-            </div>
-          </div>
-          <select
-            className="field-input"
-            aria-label={t("settings_appLanguage")}
-            value={language}
-            onChange={(e) => setLanguage(e.target.value)}
-            style={{ marginLeft: 50, width: "calc(100% - 50px)" }}
-          >
-            {LANGUAGES.map((l) => <option key={l.code} value={l.code}>{l.label}</option>)}
-          </select>
-        </div>
-
-        <div className="settings-row" style={{ flexDirection: "column", alignItems: "stretch", gap: 10 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <div className="settings-row-icon"><Type size={18} /></div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <p className="settings-row-label">{t("settings_textSize")}</p>
-              <p className="settings-row-desc">{t("settings_textSizeDesc")}</p>
-            </div>
-          </div>
-          <div style={{ marginLeft: 50 }}>
-            <SegmentedControl options={textSizeOptions} value={textSize} onChange={setTextSize} ariaLabel={t("settings_textSize")} />
-          </div>
-        </div>
-
-        <div className="settings-row" style={{ flexDirection: "column", alignItems: "stretch", gap: 10 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <div className="settings-row-icon"><Sun size={18} /></div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <p className="settings-row-label">{t("settings_theme")}</p>
-              <p className="settings-row-desc">{t("settings_themeDesc")}</p>
-            </div>
-          </div>
-          <div style={{ marginLeft: 50 }}>
-            <SegmentedControl options={themeOptions} value={theme} onChange={setTheme} ariaLabel={t("settings_theme")} />
-          </div>
-        </div>
-
-        <SettingsRow
-          icon={Eye}
-          label={t("settings_highContrast")}
-          desc={t("settings_highContrastDesc")}
-          control={<Switch checked={highContrast} onChange={setHighContrast} label={t("settings_highContrast")} />}
-          last
-        />
-      </SettingsSection>
-
-      {/* NOTIFICATIONS */}
-      <SettingsSection title={t("settings_notifications")}>
-        {notifItems.map((n, i) => (
-          <SettingsRow
-            key={n.key}
-            icon={Bell}
-            label={n.label}
-            desc={n.desc}
-            control={<Switch checked={!!notifPrefs[n.key]} onChange={() => toggleNotif(n.key)} label={n.label} />}
-          />
-        ))}
-        <div className="settings-row" style={{ flexDirection: "column", alignItems: "stretch", gap: 10 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <div className="settings-row-icon"><Clock size={18} /></div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <p className="settings-row-label">{t("settings_reminderTiming")}</p>
-              <p className="settings-row-desc">{t("settings_reminderTimingDesc")}</p>
-            </div>
-          </div>
-          <div style={{ marginLeft: 50 }}>
-            <SegmentedControl options={reminderOptions} value={reminderTiming} onChange={setReminderTiming} ariaLabel={t("settings_reminderTiming")} />
-          </div>
-        </div>
-      </SettingsSection>
-
-      {/* PRIVACY & SECURITY */}
-      <SettingsSection title={t("settings_privacySecurity")}>
-        <SettingsRow icon={ShieldCheck} label={t("settings_appPermissions")} desc={t("settings_appPermissionsDesc")} onClick={() => setModal("permissions")} />
-        <SettingsRow icon={FileText} label={t("settings_privacyPolicy")} onClick={() => setModal("privacy")} />
-        <SettingsRow icon={FileText} label={t("settings_termsConditions")} onClick={() => setModal("terms")} last />
-      </SettingsSection>
-
-      {/* HELP & SUPPORT */}
-      <SettingsSection title={t("settings_helpSupport")}>
-        <SettingsRow icon={HelpCircle} label={t("settings_faqs")} onClick={() => setModal("faqs")} />
-        <SettingsRow icon={LifeBuoy} label={t("settings_helpCenter")} onClick={() => setModal("helpCenter")} />
-        <SettingsRow icon={MessageSquare} label={t("settings_contactSupport")} onClick={() => setModal("contactSupport")} />
-        <SettingsRow icon={AlertCircle} label={t("settings_reportProblem")} onClick={() => setModal("report")} last />
-      </SettingsSection>
-
-      {/* ABOUT */}
-      <SettingsSection title={t("settings_about")}>
-        <SettingsRow icon={Info} label={t("settings_aboutApp")} onClick={() => setModal("about")} />
-        <SettingsRow icon={Star} label={t("settings_feedback")} onClick={() => setModal("feedback")} />
-        <SettingsRow icon={Info} label={t("settings_appVersion")} control={<span style={{ fontSize: "calc(13.5px * var(--text-scale, 1))", color: "var(--ink-soft)", fontWeight: 700 }}>{APP_VERSION}</span>} last />
-      </SettingsSection>
-
-      {modal === "password" && <ChangePasswordModal t={t} onClose={() => setModal(null)} showToast={showToast} />}
-      {modal === "delete" && <DeleteAccountModal t={t} onClose={() => setModal(null)} onDeleteAccount={onDeleteAccount} showToast={showToast} />}
-      {modal === "logout" && (
-        <SettingsModal title={t("logout_confirmTitle")} icon={LogOut} onClose={() => setModal(null)} labelledId="logout-modal-title">
-          <p style={{ color: "var(--ink-soft)", fontSize: "calc(14px * var(--text-scale, 1))", lineHeight: 1.6 }}>{t("logout_confirmBody")}</p>
-          <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
-            <button className="btn-emergency" onClick={() => { setModal(null); onLogout(); }}>{t("logout_confirmBtn")}</button>
-            <button className="btn-outline" onClick={() => setModal(null)}>{t("common_cancel")}</button>
-          </div>
-        </SettingsModal>
-      )}
-      {modal === "permissions" && <PermissionsModal t={t} onClose={() => setModal(null)} />}
-      {modal === "privacy" && (
-        <SettingsModal title={t("settings_privacyPolicy")} icon={FileText} onClose={() => setModal(null)} labelledId="privacy-modal-title">
-          <p style={{ color: "var(--ink)", fontSize: "calc(14px * var(--text-scale, 1))", lineHeight: 1.7, whiteSpace: "pre-line" }}>{t("privacy_body")}</p>
-        </SettingsModal>
-      )}
-      {modal === "terms" && (
-        <SettingsModal title={t("settings_termsConditions")} icon={FileText} onClose={() => setModal(null)} labelledId="terms-modal-title">
-          <p style={{ color: "var(--ink)", fontSize: "calc(14px * var(--text-scale, 1))", lineHeight: 1.7, whiteSpace: "pre-line" }}>{t("terms_body")}</p>
-        </SettingsModal>
-      )}
-      {modal === "faqs" && (
-        <SettingsModal title={t("settings_faqs")} icon={HelpCircle} onClose={() => setModal(null)} labelledId="faqs-modal-title">
-          <div style={{ display: "grid", gap: 16 }}>
-            {[1, 2, 3].map((i) => (
-              <div key={i}>
-                <p style={{ margin: "0 0 4px", fontWeight: 700, fontSize: "calc(14.5px * var(--text-scale, 1))" }}>{t(`faq_q${i}`)}</p>
-                <p style={{ margin: 0, fontSize: "calc(13.5px * var(--text-scale, 1))", color: "var(--ink-soft)", lineHeight: 1.6 }}>{t(`faq_a${i}`)}</p>
-              </div>
-            ))}
-          </div>
-        </SettingsModal>
-      )}
-      {modal === "helpCenter" && (
-        <SettingsModal title={t("settings_helpCenter")} icon={LifeBuoy} onClose={() => setModal(null)} labelledId="help-modal-title">
-          <p style={{ color: "var(--ink)", fontSize: "calc(14px * var(--text-scale, 1))", lineHeight: 1.7 }}>{t("help_center_body")}</p>
-        </SettingsModal>
-      )}
-      {modal === "contactSupport" && (
-        <SettingsModal title={t("settings_contactSupport")} icon={MessageSquare} onClose={() => setModal(null)} labelledId="contact-modal-title">
-          <p style={{ color: "var(--ink)", fontSize: "calc(14px * var(--text-scale, 1))", lineHeight: 1.8, whiteSpace: "pre-line" }}>{t("contact_support_body")}</p>
-        </SettingsModal>
-      )}
-      {modal === "report" && (
-        <ReportOrFeedbackModal
-          t={t}
-          title={t("settings_reportProblem")}
-          icon={AlertCircle}
-          placeholder={t("report_placeholder")}
-          submitLabel={t("report_submit")}
-          thanksMessage={t("report_thanks")}
-          onClose={() => setModal(null)}
-          showToast={showToast}
-          labelledId="report-problem-modal-title"
-          requiredMessage={t("report_required")}
-        />
-      )}
-      {modal === "feedback" && (
-        <ReportOrFeedbackModal
-          t={t}
-          title={t("settings_feedback")}
-          icon={Star}
-          placeholder={t("feedback_placeholder")}
-          submitLabel={t("feedback_submit")}
-          thanksMessage={t("feedback_thanks")}
-          onClose={() => setModal(null)}
-          showToast={showToast}
-          labelledId="feedback-modal-title"
-        />
-      )}
-      {modal === "about" && (
-        <SettingsModal title={t("settings_aboutApp")} icon={Info} onClose={() => setModal(null)} labelledId="about-modal-title">
-          <p style={{ color: "var(--ink)", fontSize: "calc(14px * var(--text-scale, 1))", lineHeight: 1.7 }}>{t("about_body")}</p>
-          <p style={{ color: "var(--ink-soft)", fontSize: "calc(12.5px * var(--text-scale, 1))", marginTop: 14 }}>{t("settings_appVersion")}: {APP_VERSION}</p>
-        </SettingsModal>
-      )}
-    </div>
-  );
+  const toggleNotif = key => setNotifPrefs(prev => ({
+    ...prev,
+    [key]: !prev[key]
+  }));
+  const notifItems = [{
+    key: "vaccination",
+    label: t("settings_vaccinationReminders"),
+    desc: t("settings_vaccinationRemindersDesc")
+  }, {
+    key: "treatment",
+    label: t("settings_treatmentReminders"),
+    desc: t("settings_treatmentRemindersDesc")
+  }, {
+    key: "checkup",
+    label: t("settings_healthCheckupReminders"),
+    desc: t("settings_healthCheckupRemindersDesc")
+  }, {
+    key: "consultation",
+    label: t("settings_vetConsultationUpdates"),
+    desc: t("settings_vetConsultationUpdatesDesc")
+  }, {
+    key: "screening",
+    label: t("settings_aiScreeningUpdates"),
+    desc: t("settings_aiScreeningUpdatesDesc")
+  }, {
+    key: "general",
+    label: t("settings_generalNotifications"),
+    desc: t("settings_generalNotificationsDesc")
+  }];
+  const reminderOptions = [{
+    value: "due",
+    label: t("settings_onDueDate")
+  }, {
+    value: "1",
+    label: t("settings_oneDayBefore")
+  }, {
+    value: "3",
+    label: t("settings_threeDaysBefore")
+  }, {
+    value: "7",
+    label: t("settings_sevenDaysBefore")
+  }];
+  const themeOptions = [{
+    value: "light",
+    label: t("settings_light"),
+    Icon: Sun
+  }, {
+    value: "dark",
+    label: t("settings_dark"),
+    Icon: Moon
+  }, {
+    value: "system",
+    label: t("settings_systemDefault"),
+    Icon: Monitor
+  }];
+  const textSizeOptions = [{
+    value: "small",
+    label: t("settings_small")
+  }, {
+    value: "medium",
+    label: t("settings_medium")
+  }, {
+    value: "large",
+    label: t("settings_large")
+  }];
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    className: "page-header"
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "back-btn",
+    onClick: onBack,
+    "aria-label": t("common_back")
+  }, /*#__PURE__*/React.createElement(ArrowLeft, {
+    size: 18
+  })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h1", {
+    className: "page-title",
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 9
+    }
+  }, /*#__PURE__*/React.createElement(Settings, {
+    size: 20,
+    color: "var(--brand-fg, var(--brand))"
+  }), " ", t("settings_title")))), /*#__PURE__*/React.createElement("p", {
+    style: {
+      color: "var(--ink-soft)",
+      fontSize: "calc(14px * var(--text-scale, 1))",
+      margin: "-14px 0 22px"
+    }
+  }, t("settings_subtitle")), /*#__PURE__*/React.createElement(SettingsSection, {
+    title: t("settings_account")
+  }, /*#__PURE__*/React.createElement(SettingsRow, {
+    icon: User,
+    label: t("settings_manageProfile"),
+    desc: t("settings_manageProfileDesc"),
+    onClick: onManageProfile
+  }), /*#__PURE__*/React.createElement(SettingsRow, {
+    icon: Lock,
+    label: t("settings_changePassword"),
+    desc: t("settings_changePasswordDesc"),
+    onClick: () => setModal("password")
+  }), /*#__PURE__*/React.createElement(SettingsRow, {
+    icon: Trash2,
+    label: t("settings_deleteAccount"),
+    desc: t("settings_deleteAccountDesc"),
+    onClick: () => setModal("delete"),
+    danger: true
+  }), /*#__PURE__*/React.createElement(SettingsRow, {
+    icon: LogOut,
+    label: t("settings_logout"),
+    desc: t("settings_logoutDesc"),
+    onClick: () => setModal("logout"),
+    last: true
+  })), /*#__PURE__*/React.createElement(SettingsSection, {
+    title: t("settings_languageAccessibility")
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "settings-row",
+    style: {
+      flexDirection: "column",
+      alignItems: "stretch",
+      gap: 10
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 12
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "settings-row-icon"
+  }, /*#__PURE__*/React.createElement(Globe, {
+    size: 18
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1,
+      minWidth: 0
+    }
+  }, /*#__PURE__*/React.createElement("p", {
+    className: "settings-row-label"
+  }, t("settings_appLanguage")), /*#__PURE__*/React.createElement("p", {
+    className: "settings-row-desc"
+  }, t("settings_appLanguageDesc")))), /*#__PURE__*/React.createElement("select", {
+    className: "field-input",
+    "aria-label": t("settings_appLanguage"),
+    value: language,
+    onChange: e => setLanguage(e.target.value),
+    style: {
+      marginLeft: 50,
+      width: "calc(100% - 50px)"
+    }
+  }, LANGUAGES.map(l => /*#__PURE__*/React.createElement("option", {
+    key: l.code,
+    value: l.code
+  }, l.label)))), /*#__PURE__*/React.createElement("div", {
+    className: "settings-row",
+    style: {
+      flexDirection: "column",
+      alignItems: "stretch",
+      gap: 10
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 12
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "settings-row-icon"
+  }, /*#__PURE__*/React.createElement(Type, {
+    size: 18
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1,
+      minWidth: 0
+    }
+  }, /*#__PURE__*/React.createElement("p", {
+    className: "settings-row-label"
+  }, t("settings_textSize")), /*#__PURE__*/React.createElement("p", {
+    className: "settings-row-desc"
+  }, t("settings_textSizeDesc")))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginLeft: 50
+    }
+  }, /*#__PURE__*/React.createElement(SegmentedControl, {
+    options: textSizeOptions,
+    value: textSize,
+    onChange: setTextSize,
+    ariaLabel: t("settings_textSize")
+  }))), /*#__PURE__*/React.createElement("div", {
+    className: "settings-row",
+    style: {
+      flexDirection: "column",
+      alignItems: "stretch",
+      gap: 10
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 12
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "settings-row-icon"
+  }, /*#__PURE__*/React.createElement(Sun, {
+    size: 18
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1,
+      minWidth: 0
+    }
+  }, /*#__PURE__*/React.createElement("p", {
+    className: "settings-row-label"
+  }, t("settings_theme")), /*#__PURE__*/React.createElement("p", {
+    className: "settings-row-desc"
+  }, t("settings_themeDesc")))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginLeft: 50
+    }
+  }, /*#__PURE__*/React.createElement(SegmentedControl, {
+    options: themeOptions,
+    value: theme,
+    onChange: setTheme,
+    ariaLabel: t("settings_theme")
+  }))), /*#__PURE__*/React.createElement(SettingsRow, {
+    icon: Eye,
+    label: t("settings_highContrast"),
+    desc: t("settings_highContrastDesc"),
+    control: /*#__PURE__*/React.createElement(Switch, {
+      checked: highContrast,
+      onChange: setHighContrast,
+      label: t("settings_highContrast")
+    }),
+    last: true
+  })), /*#__PURE__*/React.createElement(SettingsSection, {
+    title: t("settings_notifications")
+  }, notifItems.map((n, i) => /*#__PURE__*/React.createElement(SettingsRow, {
+    key: n.key,
+    icon: Bell,
+    label: n.label,
+    desc: n.desc,
+    control: /*#__PURE__*/React.createElement(Switch, {
+      checked: !!notifPrefs[n.key],
+      onChange: () => toggleNotif(n.key),
+      label: n.label
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "settings-row",
+    style: {
+      flexDirection: "column",
+      alignItems: "stretch",
+      gap: 10
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 12
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "settings-row-icon"
+  }, /*#__PURE__*/React.createElement(Clock, {
+    size: 18
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1,
+      minWidth: 0
+    }
+  }, /*#__PURE__*/React.createElement("p", {
+    className: "settings-row-label"
+  }, t("settings_reminderTiming")), /*#__PURE__*/React.createElement("p", {
+    className: "settings-row-desc"
+  }, t("settings_reminderTimingDesc")))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginLeft: 50
+    }
+  }, /*#__PURE__*/React.createElement(SegmentedControl, {
+    options: reminderOptions,
+    value: reminderTiming,
+    onChange: setReminderTiming,
+    ariaLabel: t("settings_reminderTiming")
+  })))), /*#__PURE__*/React.createElement(SettingsSection, {
+    title: t("settings_privacySecurity")
+  }, /*#__PURE__*/React.createElement(SettingsRow, {
+    icon: ShieldCheck,
+    label: t("settings_appPermissions"),
+    desc: t("settings_appPermissionsDesc"),
+    onClick: () => setModal("permissions")
+  }), /*#__PURE__*/React.createElement(SettingsRow, {
+    icon: FileText,
+    label: t("settings_privacyPolicy"),
+    onClick: () => setModal("privacy")
+  }), /*#__PURE__*/React.createElement(SettingsRow, {
+    icon: FileText,
+    label: t("settings_termsConditions"),
+    onClick: () => setModal("terms"),
+    last: true
+  })), /*#__PURE__*/React.createElement(SettingsSection, {
+    title: t("settings_helpSupport")
+  }, /*#__PURE__*/React.createElement(SettingsRow, {
+    icon: HelpCircle,
+    label: t("settings_faqs"),
+    onClick: () => setModal("faqs")
+  }), /*#__PURE__*/React.createElement(SettingsRow, {
+    icon: LifeBuoy,
+    label: t("settings_helpCenter"),
+    onClick: () => setModal("helpCenter")
+  }), /*#__PURE__*/React.createElement(SettingsRow, {
+    icon: MessageSquare,
+    label: t("settings_contactSupport"),
+    onClick: () => setModal("contactSupport")
+  }), /*#__PURE__*/React.createElement(SettingsRow, {
+    icon: AlertCircle,
+    label: t("settings_reportProblem"),
+    onClick: () => setModal("report"),
+    last: true
+  })), /*#__PURE__*/React.createElement(SettingsSection, {
+    title: t("settings_about")
+  }, /*#__PURE__*/React.createElement(SettingsRow, {
+    icon: Info,
+    label: t("settings_aboutApp"),
+    onClick: () => setModal("about")
+  }), /*#__PURE__*/React.createElement(SettingsRow, {
+    icon: Star,
+    label: t("settings_feedback"),
+    onClick: () => setModal("feedback")
+  }), /*#__PURE__*/React.createElement(SettingsRow, {
+    icon: Info,
+    label: t("settings_appVersion"),
+    control: /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontSize: "calc(13.5px * var(--text-scale, 1))",
+        color: "var(--ink-soft)",
+        fontWeight: 700
+      }
+    }, APP_VERSION),
+    last: true
+  })), modal === "password" && /*#__PURE__*/React.createElement(ChangePasswordModal, {
+    t: t,
+    onClose: () => setModal(null),
+    showToast: showToast
+  }), modal === "delete" && /*#__PURE__*/React.createElement(DeleteAccountModal, {
+    t: t,
+    onClose: () => setModal(null),
+    onDeleteAccount: onDeleteAccount,
+    showToast: showToast
+  }), modal === "logout" && /*#__PURE__*/React.createElement(SettingsModal, {
+    title: t("logout_confirmTitle"),
+    icon: LogOut,
+    onClose: () => setModal(null),
+    labelledId: "logout-modal-title"
+  }, /*#__PURE__*/React.createElement("p", {
+    style: {
+      color: "var(--ink-soft)",
+      fontSize: "calc(14px * var(--text-scale, 1))",
+      lineHeight: 1.6
+    }
+  }, t("logout_confirmBody")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 10,
+      marginTop: 18
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn-emergency",
+    onClick: () => {
+      setModal(null);
+      onLogout();
+    }
+  }, t("logout_confirmBtn")), /*#__PURE__*/React.createElement("button", {
+    className: "btn-outline",
+    onClick: () => setModal(null)
+  }, t("common_cancel")))), modal === "permissions" && /*#__PURE__*/React.createElement(PermissionsModal, {
+    t: t,
+    onClose: () => setModal(null)
+  }), modal === "privacy" && /*#__PURE__*/React.createElement(SettingsModal, {
+    title: t("settings_privacyPolicy"),
+    icon: FileText,
+    onClose: () => setModal(null),
+    labelledId: "privacy-modal-title"
+  }, /*#__PURE__*/React.createElement("p", {
+    style: {
+      color: "var(--ink)",
+      fontSize: "calc(14px * var(--text-scale, 1))",
+      lineHeight: 1.7,
+      whiteSpace: "pre-line"
+    }
+  }, t("privacy_body"))), modal === "terms" && /*#__PURE__*/React.createElement(SettingsModal, {
+    title: t("settings_termsConditions"),
+    icon: FileText,
+    onClose: () => setModal(null),
+    labelledId: "terms-modal-title"
+  }, /*#__PURE__*/React.createElement("p", {
+    style: {
+      color: "var(--ink)",
+      fontSize: "calc(14px * var(--text-scale, 1))",
+      lineHeight: 1.7,
+      whiteSpace: "pre-line"
+    }
+  }, t("terms_body"))), modal === "faqs" && /*#__PURE__*/React.createElement(SettingsModal, {
+    title: t("settings_faqs"),
+    icon: HelpCircle,
+    onClose: () => setModal(null),
+    labelledId: "faqs-modal-title"
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "grid",
+      gap: 16
+    }
+  }, [1, 2, 3].map(i => /*#__PURE__*/React.createElement("div", {
+    key: i
+  }, /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: "0 0 4px",
+      fontWeight: 700,
+      fontSize: "calc(14.5px * var(--text-scale, 1))"
+    }
+  }, t(`faq_q${i}`)), /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: "calc(13.5px * var(--text-scale, 1))",
+      color: "var(--ink-soft)",
+      lineHeight: 1.6
+    }
+  }, t(`faq_a${i}`)))))), modal === "helpCenter" && /*#__PURE__*/React.createElement(SettingsModal, {
+    title: t("settings_helpCenter"),
+    icon: LifeBuoy,
+    onClose: () => setModal(null),
+    labelledId: "help-modal-title"
+  }, /*#__PURE__*/React.createElement("p", {
+    style: {
+      color: "var(--ink)",
+      fontSize: "calc(14px * var(--text-scale, 1))",
+      lineHeight: 1.7
+    }
+  }, t("help_center_body"))), modal === "contactSupport" && /*#__PURE__*/React.createElement(SettingsModal, {
+    title: t("settings_contactSupport"),
+    icon: MessageSquare,
+    onClose: () => setModal(null),
+    labelledId: "contact-modal-title"
+  }, /*#__PURE__*/React.createElement("p", {
+    style: {
+      color: "var(--ink)",
+      fontSize: "calc(14px * var(--text-scale, 1))",
+      lineHeight: 1.8,
+      whiteSpace: "pre-line"
+    }
+  }, t("contact_support_body"))), modal === "report" && /*#__PURE__*/React.createElement(ReportOrFeedbackModal, {
+    t: t,
+    title: t("settings_reportProblem"),
+    icon: AlertCircle,
+    placeholder: t("report_placeholder"),
+    submitLabel: t("report_submit"),
+    thanksMessage: t("report_thanks"),
+    onClose: () => setModal(null),
+    showToast: showToast,
+    labelledId: "report-problem-modal-title",
+    requiredMessage: t("report_required")
+  }), modal === "feedback" && /*#__PURE__*/React.createElement(ReportOrFeedbackModal, {
+    t: t,
+    title: t("settings_feedback"),
+    icon: Star,
+    placeholder: t("feedback_placeholder"),
+    submitLabel: t("feedback_submit"),
+    thanksMessage: t("feedback_thanks"),
+    onClose: () => setModal(null),
+    showToast: showToast,
+    labelledId: "feedback-modal-title"
+  }), modal === "about" && /*#__PURE__*/React.createElement(SettingsModal, {
+    title: t("settings_aboutApp"),
+    icon: Info,
+    onClose: () => setModal(null),
+    labelledId: "about-modal-title"
+  }, /*#__PURE__*/React.createElement("p", {
+    style: {
+      color: "var(--ink)",
+      fontSize: "calc(14px * var(--text-scale, 1))",
+      lineHeight: 1.7
+    }
+  }, t("about_body")), /*#__PURE__*/React.createElement("p", {
+    style: {
+      color: "var(--ink-soft)",
+      fontSize: "calc(12.5px * var(--text-scale, 1))",
+      marginTop: 14
+    }
+  }, t("settings_appVersion"), ": ", APP_VERSION)));
 }
-
-function ChangePasswordModal({ t, onClose, showToast }) {
+function ChangePasswordModal({
+  t,
+  onClose,
+  showToast
+}) {
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
-
   const submit = () => {
     if (!current.trim() || !next.trim() || !confirm.trim()) {
       setError(t("pwd_required"));
@@ -8941,101 +10878,277 @@ function ChangePasswordModal({ t, onClose, showToast }) {
     setSuccess(true);
     showToast && showToast(t("pwd_success"));
   };
-
-  return (
-    <SettingsModal title={t("settings_changePassword")} icon={Lock} onClose={onClose} labelledId="password-modal-title">
-      {success ? (
-        <div style={{ display: "grid", gap: 14 }}>
-          <div role="status" style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "12px", background: "var(--healthy-soft)", borderRadius: 10, border: "1px solid var(--healthy)" }}>
-            <CheckCircle2 size={18} color="var(--healthy-fg, var(--healthy))" style={{ flexShrink: 0, marginTop: 2 }} />
-            <p style={{ margin: 0, color: "var(--healthy-fg, var(--healthy))", fontSize: "calc(13.5px * var(--text-scale, 1))", lineHeight: 1.5, fontWeight: 600 }}>
-              {t("pwd_success")}
-            </p>
-          </div>
-          <button className="btn-outline" onClick={onClose} style={{ alignSelf: "flex-start" }}>{t("common_close")}</button>
-        </div>
-      ) : (
-        <div style={{ display: "grid", gap: 14 }}>
-          <div>
-            <label className="field-label" htmlFor="pwd-current">{t("pwd_current")}</label>
-            <input id="pwd-current" type="password" className="field-input" value={current} onChange={(e) => { setCurrent(e.target.value); setError(""); }} />
-          </div>
-          <div>
-            <label className="field-label" htmlFor="pwd-new">{t("pwd_new")}</label>
-            <input id="pwd-new" type="password" className="field-input" value={next} onChange={(e) => { setNext(e.target.value); setError(""); }} />
-          </div>
-          <div>
-            <label className="field-label" htmlFor="pwd-confirm">{t("pwd_confirm")}</label>
-            <input id="pwd-confirm" type="password" className="field-input" value={confirm} onChange={(e) => { setConfirm(e.target.value); setError(""); }} />
-          </div>
-          {error && (
-            <div role="alert" style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", background: "var(--urgent-soft)", borderRadius: 8, border: "1px solid var(--urgent)" }}>
-              <AlertCircle size={16} color="var(--urgent-fg, var(--urgent))" style={{ flexShrink: 0 }} />
-              <p style={{ color: "var(--urgent-fg, var(--urgent))", fontSize: "calc(13px * var(--text-scale, 1))", margin: 0, fontWeight: 600 }}>{error}</p>
-            </div>
-          )}
-          <div style={{ display: "flex", gap: 10, marginTop: 4, flexWrap: "wrap" }}>
-            <button className="btn-primary" onClick={submit} style={{ flex: "1 1 auto" }}>{t("pwd_updateBtn")}</button>
-            <button className="btn-outline" onClick={onClose} style={{ flex: "1 1 auto" }}>{t("common_cancel")}</button>
-          </div>
-        </div>
-      )}
-    </SettingsModal>
-  );
+  return /*#__PURE__*/React.createElement(SettingsModal, {
+    title: t("settings_changePassword"),
+    icon: Lock,
+    onClose: onClose,
+    labelledId: "password-modal-title"
+  }, success ? /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "grid",
+      gap: 14
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    role: "status",
+    style: {
+      display: "flex",
+      alignItems: "flex-start",
+      gap: 10,
+      padding: "12px",
+      background: "var(--healthy-soft)",
+      borderRadius: 10,
+      border: "1px solid var(--healthy)"
+    }
+  }, /*#__PURE__*/React.createElement(CheckCircle2, {
+    size: 18,
+    color: "var(--healthy-fg, var(--healthy))",
+    style: {
+      flexShrink: 0,
+      marginTop: 2
+    }
+  }), /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      color: "var(--healthy-fg, var(--healthy))",
+      fontSize: "calc(13.5px * var(--text-scale, 1))",
+      lineHeight: 1.5,
+      fontWeight: 600
+    }
+  }, t("pwd_success"))), /*#__PURE__*/React.createElement("button", {
+    className: "btn-outline",
+    onClick: onClose,
+    style: {
+      alignSelf: "flex-start"
+    }
+  }, t("common_close"))) : /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "grid",
+      gap: 14
+    }
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+    className: "field-label",
+    htmlFor: "pwd-current"
+  }, t("pwd_current")), /*#__PURE__*/React.createElement("input", {
+    id: "pwd-current",
+    type: "password",
+    className: "field-input",
+    value: current,
+    onChange: e => {
+      setCurrent(e.target.value);
+      setError("");
+    }
+  })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+    className: "field-label",
+    htmlFor: "pwd-new"
+  }, t("pwd_new")), /*#__PURE__*/React.createElement("input", {
+    id: "pwd-new",
+    type: "password",
+    className: "field-input",
+    value: next,
+    onChange: e => {
+      setNext(e.target.value);
+      setError("");
+    }
+  })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+    className: "field-label",
+    htmlFor: "pwd-confirm"
+  }, t("pwd_confirm")), /*#__PURE__*/React.createElement("input", {
+    id: "pwd-confirm",
+    type: "password",
+    className: "field-input",
+    value: confirm,
+    onChange: e => {
+      setConfirm(e.target.value);
+      setError("");
+    }
+  })), error && /*#__PURE__*/React.createElement("div", {
+    role: "alert",
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 8,
+      padding: "10px 12px",
+      background: "var(--urgent-soft)",
+      borderRadius: 8,
+      border: "1px solid var(--urgent)"
+    }
+  }, /*#__PURE__*/React.createElement(AlertCircle, {
+    size: 16,
+    color: "var(--urgent-fg, var(--urgent))",
+    style: {
+      flexShrink: 0
+    }
+  }), /*#__PURE__*/React.createElement("p", {
+    style: {
+      color: "var(--urgent-fg, var(--urgent))",
+      fontSize: "calc(13px * var(--text-scale, 1))",
+      margin: 0,
+      fontWeight: 600
+    }
+  }, error)), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 10,
+      marginTop: 4,
+      flexWrap: "wrap"
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn-primary",
+    onClick: submit,
+    style: {
+      flex: "1 1 auto"
+    }
+  }, t("pwd_updateBtn")), /*#__PURE__*/React.createElement("button", {
+    className: "btn-outline",
+    onClick: onClose,
+    style: {
+      flex: "1 1 auto"
+    }
+  }, t("common_cancel")))));
 }
-
-function DeleteAccountModal({ t, onClose, onDeleteAccount, showToast }) {
+function DeleteAccountModal({
+  t,
+  onClose,
+  onDeleteAccount,
+  showToast
+}) {
   const [ack, setAck] = useState(false);
   const [done, setDone] = useState(false);
-
   const confirmDelete = () => {
     if (!ack) return;
     setDone(true);
     onDeleteAccount && onDeleteAccount();
     showToast && showToast(t("delete_success"));
   };
-
-  return (
-    <SettingsModal title={t("delete_warningTitle")} icon={AlertTriangle} onClose={onClose} labelledId="delete-modal-title">
-      {!done ? (
-        <>
-          <div role="alert" style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "12px", background: "var(--urgent-soft)", borderRadius: 10, border: "1px solid var(--urgent)", marginBottom: 14 }}>
-            <AlertTriangle size={18} color="var(--urgent-fg, var(--urgent))" style={{ flexShrink: 0, marginTop: 2 }} />
-            <p style={{ color: "var(--urgent-fg, var(--urgent))", fontSize: "calc(13.5px * var(--text-scale, 1))", lineHeight: 1.5, margin: 0 }}>
-              {t("delete_warningBody")}
-            </p>
-          </div>
-          <label style={{ display: "flex", alignItems: "center", minHeight: 44, gap: 9, fontSize: "calc(13.5px * var(--text-scale, 1))", fontWeight: 600, margin: "14px 0 18px", cursor: "pointer" }}>
-            <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} style={{ width: 18, height: 18 }} />
-            {t("delete_confirmLabel")}
-          </label>
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <button className="btn-emergency" disabled={!ack} style={!ack ? { opacity: 0.5, cursor: "not-allowed", flex: "1 1 auto" } : { flex: "1 1 auto" }} onClick={confirmDelete}>
-              <Trash2 size={15} /> {t("delete_confirmBtn")}
-            </button>
-            <button className="btn-outline" onClick={onClose} style={{ flex: "1 1 auto" }}>{t("delete_cancelBtn")}</button>
-          </div>
-        </>
-      ) : (
-        <div style={{ display: "grid", gap: 14 }}>
-          <div role="status" style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "12px", background: "var(--healthy-soft)", borderRadius: 10, border: "1px solid var(--healthy)" }}>
-            <CheckCircle2 size={18} color="var(--healthy-fg, var(--healthy))" style={{ flexShrink: 0, marginTop: 2 }} />
-            <p style={{ margin: 0, color: "var(--healthy-fg, var(--healthy))", fontSize: "calc(13.5px * var(--text-scale, 1))", lineHeight: 1.5, fontWeight: 600 }}>
-              {t("delete_success")}
-            </p>
-          </div>
-          <button className="btn-outline" onClick={onClose} style={{ alignSelf: "flex-start" }}>{t("common_close")}</button>
-        </div>
-      )}
-    </SettingsModal>
-  );
+  return /*#__PURE__*/React.createElement(SettingsModal, {
+    title: t("delete_warningTitle"),
+    icon: AlertTriangle,
+    onClose: onClose,
+    labelledId: "delete-modal-title"
+  }, !done ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    role: "alert",
+    style: {
+      display: "flex",
+      alignItems: "flex-start",
+      gap: 10,
+      padding: "12px",
+      background: "var(--urgent-soft)",
+      borderRadius: 10,
+      border: "1px solid var(--urgent)",
+      marginBottom: 14
+    }
+  }, /*#__PURE__*/React.createElement(AlertTriangle, {
+    size: 18,
+    color: "var(--urgent-fg, var(--urgent))",
+    style: {
+      flexShrink: 0,
+      marginTop: 2
+    }
+  }), /*#__PURE__*/React.createElement("p", {
+    style: {
+      color: "var(--urgent-fg, var(--urgent))",
+      fontSize: "calc(13.5px * var(--text-scale, 1))",
+      lineHeight: 1.5,
+      margin: 0
+    }
+  }, t("delete_warningBody"))), /*#__PURE__*/React.createElement("label", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      minHeight: 44,
+      gap: 9,
+      fontSize: "calc(13.5px * var(--text-scale, 1))",
+      fontWeight: 600,
+      margin: "14px 0 18px",
+      cursor: "pointer"
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: ack,
+    onChange: e => setAck(e.target.checked),
+    style: {
+      width: 18,
+      height: 18
+    }
+  }), t("delete_confirmLabel")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 10,
+      flexWrap: "wrap"
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn-emergency",
+    disabled: !ack,
+    style: !ack ? {
+      opacity: 0.5,
+      cursor: "not-allowed",
+      flex: "1 1 auto"
+    } : {
+      flex: "1 1 auto"
+    },
+    onClick: confirmDelete
+  }, /*#__PURE__*/React.createElement(Trash2, {
+    size: 15
+  }), " ", t("delete_confirmBtn")), /*#__PURE__*/React.createElement("button", {
+    className: "btn-outline",
+    onClick: onClose,
+    style: {
+      flex: "1 1 auto"
+    }
+  }, t("delete_cancelBtn")))) : /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "grid",
+      gap: 14
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    role: "status",
+    style: {
+      display: "flex",
+      alignItems: "flex-start",
+      gap: 10,
+      padding: "12px",
+      background: "var(--healthy-soft)",
+      borderRadius: 10,
+      border: "1px solid var(--healthy)"
+    }
+  }, /*#__PURE__*/React.createElement(CheckCircle2, {
+    size: 18,
+    color: "var(--healthy-fg, var(--healthy))",
+    style: {
+      flexShrink: 0,
+      marginTop: 2
+    }
+  }), /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      color: "var(--healthy-fg, var(--healthy))",
+      fontSize: "calc(13.5px * var(--text-scale, 1))",
+      lineHeight: 1.5,
+      fontWeight: 600
+    }
+  }, t("delete_success"))), /*#__PURE__*/React.createElement("button", {
+    className: "btn-outline",
+    onClick: onClose,
+    style: {
+      alignSelf: "flex-start"
+    }
+  }, t("common_close"))));
 }
-
-function ReportOrFeedbackModal({ t, title, icon, placeholder, submitLabel, thanksMessage, onClose, showToast, labelledId, requiredMessage }) {
+function ReportOrFeedbackModal({
+  t,
+  title,
+  icon,
+  placeholder,
+  submitLabel,
+  thanksMessage,
+  onClose,
+  showToast,
+  labelledId,
+  requiredMessage
+}) {
   const [text, setText] = useState("");
   const [sent, setSent] = useState(false);
   const [error, setError] = useState("");
-
   const submit = () => {
     if (!text.trim()) {
       setError(requiredMessage || t("feedback_required") || "Please enter a message before submitting.");
@@ -9045,62 +11158,129 @@ function ReportOrFeedbackModal({ t, title, icon, placeholder, submitLabel, thank
     setSent(true);
     showToast && showToast(thanksMessage);
   };
-
-  return (
-    <SettingsModal title={title} icon={icon} onClose={onClose} labelledId={labelledId || "report-feedback-modal-title"}>
-      {!sent ? (
-        <div style={{ display: "grid", gap: 14 }}>
-          <textarea
-            className="field-input"
-            rows={5}
-            placeholder={placeholder}
-            value={text}
-            onChange={(e) => { setText(e.target.value); setError(""); }}
-            style={{ resize: "vertical" }}
-            aria-label={title}
-          />
-          {error && (
-            <div role="alert" style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", background: "var(--urgent-soft)", borderRadius: 8, border: "1px solid var(--urgent)" }}>
-              <AlertCircle size={16} color="var(--urgent-fg, var(--urgent))" style={{ flexShrink: 0 }} />
-              <p style={{ color: "var(--urgent-fg, var(--urgent))", fontSize: "calc(13px * var(--text-scale, 1))", margin: 0, fontWeight: 600 }}>{error}</p>
-            </div>
-          )}
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <button className="btn-primary" onClick={submit} style={{ flex: "1 1 auto" }}>{submitLabel}</button>
-            <button className="btn-outline" onClick={onClose} style={{ flex: "1 1 auto" }}>{t("common_cancel")}</button>
-          </div>
-        </div>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <div role="status" style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "12px", background: "var(--healthy-soft)", borderRadius: 10, border: "1px solid var(--healthy)" }}>
-            <CheckCircle2 size={18} color="var(--healthy-fg, var(--healthy))" style={{ flexShrink: 0, marginTop: 2 }} />
-            <p style={{ margin: 0, color: "var(--healthy-fg, var(--healthy))", fontSize: "calc(13.5px * var(--text-scale, 1))", lineHeight: 1.5, fontWeight: 600 }}>
-              {thanksMessage}
-            </p>
-          </div>
-          <button className="btn-outline" onClick={onClose} style={{ alignSelf: "flex-start" }}>{t("common_close")}</button>
-        </div>
-      )}
-    </SettingsModal>
-  );
+  return /*#__PURE__*/React.createElement(SettingsModal, {
+    title: title,
+    icon: icon,
+    onClose: onClose,
+    labelledId: labelledId || "report-feedback-modal-title"
+  }, !sent ? /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "grid",
+      gap: 14
+    }
+  }, /*#__PURE__*/React.createElement("textarea", {
+    className: "field-input",
+    rows: 5,
+    placeholder: placeholder,
+    value: text,
+    onChange: e => {
+      setText(e.target.value);
+      setError("");
+    },
+    style: {
+      resize: "vertical"
+    },
+    "aria-label": title
+  }), error && /*#__PURE__*/React.createElement("div", {
+    role: "alert",
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 8,
+      padding: "10px 12px",
+      background: "var(--urgent-soft)",
+      borderRadius: 8,
+      border: "1px solid var(--urgent)"
+    }
+  }, /*#__PURE__*/React.createElement(AlertCircle, {
+    size: 16,
+    color: "var(--urgent-fg, var(--urgent))",
+    style: {
+      flexShrink: 0
+    }
+  }), /*#__PURE__*/React.createElement("p", {
+    style: {
+      color: "var(--urgent-fg, var(--urgent))",
+      fontSize: "calc(13px * var(--text-scale, 1))",
+      margin: 0,
+      fontWeight: 600
+    }
+  }, error)), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 10,
+      flexWrap: "wrap"
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn-primary",
+    onClick: submit,
+    style: {
+      flex: "1 1 auto"
+    }
+  }, submitLabel), /*#__PURE__*/React.createElement("button", {
+    className: "btn-outline",
+    onClick: onClose,
+    style: {
+      flex: "1 1 auto"
+    }
+  }, t("common_cancel")))) : /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      flexDirection: "column",
+      gap: 12
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    role: "status",
+    style: {
+      display: "flex",
+      alignItems: "flex-start",
+      gap: 10,
+      padding: "12px",
+      background: "var(--healthy-soft)",
+      borderRadius: 10,
+      border: "1px solid var(--healthy)"
+    }
+  }, /*#__PURE__*/React.createElement(CheckCircle2, {
+    size: 18,
+    color: "var(--healthy-fg, var(--healthy))",
+    style: {
+      flexShrink: 0,
+      marginTop: 2
+    }
+  }), /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      color: "var(--healthy-fg, var(--healthy))",
+      fontSize: "calc(13.5px * var(--text-scale, 1))",
+      lineHeight: 1.5,
+      fontWeight: 600
+    }
+  }, thanksMessage)), /*#__PURE__*/React.createElement("button", {
+    className: "btn-outline",
+    onClick: onClose,
+    style: {
+      alignSelf: "flex-start"
+    }
+  }, t("common_close"))));
 }
-function PermissionsModal({ t, onClose }) {
+function PermissionsModal({
+  t,
+  onClose
+}) {
   const [statuses, setStatuses] = useState({
     camera: "unsupported",
     microphone: "unsupported",
     location: "unsupported",
-    notifications: "unsupported",
+    notifications: "unsupported"
   });
-
   useEffect(() => {
     let cancelled = false;
-
     async function checkPermissions() {
       const next = {
         camera: "unsupported",
         microphone: "unsupported",
         location: "unsupported",
-        notifications: "unsupported",
+        notifications: "unsupported"
       };
 
       // 1. Browser Notifications API check (without triggering permission requests)
@@ -9113,11 +11293,16 @@ function PermissionsModal({ t, onClose }) {
       if (typeof navigator !== "undefined" && navigator.permissions && typeof navigator.permissions.query === "function") {
         // Geolocation
         try {
-          const res = await navigator.permissions.query({ name: "geolocation" });
+          const res = await navigator.permissions.query({
+            name: "geolocation"
+          });
           if (res && res.state) next.location = res.state;
           if (res && typeof res.addEventListener === "function") {
             res.addEventListener("change", () => {
-              if (!cancelled) setStatuses((prev) => ({ ...prev, location: res.state }));
+              if (!cancelled) setStatuses(prev => ({
+                ...prev,
+                location: res.state
+              }));
             });
           }
         } catch {
@@ -9126,11 +11311,16 @@ function PermissionsModal({ t, onClose }) {
 
         // Camera
         try {
-          const res = await navigator.permissions.query({ name: "camera" });
+          const res = await navigator.permissions.query({
+            name: "camera"
+          });
           if (res && res.state) next.camera = res.state;
           if (res && typeof res.addEventListener === "function") {
             res.addEventListener("change", () => {
-              if (!cancelled) setStatuses((prev) => ({ ...prev, camera: res.state }));
+              if (!cancelled) setStatuses(prev => ({
+                ...prev,
+                camera: res.state
+              }));
             });
           }
         } catch {
@@ -9141,11 +11331,16 @@ function PermissionsModal({ t, onClose }) {
 
         // Microphone
         try {
-          const res = await navigator.permissions.query({ name: "microphone" });
+          const res = await navigator.permissions.query({
+            name: "microphone"
+          });
           if (res && res.state) next.microphone = res.state;
           if (res && typeof res.addEventListener === "function") {
             res.addEventListener("change", () => {
-              if (!cancelled) setStatuses((prev) => ({ ...prev, microphone: res.state }));
+              if (!cancelled) setStatuses(prev => ({
+                ...prev,
+                microphone: res.state
+              }));
             });
           }
         } catch {
@@ -9156,12 +11351,17 @@ function PermissionsModal({ t, onClose }) {
 
         // Notifications
         try {
-          const res = await navigator.permissions.query({ name: "notifications" });
+          const res = await navigator.permissions.query({
+            name: "notifications"
+          });
           if (res && res.state) {
             next.notifications = res.state;
             if (typeof res.addEventListener === "function") {
               res.addEventListener("change", () => {
-                if (!cancelled) setStatuses((prev) => ({ ...prev, notifications: res.state }));
+                if (!cancelled) setStatuses(prev => ({
+                  ...prev,
+                  notifications: res.state
+                }));
               });
             }
           }
@@ -9173,80 +11373,149 @@ function PermissionsModal({ t, onClose }) {
           next.microphone = "prompt";
         }
       }
-
       if (!cancelled) setStatuses(next);
     }
-
     checkPermissions();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
-
-  const labelFor = (s) => ({
+  const labelFor = s => ({
     granted: t("perm_granted"),
     denied: t("perm_denied"),
     prompt: t("perm_prompt"),
-    unsupported: t("perm_unsupported"),
-  }[s] || t("perm_unsupported"));
-
-  const badgeClassFor = (s) => {
+    unsupported: t("perm_unsupported")
+  })[s] || t("perm_unsupported");
+  const badgeClassFor = s => {
     switch (s) {
-      case "granted": return "badge-healthy";
-      case "denied": return "badge-urgent";
-      case "prompt": return "badge-attention";
-      default: return "badge-neutral";
+      case "granted":
+        return "badge-healthy";
+      case "denied":
+        return "badge-urgent";
+      case "prompt":
+        return "badge-attention";
+      default:
+        return "badge-neutral";
     }
   };
-
-  const rows = [
-    { key: "camera", label: t("perm_camera"), desc: t("perm_cameraDesc") || "Used for capturing animal photos during AI screening", Icon: Camera },
-    { key: "notifications", label: t("perm_notifications"), desc: t("perm_notificationsDesc") || "Browser alerts for upcoming vaccinations and treatments", Icon: Bell },
-    { key: "location", label: t("perm_location"), desc: t("perm_locationDesc") || "Used for finding nearby veterinary help in emergencies", Icon: Navigation },
-    { key: "microphone", label: t("perm_microphone"), desc: t("perm_microphoneDesc") || "Used for voice symptom input and notes", Icon: Mic },
-  ];
-
-  return (
-    <SettingsModal title={t("settings_appPermissions")} icon={ShieldCheck} onClose={onClose} labelledId="permissions-modal-title">
-      <div style={{ display: "grid", gap: 4 }}>
-        {rows.map((r) => (
-          <div key={r.key} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderBottom: "1px solid var(--line)" }}>
-            <div className="settings-row-icon"><r.Icon size={17} /></div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <p style={{ margin: "0 0 2px", fontWeight: 700, fontSize: "calc(14px * var(--text-scale, 1))" }}>{r.label}</p>
-              <p style={{ margin: 0, color: "var(--ink-soft)", fontSize: "calc(12px * var(--text-scale, 1))", lineHeight: 1.4 }}>{r.desc}</p>
-            </div>
-            <span className={`badge ${badgeClassFor(statuses[r.key])}`} style={{ flexShrink: 0 }}>
-              {labelFor(statuses[r.key])}
-            </span>
-          </div>
-        ))}
-      </div>
-      <div style={{ marginTop: 14, padding: "10px 12px", background: "var(--paper-soft)", borderRadius: 10, border: "1px solid var(--line)" }}>
-        <p style={{ color: "var(--ink-soft)", fontSize: "calc(12px * var(--text-scale, 1))", margin: 0, lineHeight: 1.6 }}>
-          <Info size={13} style={{ verticalAlign: -2, marginRight: 5, color: "var(--brand)" }} />
-          {t("perm_manageNote")}
-        </p>
-      </div>
-    </SettingsModal>
-  );
+  const rows = [{
+    key: "camera",
+    label: t("perm_camera"),
+    desc: t("perm_cameraDesc") || "Used for capturing animal photos during AI screening",
+    Icon: Camera
+  }, {
+    key: "notifications",
+    label: t("perm_notifications"),
+    desc: t("perm_notificationsDesc") || "Browser alerts for upcoming vaccinations and treatments",
+    Icon: Bell
+  }, {
+    key: "location",
+    label: t("perm_location"),
+    desc: t("perm_locationDesc") || "Used for finding nearby veterinary help in emergencies",
+    Icon: Navigation
+  }, {
+    key: "microphone",
+    label: t("perm_microphone"),
+    desc: t("perm_microphoneDesc") || "Used for voice symptom input and notes",
+    Icon: Mic
+  }];
+  return /*#__PURE__*/React.createElement(SettingsModal, {
+    title: t("settings_appPermissions"),
+    icon: ShieldCheck,
+    onClose: onClose,
+    labelledId: "permissions-modal-title"
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "grid",
+      gap: 4
+    }
+  }, rows.map(r => /*#__PURE__*/React.createElement("div", {
+    key: r.key,
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 12,
+      padding: "12px 0",
+      borderBottom: "1px solid var(--line)"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "settings-row-icon"
+  }, /*#__PURE__*/React.createElement(r.Icon, {
+    size: 17
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1,
+      minWidth: 0
+    }
+  }, /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: "0 0 2px",
+      fontWeight: 700,
+      fontSize: "calc(14px * var(--text-scale, 1))"
+    }
+  }, r.label), /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      color: "var(--ink-soft)",
+      fontSize: "calc(12px * var(--text-scale, 1))",
+      lineHeight: 1.4
+    }
+  }, r.desc)), /*#__PURE__*/React.createElement("span", {
+    className: `badge ${badgeClassFor(statuses[r.key])}`,
+    style: {
+      flexShrink: 0
+    }
+  }, labelFor(statuses[r.key]))))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 14,
+      padding: "10px 12px",
+      background: "var(--paper-soft)",
+      borderRadius: 10,
+      border: "1px solid var(--line)"
+    }
+  }, /*#__PURE__*/React.createElement("p", {
+    style: {
+      color: "var(--ink-soft)",
+      fontSize: "calc(12px * var(--text-scale, 1))",
+      margin: 0,
+      lineHeight: 1.6
+    }
+  }, /*#__PURE__*/React.createElement(Info, {
+    size: 13,
+    style: {
+      verticalAlign: -2,
+      marginRight: 5,
+      color: "var(--brand)"
+    }
+  }), t("perm_manageNote"))));
 }
 
 /* ------------------------------------------------------------------ */
 /* Emergency modal                                                     */
 /* ------------------------------------------------------------------ */
 /* ------------------------------------------------------------------ */
-function EmergencyModal({ animals, onClose, onContactVet, onStartConsult, t }) {
+function EmergencyModal({
+  animals,
+  onClose,
+  onContactVet,
+  onStartConsult,
+  t
+}) {
   const [step, setStep] = useState(0);
   const [selectedOpt, setSelectedOpt] = useState("");
   const modalCardRef = useRef(null);
   const closeBtnRef = useRef(null);
-
   useEffect(() => {
     const previouslyFocused = document.activeElement;
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     const timer = setTimeout(() => closeBtnRef.current?.focus(), 0);
-    const handleKeyDown = (e) => {
-      if (e.key === "Escape") { e.preventDefault(); onClose(); return; }
+    const handleKeyDown = e => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
+        return;
+      }
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => {
@@ -9258,137 +11527,256 @@ function EmergencyModal({ animals, onClose, onContactVet, onStartConsult, t }) {
       }
     };
   }, [onClose]);
-
-  const handleOption = (optStr) => {
+  const handleOption = optStr => {
     setSelectedOpt(optStr);
     setStep(1); // Go to confirmation
   };
-
   const handleConnect = () => {
     setStep(2);
     setTimeout(() => {
-       setStep(3);
+      setStep(3);
     }, 2500);
   };
-
   const getT = (key, fallback) => t ? t(key, fallback) : fallback;
-
-  return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div
-        ref={modalCardRef}
-        className="modal-card"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="emergency-modal-title"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 9, flex: 1, minWidth: 0, paddingRight: 8 }}>
-            <Phone size={22} color="var(--urgent-fg, var(--urgent))" style={{ flexShrink: 0 }} />
-            <h2 id="emergency-modal-title" style={{ margin: 0, fontSize: "calc(19px * var(--text-scale, 1))", overflowWrap: "break-word", wordBreak: "break-word" }}>
-              {getT("nav_ivr", "IVR Assistance")}
-            </h2>
-          </div>
-          <button
-            type="button"
-            ref={closeBtnRef}
-            className="modal-close-btn"
-            onClick={onClose}
-            aria-label={getT("auto_close", "Close")}
-          >
-            <X size={20} />
-          </button>
-        </div>
-
-        {step === 0 && (
-          <>
-            <p style={{ color: "var(--ink-soft)", fontSize: "calc(14.5px * var(--text-scale, 1))", margin: "10px 0 6px", fontWeight: "600" }}>
-              {getT("ivr_welcome", "Welcome to PashuSakhi Admin Assistance")}
-            </p>
-            <p style={{ color: "var(--ink-soft)", fontSize: "calc(13.5px * var(--text-scale, 1))", margin: "0 0 18px" }}>
-              {getT("ivr_how_can_we_help", "How can we help you today?")}
-            </p>
-            <div style={{ display: "grid", gap: 10 }}>
-              <button className="btn-secondary" style={{ justifyContent: "flex-start", textAlign: "left" }} onClick={() => handleOption(getT("ivr_opt_1", "1. Report Animal Health Issue"))}>
-                {getT("ivr_opt_1", "1. Report Animal Health Issue")}
-              </button>
-              <button className="btn-secondary" style={{ justifyContent: "flex-start", textAlign: "left" }} onClick={() => handleOption(getT("ivr_opt_2", "2. Request Veterinary Assistance"))}>
-                {getT("ivr_opt_2", "2. Request Veterinary Assistance")}
-              </button>
-              <button className="btn-secondary" style={{ justifyContent: "flex-start", textAlign: "left" }} onClick={() => handleOption(getT("ivr_opt_3", "3. Report Animal Mortality"))}>
-                {getT("ivr_opt_3", "3. Report Animal Mortality")}
-              </button>
-              <button className="btn-secondary" style={{ justifyContent: "flex-start", textAlign: "left" }} onClick={() => handleOption(getT("ivr_opt_4", "4. General Government Assistance"))}>
-                {getT("ivr_opt_4", "4. General Government Assistance")}
-              </button>
-            </div>
-          </>
-        )}
-
-        {step === 1 && (
-          <div style={{ padding: "10px 0" }}>
-            <div style={{ background: "var(--healthy-soft)", color: "var(--healthy)", padding: "12px", borderRadius: "8px", marginBottom: "16px", display: "flex", alignItems: "center", gap: "8px" }}>
-              <CheckCircle size={18} />
-              <span style={{ fontWeight: "600" }}>{getT("ivr_req_registered", "Your request has been registered.")}</span>
-            </div>
-            
-            <div style={{ background: "var(--paper-soft)", border: "1px solid var(--line)", padding: "16px", borderRadius: "8px", marginBottom: "20px" }}>
-              <div style={{ marginBottom: "10px" }}>
-                <span style={{ fontSize: "12px", color: "var(--ink-soft)", display: "block", textTransform: "uppercase", letterSpacing: "0.5px" }}>{getT("ivr_assist_type", "Assistance Type")}</span>
-                <span style={{ fontWeight: "500" }}>{selectedOpt}</span>
-              </div>
-              <div style={{ marginBottom: "10px" }}>
-                <span style={{ fontSize: "12px", color: "var(--ink-soft)", display: "block", textTransform: "uppercase", letterSpacing: "0.5px" }}>{getT("ivr_ref_id", "Reference ID")}</span>
-                <span style={{ fontWeight: "500", fontFamily: "monospace" }}>REQ-{Math.floor(1000 + Math.random() * 9000)}</span>
-              </div>
-              <div>
-                <span style={{ fontSize: "12px", color: "var(--ink-soft)", display: "block", textTransform: "uppercase", letterSpacing: "0.5px" }}>{getT("ivr_est_status", "Connection Status")}</span>
-                <span style={{ fontWeight: "500", color: "var(--attention)" }}>{getT("ivr_ready", "Ready to Connect")}</span>
-              </div>
-            </div>
-
-            <button className="btn-primary" style={{ width: "100%", justifyContent: "center", padding: "12px", fontSize: "15px" }} onClick={handleConnect}>
-              <Phone size={18} style={{ marginRight: "8px" }} />
-              {getT("ivr_connect_btn", "Connect via IVR")}
-            </button>
-          </div>
-        )}
-
-        {step === 2 && (
-          <div style={{ textAlign: "center", padding: "40px 0" }}>
-            <Loader size={36} className="spinning" style={{ color: "var(--brand)", marginBottom: 16 }} />
-            <p style={{ margin: 0, fontSize: "17px", fontWeight: "600" }}>{getT("ivr_connecting", "Connecting you to Admin...")}</p>
-            <p style={{ color: "var(--ink-soft)", margin: "8px 0 0" }}>{getT("ivr_please_wait", "Please wait...")}</p>
-          </div>
-        )}
-
-        {step === 3 && (
-          <div style={{ textAlign: "center", padding: "40px 0" }}>
-            <Phone size={44} color="var(--healthy)" style={{ marginBottom: 16 }} />
-            <p style={{ margin: 0, fontSize: "18px", fontWeight: "600", color: "var(--healthy)" }}>{getT("ivr_connected", "Connected to Admin")}</p>
-            <p style={{ color: "var(--ink-soft)", margin: "12px 0 28px", lineHeight: "1.5" }}>{getT("ivr_admin_rep", "An Admin representative is now available to assist you.")}</p>
-            <button className="btn-secondary" style={{ width: "100%", justifyContent: "center" }} onClick={onClose}>
-              {getT("auto_close", "Close / Done")}
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-const root = createRoot(document.getElementById("root"));
-root.render(<PashuSakhiDashboard />);
-</script>
-<script>
-  window.addEventListener("error", function (event) {
-    const root = document.getElementById("root");
-    if (root && root.innerHTML.trim() === "") {
-      root.innerHTML = '<div style="font-family:Arial,sans-serif;padding:40px;max-width:700px;margin:auto"><h2>PashuSakhi could not start</h2><p>Please open this file in Chrome/Edge with an internet connection. React, Babel, and Lucide are loaded from CDN.</p><p style="color:#b3402a">' + (event.message || 'Unknown loading error') + '</p></div>';
+  return /*#__PURE__*/React.createElement("div", {
+    className: "modal-overlay",
+    onClick: onClose
+  }, /*#__PURE__*/React.createElement("div", {
+    ref: modalCardRef,
+    className: "modal-card",
+    role: "dialog",
+    "aria-modal": "true",
+    "aria-labelledby": "emergency-modal-title",
+    onClick: e => e.stopPropagation()
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: 6
     }
-  });
-</script>
-</body>
-</html>
- 
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 9,
+      flex: 1,
+      minWidth: 0,
+      paddingRight: 8
+    }
+  }, /*#__PURE__*/React.createElement(Phone, {
+    size: 22,
+    color: "var(--urgent-fg, var(--urgent))",
+    style: {
+      flexShrink: 0
+    }
+  }), /*#__PURE__*/React.createElement("h2", {
+    id: "emergency-modal-title",
+    style: {
+      margin: 0,
+      fontSize: "calc(19px * var(--text-scale, 1))",
+      overflowWrap: "break-word",
+      wordBreak: "break-word"
+    }
+  }, getT("nav_ivr", "IVR Assistance"))), /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    ref: closeBtnRef,
+    className: "modal-close-btn",
+    onClick: onClose,
+    "aria-label": getT("auto_close", "Close")
+  }, /*#__PURE__*/React.createElement(X, {
+    size: 20
+  }))), step === 0 && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
+    style: {
+      color: "var(--ink-soft)",
+      fontSize: "calc(14.5px * var(--text-scale, 1))",
+      margin: "10px 0 6px",
+      fontWeight: "600"
+    }
+  }, getT("ivr_welcome", "Welcome to PashuSakhi Admin Assistance")), /*#__PURE__*/React.createElement("p", {
+    style: {
+      color: "var(--ink-soft)",
+      fontSize: "calc(13.5px * var(--text-scale, 1))",
+      margin: "0 0 18px"
+    }
+  }, getT("ivr_how_can_we_help", "How can we help you today?")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "grid",
+      gap: 10
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn-secondary",
+    style: {
+      justifyContent: "flex-start",
+      textAlign: "left"
+    },
+    onClick: () => handleOption(getT("ivr_opt_1", "1. Report Animal Health Issue"))
+  }, getT("ivr_opt_1", "1. Report Animal Health Issue")), /*#__PURE__*/React.createElement("button", {
+    className: "btn-secondary",
+    style: {
+      justifyContent: "flex-start",
+      textAlign: "left"
+    },
+    onClick: () => handleOption(getT("ivr_opt_2", "2. Request Veterinary Assistance"))
+  }, getT("ivr_opt_2", "2. Request Veterinary Assistance")), /*#__PURE__*/React.createElement("button", {
+    className: "btn-secondary",
+    style: {
+      justifyContent: "flex-start",
+      textAlign: "left"
+    },
+    onClick: () => handleOption(getT("ivr_opt_3", "3. Report Animal Mortality"))
+  }, getT("ivr_opt_3", "3. Report Animal Mortality")), /*#__PURE__*/React.createElement("button", {
+    className: "btn-secondary",
+    style: {
+      justifyContent: "flex-start",
+      textAlign: "left"
+    },
+    onClick: () => handleOption(getT("ivr_opt_4", "4. General Government Assistance"))
+  }, getT("ivr_opt_4", "4. General Government Assistance")))), step === 1 && /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: "10px 0"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: "var(--healthy-soft)",
+      color: "var(--healthy)",
+      padding: "12px",
+      borderRadius: "8px",
+      marginBottom: "16px",
+      display: "flex",
+      alignItems: "center",
+      gap: "8px"
+    }
+  }, /*#__PURE__*/React.createElement(CheckCircle, {
+    size: 18
+  }), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontWeight: "600"
+    }
+  }, getT("ivr_req_registered", "Your request has been registered."))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: "var(--paper-soft)",
+      border: "1px solid var(--line)",
+      padding: "16px",
+      borderRadius: "8px",
+      marginBottom: "20px"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginBottom: "10px"
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: "12px",
+      color: "var(--ink-soft)",
+      display: "block",
+      textTransform: "uppercase",
+      letterSpacing: "0.5px"
+    }
+  }, getT("ivr_assist_type", "Assistance Type")), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontWeight: "500"
+    }
+  }, selectedOpt)), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginBottom: "10px"
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: "12px",
+      color: "var(--ink-soft)",
+      display: "block",
+      textTransform: "uppercase",
+      letterSpacing: "0.5px"
+    }
+  }, getT("ivr_ref_id", "Reference ID")), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontWeight: "500",
+      fontFamily: "monospace"
+    }
+  }, "REQ-", Math.floor(1000 + Math.random() * 9000))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: "12px",
+      color: "var(--ink-soft)",
+      display: "block",
+      textTransform: "uppercase",
+      letterSpacing: "0.5px"
+    }
+  }, getT("ivr_est_status", "Connection Status")), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontWeight: "500",
+      color: "var(--attention)"
+    }
+  }, getT("ivr_ready", "Ready to Connect")))), /*#__PURE__*/React.createElement("button", {
+    className: "btn-primary",
+    style: {
+      width: "100%",
+      justifyContent: "center",
+      padding: "12px",
+      fontSize: "15px"
+    },
+    onClick: handleConnect
+  }, /*#__PURE__*/React.createElement(Phone, {
+    size: 18,
+    style: {
+      marginRight: "8px"
+    }
+  }), getT("ivr_connect_btn", "Connect via IVR"))), step === 2 && /*#__PURE__*/React.createElement("div", {
+    style: {
+      textAlign: "center",
+      padding: "40px 0"
+    }
+  }, /*#__PURE__*/React.createElement(Loader, {
+    size: 36,
+    className: "spinning",
+    style: {
+      color: "var(--brand)",
+      marginBottom: 16
+    }
+  }), /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: "17px",
+      fontWeight: "600"
+    }
+  }, getT("ivr_connecting", "Connecting you to Admin...")), /*#__PURE__*/React.createElement("p", {
+    style: {
+      color: "var(--ink-soft)",
+      margin: "8px 0 0"
+    }
+  }, getT("ivr_please_wait", "Please wait..."))), step === 3 && /*#__PURE__*/React.createElement("div", {
+    style: {
+      textAlign: "center",
+      padding: "40px 0"
+    }
+  }, /*#__PURE__*/React.createElement(Phone, {
+    size: 44,
+    color: "var(--healthy)",
+    style: {
+      marginBottom: 16
+    }
+  }), /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: "18px",
+      fontWeight: "600",
+      color: "var(--healthy)"
+    }
+  }, getT("ivr_connected", "Connected to Admin")), /*#__PURE__*/React.createElement("p", {
+    style: {
+      color: "var(--ink-soft)",
+      margin: "12px 0 28px",
+      lineHeight: "1.5"
+    }
+  }, getT("ivr_admin_rep", "An Admin representative is now available to assist you.")), /*#__PURE__*/React.createElement("button", {
+    className: "btn-secondary",
+    style: {
+      width: "100%",
+      justifyContent: "center"
+    },
+    onClick: onClose
+  }, getT("auto_close", "Close / Done")))));
+}
+const root = createRoot(document.getElementById("root"));
+root.render( /*#__PURE__*/React.createElement(PashuSakhiDashboard, null));
+})();

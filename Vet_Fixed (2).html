@@ -21,7 +21,137 @@
   *, *::before, *::after { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; width: 100%; max-width: 100vw; overflow-x: hidden; -webkit-text-size-adjust: 100%; }
   #root { min-height: 100vh; width: 100%; max-width: 100vw; overflow-x: hidden; }
-</style>
+
+        /* Mobile Header Styles */
+        .vet-mobile-header { display: none; }
+
+        @media (max-width: 768px) {
+          .psk-root { flex-direction: column !important; min-height: 100vh; width: 100% !important; max-width: 100vw !important; overflow-x: hidden !important; }
+          .sidebar { display: none !important; }
+          .main { padding: 14px 16px 40px !important; width: 100% !important; box-sizing: border-box !important; }
+
+          /* Mobile Header at Top */
+          .vet-mobile-header {
+            display: flex !important;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 990;
+            height: 60px;
+            width: 100%;
+            padding: 0 14px;
+            background: var(--paper-soft, #FBF9F3);
+            border-bottom: 1.5px solid var(--line, #E3DCC8);
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            box-sizing: border-box;
+          }
+
+          .vet-mobile-header-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+          }
+
+          .vet-mobile-menu-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 38px;
+            height: 38px;
+            border-radius: 9px;
+            border: 1.5px solid var(--line);
+            background: var(--paper);
+            color: var(--ink);
+            cursor: pointer;
+          }
+
+          .vet-mobile-logo {
+            height: 38px;
+            width: auto;
+            object-fit: contain;
+            border-radius: 8px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+          }
+
+          .vet-mobile-brand-title {
+            display: flex;
+            flex-direction: column;
+          }
+
+          .vet-mobile-brand-main {
+            font-family: 'Fraunces', serif;
+            font-weight: 800;
+            font-size: 15px;
+            letter-spacing: 0.5px;
+            color: var(--brand-dark, #143F36);
+            line-height: 1.1;
+          }
+
+          .vet-mobile-brand-sub {
+            font-size: 9px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            color: var(--ink-soft);
+            text-transform: uppercase;
+          }
+
+          .topbar {
+            margin-bottom: 16px !important;
+          }
+          .greeting {
+            font-size: 22px !important;
+          }
+        }
+
+        /* Mobile Drawer */
+        .vet-drawer-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(0, 0, 0, 0.5);
+          z-index: 1200;
+          display: flex;
+          animation: fadeIn 0.2s ease;
+        }
+
+        .vet-mobile-drawer {
+          width: 290px;
+          max-width: 85vw;
+          height: 100%;
+          background: var(--brand-dark, #143F36);
+          color: #fff;
+          display: flex;
+          flex-direction: column;
+          box-shadow: 4px 0 24px rgba(0,0,0,0.3);
+          animation: slideInLeft 0.22s ease;
+        }
+
+        .vet-drawer-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 18px 16px;
+          border-bottom: 1px solid rgba(255,255,255,0.12);
+        }
+
+        .vet-drawer-nav {
+          flex: 1;
+          overflow-y: auto;
+          padding: 12px 10px;
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+
+        @keyframes slideInLeft {
+          from { transform: translateX(-100%); }
+          to { transform: translateX(0); }
+        }
+
+      </style>
 </head>
 <body>
 <div id="root"></div>
@@ -302,6 +432,8 @@ import {
   SlidersHorizontal, ArrowUpDown, Filter, ChevronUp, Radio, Crosshair,
   Truck, Award, Users, AlertOctagon, Share2, Download, Zap
 } from "lucide-react";
+
+const PASHU_SAKHI_LOGO = "pashu_sakhi_logo.jpg";
 
 /* ------------------------------------------------------------------ */
 /* Mock data & Localizations                                          */
@@ -1154,12 +1286,14 @@ function DiseaseHeatmapDashboard({ showToast }) {
   const [trendWindow, setTrendWindow] = useState("30d"); // "7d" vs "30d"
   const [searchQuery, setSearchQuery] = useState("");
 
-  // Sorting is simplified to Risk (highest first) only
+  const [sortCriteria, setSortCriteria] = useState("risk-desc");
+  const [filterActiveHotspots, setFilterActiveHotspots] = useState(true);
+  const [filterHighRiskOnly, setFilterHighRiskOnly] = useState(false);
+  const [showRiskZones, setShowRiskZones] = useState(true);
+  const [showVetMarkers, setShowVetMarkers] = useState(true);
 
   // Active Map & Selection State
   const [selectedHotspotId, setSelectedHotspotId] = useState("HS-01");
-  const [showRiskZones, setShowRiskZones] = useState(true);
-  const [showVetMarkers, setShowVetMarkers] = useState(true);
 
   // Quick Action State
   const [dispatchedUnits, setDispatchedUnits] = useState({});
@@ -1195,6 +1329,8 @@ function DiseaseHeatmapDashboard({ showToast }) {
   // Filter Logic
   const filteredHotspots = useMemo(() => {
     return INITIAL_HOTSPOTS.filter((h) => {
+      if (!filterActiveHotspots) return false;
+      if (filterHighRiskOnly && h.risk !== "High") return false;
       if (selectedDisease !== "all" && h.disease !== selectedDisease) return false;
       if (selectedDistrict !== "all" && h.district !== selectedDistrict) return false;
       if (selectedRisk !== "all" && h.risk.toLowerCase() !== selectedRisk.toLowerCase()) return false;
@@ -1213,9 +1349,15 @@ function DiseaseHeatmapDashboard({ showToast }) {
       return true;
     }).sort((a, b) => {
       const riskWeight = { High: 3, Medium: 2, Low: 1 };
+      if (sortCriteria === "risk-desc") return (riskWeight[b.risk] || 0) - (riskWeight[a.risk] || 0);
+      if (sortCriteria === "risk-asc") return (riskWeight[a.risk] || 0) - (riskWeight[b.risk] || 0);
+      if (sortCriteria === "cases-desc") return (b.affectedAnimals || 0) - (a.affectedAnimals || 0);
+      if (sortCriteria === "cases-asc") return (a.affectedAnimals || 0) - (b.affectedAnimals || 0);
+      if (sortCriteria === "date-desc") return (a.daysAgo || 0) - (b.daysAgo || 0);
+      if (sortCriteria === "name-asc") return (a.district || "").localeCompare(b.district || "");
       return (riskWeight[b.risk] || 0) - (riskWeight[a.risk] || 0);
     });
-  }, [selectedDisease, selectedDistrict, selectedRisk, dateRange, searchQuery]);
+  }, [selectedDisease, selectedDistrict, selectedRisk, dateRange, searchQuery, sortCriteria, filterActiveHotspots, filterHighRiskOnly]);
 
   // Selected Hotspot Object
   const selectedHotspot = useMemo(() => {
@@ -1233,8 +1375,9 @@ function DiseaseHeatmapDashboard({ showToast }) {
     // Initialize map if it doesn't exist
     if (!mapInstanceRef.current) {
       const map = L.map(mapRef.current).setView([19.0, 75.0], 6);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap contributors'
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; CARTO &copy; OpenStreetMap contributors',
+        maxZoom: 19
       }).addTo(map);
       mapInstanceRef.current = map;
     }
@@ -1554,6 +1697,73 @@ function DiseaseHeatmapDashboard({ showToast }) {
           </button>
         </div>
 
+        {/* 1. SORTING: Positioned clearly ABOVE the four checkboxes */}
+        <div className="hm-sorting-toolbar" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12, padding: "12px 16px", background: "var(--paper-soft)", borderRadius: 10, border: "1.5px solid var(--line)", marginBottom: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 700, fontSize: 13, color: "var(--brand)" }}>
+              <ArrowUpDown size={15} />
+              {t("auto_sort_by", "Sorting")}:
+            </span>
+            <select
+              className="hm-select"
+              value={sortCriteria}
+              onChange={(e) => setSortCriteria(e.target.value)}
+              style={{ minWidth: 230, padding: "6px 12px", borderRadius: 8, fontWeight: 700, fontSize: 13 }}
+            >
+              <option value="risk-desc">Risk Level (High to Low)</option>
+              <option value="risk-asc">Risk Level (Low to High)</option>
+              <option value="cases-desc">Affected Animals (Highest First)</option>
+              <option value="cases-asc">Affected Animals (Lowest First)</option>
+              <option value="date-desc">Reported Date (Newest First)</option>
+              <option value="name-asc">District / Region (A to Z)</option>
+            </select>
+          </div>
+          <span style={{ fontSize: 12, color: "var(--ink-soft)", fontWeight: 600 }}>
+            {filteredHotspots.length} active surveillance clusters
+          </span>
+        </div>
+
+        {/* 2. FOUR CHECKBOX FILTERS: Arranged together directly BELOW Sorting */}
+        <div className="hm-checkboxes-row" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 20, padding: "10px 14px", background: "var(--paper)", borderRadius: 8, border: "1px solid var(--line)", marginBottom: 14 }}>
+          <label style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: 13, fontWeight: 600, color: "var(--ink)", cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={filterActiveHotspots}
+              onChange={(e) => setFilterActiveHotspots(e.target.checked)}
+              style={{ accentColor: "var(--brand)", width: 16, height: 16, cursor: "pointer" }}
+            />
+            <span>Active Hotspots</span>
+          </label>
+          <label style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: 13, fontWeight: 600, color: "var(--ink)", cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={filterHighRiskOnly}
+              onChange={(e) => setFilterHighRiskOnly(e.target.checked)}
+              style={{ accentColor: "var(--urgent)", width: 16, height: 16, cursor: "pointer" }}
+            />
+            <span>High Risk Priority Only</span>
+          </label>
+          <label style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: 13, fontWeight: 600, color: "var(--ink)", cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={showRiskZones}
+              onChange={(e) => setShowRiskZones(e.target.checked)}
+              style={{ accentColor: "var(--brand)", width: 16, height: 16, cursor: "pointer" }}
+            />
+            <span>Risk Heat Radii</span>
+          </label>
+          <label style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: 13, fontWeight: 600, color: "var(--ink)", cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={showVetMarkers}
+              onChange={(e) => setShowVetMarkers(e.target.checked)}
+              style={{ accentColor: "var(--brand)", width: 16, height: 16, cursor: "pointer" }}
+            />
+            <span>Mobile Vet Units</span>
+          </label>
+        </div>
+
+        {/* 3. Primary Filter Select Dropdowns */}
         <div className="hm-filter-grid">
           {/* Disease Filter */}
           <div className="hm-control-group">
@@ -1610,14 +1820,6 @@ function DiseaseHeatmapDashboard({ showToast }) {
               <option value="14d">Last 14 Days</option>
               <option value="30d">Last 30 Days</option>
               <option value="all">All Recorded (90 Days)</option>
-            </select>
-          </div>
-
-          {/* Sorting (simplified to Risk only) */}
-          <div className="hm-control-group">
-            <label className="hm-control-label">{t("auto_sort_by", "Sort By")}</label>
-            <select className="hm-select" value="risk" disabled>
-              <option value="risk">Risk (High to Low)</option>
             </select>
           </div>
         </div>
@@ -1805,22 +2007,7 @@ function DiseaseHeatmapDashboard({ showToast }) {
               </div>
             </div>
 
-            {/* Interactive Actions for this Hotspot */}
-            <div className="hm-panel-actions">
-              <button
-                className="btn-primary"
-                style={{ flex: 1 }}
-                onClick={() => {
-                  const nearest = nearbySupport[0];
-                  if (nearest) {
-                    handleDispatchSupport(nearest.id, nearest.name);
-                  }
-                }}
-              >
-                <Truck size={16} />
-                Dispatch Nearest Vet
-              </button>
-            </div>
+
           </Card>
         </div>
       </div>
@@ -1955,6 +2142,7 @@ function VetApp() {
   const [patients, setPatients] = useState(initialPatients);
   const [treatmentHistory, setTreatmentHistory] = useState(treatmentHistoryData);
   const [notifications, setNotifications] = useState(initialNotifications);
+  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
 
   const [profile, setProfile] = useState(VET_PROFILE);
   const [appLanguage, setAppLanguage] = useState(localStorage.getItem('psk_language') || "en");
@@ -1969,6 +2157,7 @@ function VetApp() {
   }, [appLanguage]);
 
   const [selectedPatientId, setSelectedPatientId] = useState("gauri");
+  const [reviewModalRequest, setReviewModalRequest] = useState(null);
   const [patientSearch, setPatientSearch] = useState("");
   const [reportFilter, setReportFilter] = useState("All");
   const [emergencyFilter, setEmergencyFilter] = useState("All");
@@ -2164,6 +2353,30 @@ function VetApp() {
       window.PashuSakhiBridge.addTreatment(animalId, entry);
     }
     showToast("New treatment entry added to patient history.");
+  };
+
+    const handleEndChatWithFarmer = (req) => {
+    if (!req) return;
+    const farmerName = req.farmer || "farmer";
+    const confirmed = window.confirm(
+      "Are you sure you want to end this consultation with " + farmerName + "? This will conclude the active chat session and mark the case as resolved."
+    );
+    if (!confirmed) return;
+
+    const animalId = req.animalId || "a1";
+    if (window.PashuSakhiBridge) {
+      window.PashuSakhiBridge.sendChat(animalId, {
+        sender: "vet",
+        text: "✓ Consultation concluded and marked resolved by " + profile.name + ".",
+        time: "Just now"
+      });
+    }
+
+    setRequests(prev => prev.map(item => item.id === req.id ? { ...item, status: "resolved" } : item));
+    showToast("Consultation with " + farmerName + " has been ended and marked resolved.");
+    if (reviewModalRequest && reviewModalRequest.id === req.id) {
+      setReviewModalRequest(null);
+    }
   };
 
   const handleLogout = () => {
@@ -2546,9 +2759,9 @@ function VetApp() {
       {/* Desktop Sidebar with Navigation */}
       <aside className="sidebar">
         <div className="sidebar-brand">
-          <div className="mark"><PawPrint size={20} color="#2A1B04" /></div>
+          <img src={PASHU_SAKHI_LOGO} alt="Pashu Sakhi Logo" style={{ width: 42, height: 42, borderRadius: 10, objectFit: "cover", boxShadow: "0 2px 8px rgba(0,0,0,0.25)" }} />
           <div>
-            <div className="name">{t("auto_pashu_sakhi", "Pashu Sakhi")}</div>
+            <div className="name" style={{ letterSpacing: "0.5px" }}>PASHU SAKHI</div>
             <div className="tag">{t("brand_tagline", "Veterinarian workspace")}</div>
           </div>
         </div>
@@ -2581,9 +2794,8 @@ function VetApp() {
             <Avatar label={profile.name.replace("Dr. ", "")} size={38} />
             <div style={{ minWidth: 0 }}>
               <p className="vet-mini-name">{profile.name}</p>
-              <div className="vet-mini-sub">
-                <span className="avail-dot" style={{ background: "var(--healthy)" }} />
-                {availability}
+              <div className="vet-mini-sub" style={{ color: "#B9C8BE", fontSize: 11.5 }}>
+                Veterinary Officer
               </div>
             </div>
           </div>
@@ -2600,48 +2812,132 @@ function VetApp() {
       </aside>
 
       {/* Main Workspace Area */}
+      {/* Mobile Header at Top with Logo & PASHU SAKHI */}
+      <header className="vet-mobile-header">
+        <div className="vet-mobile-header-left">
+          <button
+            type="button"
+            className="vet-mobile-menu-btn"
+            onClick={() => setMobileDrawerOpen(true)}
+            aria-label="Open Navigation Menu"
+          >
+            <Menu size={22} />
+          </button>
+          <img
+            src={PASHU_SAKHI_LOGO}
+            alt="Pashu Sakhi Logo"
+            className="vet-mobile-logo"
+          />
+          <div className="vet-mobile-brand-title">
+            <span className="vet-mobile-brand-main">PASHU SAKHI</span>
+            <span className="vet-mobile-brand-sub">VET WORKSPACE</span>
+          </div>
+        </div>
+        <div className="vet-mobile-header-right">
+          <button
+            className="btn-outline btn-sm"
+            onClick={() => setView("settings")}
+            style={{ padding: "4px 8px", fontSize: 11, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 4 }}
+          >
+            <Settings size={13} />
+            Settings
+          </button>
+        </div>
+      </header>
+
+      {/* Mobile Navigation Drawer */}
+      {mobileDrawerOpen && (
+        <div className="vet-drawer-overlay" onClick={() => setMobileDrawerOpen(false)}>
+          <aside className="vet-mobile-drawer" onClick={(e) => e.stopPropagation()}>
+            <div className="vet-drawer-header">
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <img src={PASHU_SAKHI_LOGO} alt="Pashu Sakhi" style={{ width: 36, height: 36, borderRadius: 8, objectFit: "cover" }} />
+                <div>
+                  <div style={{ fontFamily: "'Fraunces', serif", fontWeight: 800, fontSize: 16, color: "#fff", letterSpacing: "0.5px" }}>PASHU SAKHI</div>
+                  <div style={{ fontSize: 11, color: "#B9C8BE" }}>Veterinarian workspace</div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMobileDrawerOpen(false)}
+                style={{ background: "transparent", border: "none", color: "#fff", cursor: "pointer", padding: 4 }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <nav className="vet-drawer-nav">
+              {NAV.map((n) => (
+                <button
+                  key={n.id}
+                  className={`nav-item ${view === n.id ? "active" : ""}`}
+                  onClick={() => {
+                    setView(n.id);
+                    setMobileDrawerOpen(false);
+                  }}
+                >
+                  <n.Icon size={18} />
+                  <span>{n.label}</span>
+                  {n.badge && (
+                    <span className={`nav-badge ${n.badge === "Live" ? "live-pill" : ""}`}>
+                      {n.badge}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </nav>
+
+            <div className="sidebar-footer" style={{ borderTop: "1px solid rgba(255,255,255,0.1)", padding: 14 }}>
+              <div className="vet-mini-card">
+                <Avatar label={profile.name.replace("Dr. ", "")} size={36} />
+                <div style={{ minWidth: 0 }}>
+                  <p className="vet-mini-name">{profile.name}</p>
+                  <div className="vet-mini-sub" style={{ color: "#B9C8BE", fontSize: 11.5 }}>
+                Veterinary Officer
+              </div>
+                </div>
+              </div>
+              <button
+                className="nav-item"
+                style={{ marginTop: 8, color: "#F6B4A6", width: "100%", cursor: "pointer" }}
+                onClick={handleLogout}
+              >
+                <LogOut size={16} />
+                <span>{t("auto_log_out", "Log Out")}</span>
+              </button>
+            </div>
+          </aside>
+        </div>
+      )}
+
       <main className="main">
         {/* Top Header Bar */}
         <div className="topbar">
-          <div>
-            <h1 className="greeting">Namaste, {profile.name}</h1>
-            <p className="greeting-sub">
-              {view === "heatmap"
-                ? "Active Disease Surveillance & Spatial Monitoring Console"
-                : "Here's what needs your attention today."}
-            </p>
+          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+            <img
+              src={PASHU_SAKHI_LOGO}
+              alt="Pashu Sakhi Logo"
+              style={{ height: 44, width: "auto", objectFit: "contain", borderRadius: 8, flexShrink: 0, boxShadow: "0 2px 8px rgba(0,0,0,0.12)" }}
+            />
+            <div>
+              <h1 className="greeting">Namaste, {profile.name}</h1>
+              <p className="greeting-sub">
+                {view === "heatmap"
+                  ? "Active Disease Surveillance & Spatial Monitoring Console"
+                  : "Here's what needs your attention today."}
+              </p>
+            </div>
           </div>
-          <div className="topbar-actions">
-            <div className="avail-select" style={{ marginRight: '10px' }}>
-              <select
-                value={appLanguage}
-                onChange={(e) => {
-                  setAppLanguage(e.target.value);
-                  showToast(`Language set to ${e.target.value}.`);
-                }}
-                style={{ border: "none", background: "transparent", fontWeight: 700, fontSize: 13, color: "var(--ink)", cursor: "pointer" }}
-                title="Change Language"
-              >
-                <option value="English">English</option>
-                <option value="Hindi">हिंदी (Hindi)</option>
-                <option value="Marathi">मराठी (Marathi)</option>
-                <option value="Gujarati">ગુજરાતી (Gujarati)</option>
-                <option value="Punjabi">ਪੰਜਾਬੀ (Punjabi)</option>
-              </select>
-            </div>
-            <div className="avail-select">
-              <span className="avail-dot" style={{ background: "var(--healthy)" }} />
-              <select
-                value={availability}
-                onChange={(e) => setAvailability(e.target.value)}
-                style={{ border: "none", background: "transparent", fontWeight: 700, fontSize: 13, color: "var(--ink)", cursor: "pointer" }}
-              >
-                {AVAILABILITY_OPTIONS.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
-              </select>
-            </div>
-            <button className="bell-btn" onClick={() => showToast("All system notifications are up to date.")} title="Notifications">
-              <Bell size={18} />
-              {unreadCount > 0 && <span className="bell-badge">{unreadCount}</span>}
+          <div className="topbar-actions" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <button
+              type="button"
+              className="btn-outline btn-sm"
+              onClick={() => setView("settings")}
+              style={{ display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 700 }}
+              title="Settings"
+            >
+              <Settings size={15} />
+              <span>{t("nav_settings", "Settings")}</span>
             </button>
           </div>
         </div>
@@ -2802,16 +3098,46 @@ function VetApp() {
             <Card>
               {requests.map(r => (
                 <div className="record-row" key={r.id} style={{ flexDirection: "column", alignItems: "stretch", gap: 10 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                    <Avatar label={r.animal} size={44} tone={r.priority === "critical" ? "urgent" : "attention"} />
-                    <div className="record-main">
-                      <div className="record-title">{r.animal} <span>· {r.farmer}</span></div>
-                      <div className="record-sub">{r.symptoms}</div>
-                      <div className="record-badges">
-                        <SeverityBadge level={r.priority} />
-                        <StatusPill status={r.status} />
-                        <span className="record-sub">{r.submitted}</span>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                      <Avatar label={r.animal} size={44} tone={r.priority === "critical" ? "urgent" : "attention"} />
+                      <div className="record-main">
+                        <div className="record-title">{r.animal} <span>· {r.farmer}</span></div>
+                        <div className="record-sub">{r.symptoms}</div>
+                        <div className="record-badges">
+                          <SeverityBadge level={r.priority} />
+                          <StatusPill status={r.status} />
+                          <span className="record-sub">{r.submitted}</span>
+                        </div>
                       </div>
+                    </div>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <button
+                        type="button"
+                        className="btn-outline btn-sm"
+                        onClick={() => setReviewModalRequest(r)}
+                        style={{ display: "inline-flex", alignItems: "center", gap: 5, fontWeight: 700 }}
+                        title="Review case details and triage"
+                      >
+                        <Eye size={14} />
+                        {t("auto_review_chat_req", "Review Chat Request")}
+                      </button>
+                      {r.status !== "resolved" ? (
+                        <button
+                          type="button"
+                          className="btn-outline btn-sm"
+                          onClick={() => handleEndChatWithFarmer(r)}
+                          style={{ display: "inline-flex", alignItems: "center", gap: 5, color: "var(--urgent)", borderColor: "rgba(179,64,42,0.35)", fontWeight: 700 }}
+                          title="Conclude active farmer consultation"
+                        >
+                          <XCircle size={14} />
+                          {t("auto_end_chat_farmer", "End Chat with Farmer")}
+                        </button>
+                      ) : (
+                        <span className="badge badge-success" style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "5px 10px", fontSize: 12 }}>
+                          <CheckCircle2 size={13} /> {t("auto_chat_concluded", "Consultation Concluded")}
+                        </span>
+                      )}
                     </div>
                   </div>
                   <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
@@ -2943,7 +3269,84 @@ function VetApp() {
         )}
       </main>
 
+      
+
       {/* Toast Feedback */}
+      {/* Review Chat Request Modal */}
+      {reviewModalRequest && (
+        <div className="modal-backdrop" onClick={() => setReviewModalRequest(null)}>
+          <div className="modal-card" style={{ maxWidth: 540 }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, borderBottom: "1.5px solid var(--line)", paddingBottom: 10 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <Avatar label={reviewModalRequest.animal} size={42} tone={reviewModalRequest.priority === "critical" ? "urgent" : "attention"} />
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 17, fontFamily: "Fraunces, serif", color: "var(--ink)" }}>Review Consultation Request</h3>
+                  <p style={{ margin: 0, fontSize: 12, color: "var(--ink-soft)" }}>Case #{reviewModalRequest.id} · Received {reviewModalRequest.submitted}</p>
+                </div>
+              </div>
+              <button className="btn-icon" onClick={() => setReviewModalRequest(null)} style={{ border: "none", background: "transparent", cursor: "pointer" }}>
+                <X size={20} />
+              </button>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, padding: "12px 14px", background: "var(--paper-soft)", borderRadius: 10, border: "1px solid var(--line)", marginBottom: 14 }}>
+              <div><span style={{ fontSize: 11, color: "var(--ink-soft)", fontWeight: 700, textTransform: "uppercase" }}>Farmer</span><div style={{ fontWeight: 700, fontSize: 13.5 }}>{reviewModalRequest.farmer}</div></div>
+              <div><span style={{ fontSize: 11, color: "var(--ink-soft)", fontWeight: 700, textTransform: "uppercase" }}>Location / District</span><div style={{ fontWeight: 700, fontSize: 13.5 }}>{reviewModalRequest.location || reviewModalRequest.district || "Maharashtra"}</div></div>
+              <div><span style={{ fontSize: 11, color: "var(--ink-soft)", fontWeight: 700, textTransform: "uppercase" }}>Animal & Tag</span><div style={{ fontWeight: 700, fontSize: 13.5 }}>{reviewModalRequest.animal} ({reviewModalRequest.animalId || "TAG-A1"})</div></div>
+              <div><span style={{ fontSize: 11, color: "var(--ink-soft)", fontWeight: 700, textTransform: "uppercase" }}>Triage Priority</span><div><SeverityBadge level={reviewModalRequest.priority} /></div></div>
+            </div>
+
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-soft)", textTransform: "uppercase", marginBottom: 4 }}>Reported Symptoms</div>
+              <div style={{ padding: "10px 12px", background: "var(--paper)", border: "1px solid var(--line)", borderRadius: 8, fontSize: 13.5, color: "var(--ink)", lineHeight: 1.4 }}>
+                {reviewModalRequest.symptoms}
+              </div>
+            </div>
+
+            <div style={{ marginBottom: 18 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-soft)", textTransform: "uppercase", marginBottom: 4 }}>Clinical Triage Note</div>
+              <p style={{ margin: 0, fontSize: 13, color: "var(--ink-soft)", lineHeight: 1.4 }}>
+                Farmer is awaiting veterinary consultation. Review livestock medical history, issue treatment advice, or schedule an on-field visit if emergency symptoms develop.
+              </p>
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, borderTop: "1.5px solid var(--line)", paddingTop: 12 }}>
+              <button
+                type="button"
+                className="btn-outline"
+                onClick={() => setReviewModalRequest(null)}
+              >
+                Close Review
+              </button>
+              {reviewModalRequest.status !== "resolved" && (
+                <button
+                  type="button"
+                  className="btn-outline"
+                  onClick={() => handleEndChatWithFarmer(reviewModalRequest)}
+                  style={{ color: "var(--urgent)", borderColor: "rgba(179,64,42,0.35)", fontWeight: 700 }}
+                >
+                  <XCircle size={15} style={{ verticalAlign: -2, marginRight: 4 }} />
+                  End Chat
+                </button>
+              )}
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={() => {
+                  setReviewModalRequest(null);
+                  const el = document.getElementById("reply_input_" + reviewModalRequest.id);
+                  if (el) el.focus();
+                  showToast("Consultation request accepted for " + reviewModalRequest.animal + ".");
+                }}
+              >
+                <MessageCircle size={15} style={{ verticalAlign: -2, marginRight: 4 }} />
+                Accept & Start Chat
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {toast && <div className="toast">{toast}</div>}
       </div>
     </LanguageContext.Provider>

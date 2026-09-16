@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Pashu Sakhi — Portal Sign In & Role Selection</title>
+<title>Pashu Sakhi</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
 <style>
 @import url('https://fonts.googleapis.com/css?family=Montserrat:400,600,800');
@@ -654,22 +654,33 @@ button[disabled] {
     font-size: 32px;
     box-shadow: 6px 6px 12px var(--shadow-dark), -6px -6px 12px var(--shadow-light);
     margin-bottom: 22px;
+    overflow: hidden;
+}
+
+.app-logo img,
+.app-logo-img {
+    width: 100%;
+    height: 100%;
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    display: block;
+    border-radius: inherit;
 }
 
 #getStartedScreen .app-logo {
     width: 120px;
     height: 120px;
     border-radius: 50%;
-    background: var(--paper-soft);
+    background: #ffffff;
     border: 2.5px solid var(--border-color);
     box-shadow: 0 10px 26px rgba(20,63,54,.16);
     margin-bottom: 24px;
-    padding: 6px;
+    padding: 4px;
     display: flex;
     align-items: center;
     justify-content: center;
-    color: var(--accent-start);
-    font-size: 52px;
+    overflow: hidden;
 }
 
 #getStartedScreen .app-name {
@@ -874,6 +885,7 @@ button.back-btn:active {
         height: 100px;
         font-size: 40px;
         margin-bottom: 18px;
+        padding: 3px;
     }
 
     .app-name {
@@ -924,7 +936,7 @@ button.back-btn:active {
 #roleSelectionScreen.active { display: flex; }
 
 .role-selection-shell {
-    width: min(840px, 100%);
+    width: min(1060px, 100%);
     margin: auto;
 }
 .role-selection-header {
@@ -969,9 +981,53 @@ button.back-btn:active {
 
 .role-cards {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 16px;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
     margin-bottom: 12px;
+}
+.direct-launch-bar {
+    width: 100%;
+    margin: 0 0 10px;
+    padding: 7px 12px;
+    background: rgba(31, 93, 80, 0.07);
+    border: 1px solid #E3DCC8;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.direct-launch-label {
+    font-size: 11px;
+    font-weight: 700;
+    color: #1F5D50;
+}
+.direct-launch-links {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+.direct-launch-btn {
+    font-size: 11px;
+    font-weight: 700;
+    padding: 4px 10px;
+    border-radius: 20px;
+    background: #FBF9F3;
+    border: 1px solid #E3DCC8;
+    color: #23291F;
+    text-decoration: none;
+    margin: 0;
+    transition: all 0.15s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+.direct-launch-btn:hover {
+    background: #1F5D50;
+    color: #fff;
+    border-color: #1F5D50;
 }
 .role-card {
     appearance: none;
@@ -1145,8 +1201,11 @@ button.back-btn:active {
     cursor: not-allowed;
 }
 
-@media (max-width: 800px) {
-    .role-cards { grid-template-columns: 1fr; gap: 12px; }
+@media (max-width: 990px) {
+    .role-cards { grid-template-columns: repeat(2, 1fr); gap: 12px; }
+}
+@media (max-width: 540px) {
+    .role-cards { grid-template-columns: 1fr; gap: 10px; }
     .role-card { min-height: auto; padding: 16px 18px; }
 }
 @media (max-width: 480px) {
@@ -1167,7 +1226,7 @@ button.back-btn:active {
 <section id="getStartedScreen" class="screen">
 	<div class="onboarding-card">
 		<div class="app-logo">
-			<i class="fas fa-paw"></i>
+			<img src="pashu_sakhi_logo.jpg" alt="Pashu Sakhi Logo" class="app-logo-img" />
 		</div>
 		<h1 class="app-name" data-i18n="appName">PashuSakhi</h1>
 		<p class="tagline" data-i18n="tagline">AI Livestock Care</p>
@@ -1253,7 +1312,19 @@ button.back-btn:active {
         <div class="role-selected-badge" data-i18n="roleSelected">Selected</div>
       </button>
 
-      <!-- Role 3: Admin -->
+      <!-- Role 3: Field Worker / Para-vet -->
+      <button type="button" class="role-card" data-role="fieldworker" role="radio" aria-checked="false">
+        <div class="role-icon" aria-hidden="true">🌿</div>
+        <h2 data-i18n="roleFieldWorker">Field Worker / Para-vet</h2>
+        <ul>
+          <li data-i18n="fieldworkerDesc1">Field surveillance beats & animal records</li>
+          <li data-i18n="fieldworkerDesc2">Symptom, mortality & outbreak reports</li>
+          <li data-i18n="fieldworkerDesc3">Sample collection & vaccination drives</li>
+        </ul>
+        <div class="role-selected-badge" data-i18n="roleSelected">Selected</div>
+      </button>
+
+      <!-- Role 4: Admin -->
       <button type="button" class="role-card" data-role="admin" role="radio" aria-checked="false">
         <div class="role-icon" aria-hidden="true">🛡️</div>
         <h2 data-i18n="roleAdmin">Admin</h2>
@@ -1293,7 +1364,7 @@ button.back-btn:active {
 <button type="button" id="mainBackBtn" class="ghost back-btn main-back-btn" data-i18n="backBtn">← Back</button>
 
 <div id="appRoot">
-<h2 data-i18n="appHeaderTitle">Pashu Sakhi — Portal Sign In</h2>
+
 <div class="container" id="container">
 	<div class="form-container sign-up-container">
 		<form id="signUpForm" novalidate>
@@ -1322,6 +1393,10 @@ button.back-btn:active {
 						<input type="radio" name="suRole" value="veterinarian" />
 						<span>🩺 Vet</span>
 					</label>
+					<label class="role-radio-pill" id="suPillFieldWorker">
+						<input type="radio" name="suRole" value="fieldworker" />
+						<span>🌿 Field Worker</span>
+					</label>
 					<label class="role-radio-pill" id="suPillAdmin">
 						<input type="radio" name="suRole" value="admin" />
 						<span>🛡️ Admin</span>
@@ -1347,6 +1422,7 @@ button.back-btn:active {
 				<div class="demo-login-chips">
 					<button type="button" class="demo-chip active" id="chipFarmer" title="Farmer: farmer@pashusakhi.in">🧑‍🌾 Farmer</button>
 					<button type="button" class="demo-chip" id="chipVet" title="Vet: vet@pashusakhi.in">🩺 Vet</button>
+					<button type="button" class="demo-chip" id="chipFieldWorker" title="Field Worker / Para-vet: fieldworker@pashusakhi.in">🌿 Field Worker</button>
 					<button type="button" class="demo-chip" id="chipAdmin" title="Admin: admin@pashusakhi.in">🛡️ Admin</button>
 				</div>
 			</div>
@@ -1671,6 +1747,7 @@ button.back-btn:active {
 			roleSelectionSubtitle: "Select your role to access your dedicated dashboard",
 			roleFarmer: "Farmer",
 			roleVeterinarian: "Veterinarian",
+			roleFieldWorker: "Field Worker / Para-vet",
 			roleAdmin: "Admin",
 			farmerDesc1: "Manage your livestock & health records",
 			farmerDesc2: "AI symptom screening & disease detection",
@@ -1678,6 +1755,9 @@ button.back-btn:active {
 			vetDesc1: "Review AI reports & farmer consultations",
 			vetDesc2: "Disease Heat Map & regional surveillance",
 			vetDesc3: "Emergency dispatch & 1962 response network",
+			fieldworkerDesc1: "Field surveillance beats & animal records",
+			fieldworkerDesc2: "Symptom, mortality & outbreak reports",
+			fieldworkerDesc3: "Sample collection & vaccination drives",
 			adminDesc1: "Platform oversight, users & cases monitoring",
 			adminDesc2: "Epidemiological analytics & cluster alerts",
 			adminDesc3: "National 1962 helpline & system management",
@@ -1731,6 +1811,7 @@ button.back-btn:active {
 			roleSelectionSubtitle: "अपने समर्पित डैशबोर्ड तक पहुँचने के लिए अपनी भूमिका चुनें",
 			roleFarmer: "किसान",
 			roleVeterinarian: "पशु चिकित्सक",
+			roleFieldWorker: "फील्ड वर्कर / पैरा-वेट",
 			roleAdmin: "एडमिन",
 			farmerDesc1: "पशुओं और स्वास्थ्य रिकॉर्ड का प्रबंधन करें",
 			farmerDesc2: "AI लक्षण जांच और रोग पहचान",
@@ -1738,6 +1819,9 @@ button.back-btn:active {
 			vetDesc1: "AI रिपोर्ट और किसान परामर्श की समीक्षा करें",
 			vetDesc2: "रोग हीट मैप और क्षेत्रीय निगरानी",
 			vetDesc3: "आपातकालीन प्रेषण और 1962 नेटवर्क",
+			fieldworkerDesc1: "ग्राम निगरानी बीट और पशुधन रिकॉर्ड",
+			fieldworkerDesc2: "लक्षण, मृत्यु दर और प्रकोप रिपोर्टिंग",
+			fieldworkerDesc3: "नमूना संग्रह और टीकाकरण अभियान",
 			adminDesc1: "प्लेटफ़ॉर्म निरीक्षण, उपयोगकर्ता और केस निगरानी",
 			adminDesc2: "महामारी विज्ञान विश्लेषण और क्लस्टर अलर्ट",
 			adminDesc3: "राष्ट्रीय 1962 हेल्पलाइन और सिस्टम प्रबंधन",
@@ -1791,6 +1875,7 @@ button.back-btn:active {
 			roleSelectionSubtitle: "आपल्या समर्पित डॅशबोर्डवर जाण्यासाठी आपली भूमिका निवडा",
 			roleFarmer: "शेतकरी",
 			roleVeterinarian: "पशुवैद्य",
+			roleFieldWorker: "फील्ड वर्कर / पॅरा-व्हेट",
 			roleAdmin: "अॅडमिन",
 			farmerDesc1: "जनावरे आणि आरोग्य नोंदी व्यवस्थापित करा",
 			farmerDesc2: "AI लक्षण तपासणी आणि रोग ओळख",
@@ -1798,6 +1883,9 @@ button.back-btn:active {
 			vetDesc1: "AI अहवाल आणि शेतकरी सल्लामसलत तपासा",
 			vetDesc2: "रोग हीट मॅप आणि प्रादेशिक पाळत",
 			vetDesc3: "तातडीची मदत आणि 1962 प्रतिसाद नेटवर्क",
+			fieldworkerDesc1: "गाव पातळीवरील पाळत व जनावरांची नोंद",
+			fieldworkerDesc2: "लक्षणे, मृत्यू आणि रोग उद्रेक अहवाल",
+			fieldworkerDesc3: "नमुने गोळा करणे व लसीकरण मोहीम",
 			adminDesc1: "प्लॅटफॉर्म देखरेख, वापरकर्ते आणि प्रकरणे देखरेख",
 			adminDesc2: "रोग विश्लेषण आणि क्लस्टर सूचना",
 			adminDesc3: "राष्ट्रीय 1962 हेल्पलाइन आणि प्रणाली व्यवस्थापन",
@@ -2400,6 +2488,8 @@ button.back-btn:active {
 		const demoUsers = [
 			{ name: "Suresh Patil", email: "farmer@pashusakhi.in", role: "farmer", pass: "farmer123", phone: "+91 98765 43210" },
 			{ name: "Dr. Aditi Kulkarni", email: "vet@pashusakhi.in", role: "veterinarian", pass: "vet12345", phone: "+91 98230 12345" },
+			{ name: "Sunita Devi", email: "fieldworker@pashusakhi.in", role: "fieldworker", pass: "field123", phone: "+91 98220 54321" },
+			{ name: "Sunita Devi", email: "paravet@pashusakhi.in", role: "fieldworker", pass: "paravet123", phone: "+91 98220 54321" },
 			{ name: "Super Admin", email: "admin@pashusakhi.in", role: "admin", pass: "admin123", phone: "+91 98000 00000" },
 			{ name: "Super Admin", email: "admin@pashucare.in", role: "admin", pass: "admin123", phone: "+91 98000 00000" }
 		];
@@ -2416,8 +2506,9 @@ button.back-btn:active {
 	// ---------- Demo Account Autofill Chips ----------
 	const chipFarmer = document.getElementById('chipFarmer');
 	const chipVet = document.getElementById('chipVet');
+	const chipFieldWorker = document.getElementById('chipFieldWorker');
 	const chipAdmin = document.getElementById('chipAdmin');
-	const demoChips = [chipFarmer, chipVet, chipAdmin].filter(Boolean);
+	const demoChips = [chipFarmer, chipVet, chipFieldWorker, chipAdmin].filter(Boolean);
 
 	function fillDemoAccount(chip, email, pass, roleTitle) {
 		demoChips.forEach(c => c.classList.remove('active'));
@@ -2435,6 +2526,9 @@ button.back-btn:active {
 	}
 	if (chipVet) {
 		chipVet.addEventListener('click', () => fillDemoAccount(chipVet, 'vet@pashusakhi.in', 'vet12345', 'Veterinarian'));
+	}
+	if (chipFieldWorker) {
+		chipFieldWorker.addEventListener('click', () => fillDemoAccount(chipFieldWorker, 'fieldworker@pashusakhi.in', 'field123', 'Field Worker / Para-vet'));
 	}
 	if (chipAdmin) {
 		chipAdmin.addEventListener('click', () => fillDemoAccount(chipAdmin, 'admin@pashusakhi.in', 'admin123', 'Admin'));
@@ -2455,14 +2549,19 @@ button.back-btn:active {
 	const DASHBOARD_URLS = {
 		farmer: "Farmer (4).html",
 		veterinarian: "Vet_Fixed (2).html",
-		admin: "PashuSakhi_Admin_Dashboard_Final.html"
+		admin: "PashuSakhi_Admin_Dashboard_Final.html",
+		fieldworker: "FieldWorker_Dashboard.html",
+		paravet: "FieldWorker_Dashboard.html",
+		"field worker": "FieldWorker_Dashboard.html",
+		"field_worker": "FieldWorker_Dashboard.html"
 	};
 
 	function navigateToDashboard(role) {
-		const normRole = (role === 'vet' ? 'veterinarian' : (role || 'farmer')).toLowerCase();
+		const rawRole = (role || 'farmer').toLowerCase().trim();
+		const normRole = (rawRole === 'vet' ? 'veterinarian' : (rawRole === 'paravet' || rawRole.includes('field')) ? 'fieldworker' : rawRole);
 		const targetUrl = DASHBOARD_URLS[normRole] || DASHBOARD_URLS.farmer;
 		const u = activeUser || pendingSignup || {
-			name: normRole === 'veterinarian' ? 'Dr. Aditi Kulkarni' : normRole === 'admin' ? 'Super Admin' : 'Suresh Patil',
+			name: normRole === 'veterinarian' ? 'Dr. Aditi Kulkarni' : normRole === 'admin' ? 'Super Admin' : normRole === 'fieldworker' ? 'Sunita Devi' : 'Suresh Patil',
 			email: `${normRole === 'veterinarian' ? 'vet' : normRole}@pashusakhi.in`,
 			role: normRole
 		};
@@ -2683,6 +2782,18 @@ button.back-btn:active {
 					name: 'Dr. Aditi Kulkarni',
 					role: 'veterinarian',
 					phone: '+91 98230 12345'
+				},
+				'fieldworker@pashusakhi.in': {
+					validPasswords: ['field123', 'fieldworker', 'paravet', 'paravet123', 'password', '123456'],
+					name: 'Sunita Devi',
+					role: 'fieldworker',
+					phone: '+91 98220 54321'
+				},
+				'paravet@pashusakhi.in': {
+					validPasswords: ['paravet123', 'paravet', 'field123', 'password', '123456'],
+					name: 'Sunita Devi',
+					role: 'fieldworker',
+					phone: '+91 98220 54321'
 				},
 				'admin@pashusakhi.in': {
 					validPasswords: ['admin123', 'admin', 'password', '123456'],
