@@ -1304,6 +1304,16 @@ function DiseaseHeatmapDashboard({ showToast }) {
   const heatLayerRef = React.useRef(null);
   const markerLayerRef = React.useRef(null);
 
+  // Dual-Engine Maps State (Google Maps + Leaflet Fallback)
+  const [mapEngine, setMapEngine] = useState(() => localStorage.getItem("psk_map_engine") || "leaflet");
+  const [googleApiKey, setGoogleApiKey] = useState(() => localStorage.getItem("psk_google_maps_key") || "");
+  const [showKeyModal, setShowKeyModal] = useState(false);
+  const [keyInput, setKeyInput] = useState("");
+  const googleMapRef = React.useRef(null);
+  const googleMapInstanceRef = React.useRef(null);
+  const googleHeatmapRef = React.useRef(null);
+  const googleMarkersRef = React.useRef([]);
+
   // Distinct options
   const diseaseOptions = [
     { value: "all", label: "All Diseases" },
@@ -1368,8 +1378,168 @@ function DiseaseHeatmapDashboard({ showToast }) {
     );
   }, [filteredHotspots, selectedHotspotId]);
 
-  // Leaflet Map Initialization and Update
+  // Load system map configuration on mount
   useEffect(() => {
+    if (window.PashuSakhiApi && window.PashuSakhiApi.getSystemConfig) {
+      window.PashuSakhiApi.getSystemConfig().then(res => {
+        if (res && res.success && res.data?.mapsApiKey) {
+          setGoogleApiKey(res.data.mapsApiKey);
+          localStorage.setItem("psk_google_maps_key", res.data.mapsApiKey);
+        }
+      }).catch(() => {});
+    }
+  }, []);
+
+  const loadGoogleMapsScript = (apiKey) => {
+    if (window.google && window.google.maps && window.google.maps.visualization) {
+      return Promise.resolve();
+    }
+    return new Promise((resolve, reject) => {
+      const existing = document.getElementById("google-maps-api-script");
+      if (existing) {
+        if (window.google && window.google.maps) {
+          resolve();
+        } else {
+          existing.addEventListener("load", resolve);
+          existing.addEventListener("error", reject);
+        }
+        return;
+      }
+      const script = document.createElement("script");
+      script.id = "google-maps-api-script";
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey || ""}&libraries=visualization`;
+      script.async = true;
+      script.defer = true;
+      script.onload = () => resolve();
+      script.onerror = (e) => reject(e);
+      document.head.appendChild(script);
+    });
+  };
+
+  // Google Maps Hybrid/Satellite Initialization & Update
+  useEffect(() => {
+    if (mapEngine !== "google") return;
+    if (!googleMapRef.current) return;
+
+    loadGoogleMapsScript(googleApiKey).then(() => {
+      if (!window.google || !window.google.maps) return;
+
+      if (!googleMapInstanceRef.current) {
+        const gmap = new google.maps.Map(googleMapRef.current, {
+          center: { lat: 19.2, lng: 74.6 },
+          zoom: 7,
+          mapTypeId: 'hybrid',
+          streetViewControl: false,
+          fullscreenControl: true,
+        });
+        googleMapInstanceRef.current = gmap;
+      }
+
+      const gmap = googleMapInstanceRef.current;
+
+      // Clear existing markers
+      googleMarkersRef.current.forEach(m => m.setMap(null));
+      googleMarkersRef.current = [];
+
+      // Google Heatmap Layer
+      if (googleHeatmapRef.current) {
+        googleHeatmapRef.current.setMap(null);
+      }
+
+      if (showRiskZones && window.google.maps.visualization) {
+        const heatPoints = [];
+        filteredHotspots.forEach(h => {
+          const weight = h.risk === "High" ? 5 : h.risk === "Medium" ? 3 : 1;
+          heatPoints.push({
+            location: new google.maps.LatLng(h.lat || 19.0, h.lng || 75.0),
+            weight: (h.affectedAnimals || 10) * weight
+          });
+        });
+
+        const heatmap = new google.maps.visualization.HeatmapLayer({
+          data: heatPoints,
+          radius: 35,
+          opacity: 0.75,
+          map: gmap
+        });
+        googleHeatmapRef.current = heatmap;
+      }
+
+      // Add Vet Markers
+      if (showVetMarkers) {
+        const nearbySupport = Array.from({ length: 7 }, (_, i) => ({
+          id: `vs-${i+1}`,
+          lat: [19.8, 18.2, 19.5, 20.5, 19.8, 18.8, 20.4][i] || 19.0,
+          lng: [73.9, 74.5, 74.2, 74.5, 74.4, 74.3, 75.0][i] || 75.0,
+          name: `Mobile Unit ${i+1}`
+        }));
+        nearbySupport.forEach(v => {
+          const marker = new google.maps.Marker({
+            position: { lat: v.lat, lng: v.lng },
+            map: gmap,
+            title: v.name,
+            icon: {
+              path: google.maps.SymbolPath.CIRCLE,
+              scale: 6,
+              fillColor: '#1F5D50',
+              fillOpacity: 1,
+              strokeColor: '#fff',
+              strokeWeight: 1.5
+            }
+          });
+          googleMarkersRef.current.push(marker);
+        });
+      }
+
+      // Add Hotspot markers with InfoWindow
+      filteredHotspots.forEach(h => {
+        const isSelected = selectedHotspotId === h.id;
+        const pinColor = h.risk === "High" ? "#B3402A" : h.risk === "Medium" ? "#D98B2B" : "#2F7A4F";
+        const marker = new google.maps.Marker({
+          position: { lat: h.lat || 19.0, lng: h.lng || 75.0 },
+          map: gmap,
+          title: `${h.disease} (${h.affectedAnimals} cases)`,
+          icon: {
+            path: google.maps.SymbolPath.CIRCLE,
+            scale: isSelected ? 11 : 7,
+            fillColor: pinColor,
+            fillOpacity: 0.9,
+            strokeColor: isSelected ? "#ffffff" : pinColor,
+            strokeWeight: isSelected ? 3 : 1.5
+          }
+        });
+
+        const info = new google.maps.InfoWindow({
+          content: `<div style="color:#23291F;font-family:sans-serif;padding:6px;max-width:200px;">
+            <strong style="font-size:13px;display:block;margin-bottom:2px;">${h.disease}</strong>
+            <span style="font-size:11px;color:#666;display:block;">${h.location}, ${h.district}</span>
+            <div style="margin-top:6px;font-size:11.5px;font-weight:bold;color:${pinColor};">
+              ${h.affectedAnimals} affected animals (${h.risk} Risk)
+            </div>
+          </div>`
+        });
+
+        marker.addListener("click", () => {
+          setSelectedHotspotId(h.id);
+          info.open(gmap, marker);
+        });
+
+        if (isSelected) {
+          gmap.panTo({ lat: h.lat || 19.0, lng: h.lng || 75.0 });
+        }
+
+        googleMarkersRef.current.push(marker);
+      });
+    }).catch(err => {
+      console.warn("Google Maps load failed, falling back to Leaflet:", err);
+      setMapEngine("leaflet");
+      showToast("Google Maps failed to initialize. Switched to Leaflet basemap.");
+    });
+  }, [mapEngine, googleApiKey, filteredHotspots, selectedHotspotId, showRiskZones, showVetMarkers]);
+
+  // Leaflet Map Initialization and Update (runs when mapEngine === 'leaflet')
+  useEffect(() => {
+    if (mapEngine !== "leaflet") return;
     if (!mapRef.current) return;
     
     // Initialize map if it doesn't exist
@@ -1383,6 +1553,7 @@ function DiseaseHeatmapDashboard({ showToast }) {
     }
 
     const map = mapInstanceRef.current;
+    setTimeout(() => { try { map.invalidateSize(); } catch(e) {} }, 100);
 
     // Clear old layers
     if (heatLayerRef.current) map.removeLayer(heatLayerRef.current);
@@ -1458,7 +1629,7 @@ function DiseaseHeatmapDashboard({ showToast }) {
         gradient: {0.2: '#2F7A4F', 0.5: '#B9791F', 0.8: '#B3402A'}
       }).addTo(map);
     }
-  }, [filteredHotspots, selectedHotspotId, showRiskZones, showVetMarkers]);
+  }, [mapEngine, filteredHotspots, selectedHotspotId, showRiskZones, showVetMarkers]);
 
   // Priority response ranking: computed dynamically
   const rankedAreas = useMemo(() => {
@@ -1857,6 +2028,36 @@ function DiseaseHeatmapDashboard({ showToast }) {
 
               <div className="hm-layer-switches">
                 <button
+                  className={`layer-chip ${mapEngine === "google" ? "active" : ""}`}
+                  onClick={() => {
+                    if (mapEngine === "leaflet") {
+                      if (!googleApiKey && (!window.google || !window.google.maps)) {
+                        setShowKeyModal(true);
+                      } else {
+                        setMapEngine("google");
+                        localStorage.setItem("psk_map_engine", "google");
+                        showToast("Switched to Google Maps Satellite View.");
+                      }
+                    } else {
+                      setMapEngine("leaflet");
+                      localStorage.setItem("psk_map_engine", "leaflet");
+                      showToast("Switched to Leaflet Basemap.");
+                    }
+                  }}
+                  title="Switch Map Engine: Google Maps Satellite vs Leaflet"
+                >
+                  <Globe size={13} />
+                  {mapEngine === "google" ? "Google Satellite" : "Leaflet Map"}
+                </button>
+                <button
+                  className="layer-chip"
+                  onClick={() => setShowKeyModal(true)}
+                  title="Configure Google Maps API Key"
+                  style={{ color: "var(--brand)" }}
+                >
+                  <Settings size={12} /> Key
+                </button>
+                <button
                   className={`layer-chip ${showRiskZones ? "active" : ""}`}
                   onClick={() => setShowRiskZones(!showRiskZones)}
                   title="Toggle High/Medium/Low Heat Radii"
@@ -1886,9 +2087,99 @@ function DiseaseHeatmapDashboard({ showToast }) {
               </div>
             </div>
 
-            {/* Interactive Cartographic Canvas */}
+            {/* Interactive Cartographic Canvas (Dual Engine) */}
             <div className="hm-canvas-wrapper">
-              <div ref={mapRef} style={{ width: '100%', height: '100%', minHeight: '650px', background: '#EFE8D8' }} />
+              <div
+                ref={mapRef}
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  minHeight: '650px',
+                  background: '#EFE8D8',
+                  display: mapEngine === "leaflet" ? "block" : "none"
+                }}
+              />
+              <div
+                ref={googleMapRef}
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  minHeight: '650px',
+                  background: '#242f3e',
+                  display: mapEngine === "google" ? "block" : "none"
+                }}
+              />
+
+              {/* Google Maps API Key Modal */}
+              {showKeyModal && (
+                <div className="modal-backdrop" onClick={() => setShowKeyModal(false)}>
+                  <div className="modal-card" style={{ maxWidth: 500 }} onClick={(e) => e.stopPropagation()}>
+                    <div className="modal-header">
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <Globe size={18} style={{ color: "var(--brand)" }} />
+                        <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800 }}>Google Maps Platform Configuration</h3>
+                      </div>
+                      <button type="button" onClick={() => setShowKeyModal(false)} style={{ background: "transparent", border: "none", cursor: "pointer" }}>
+                        <X size={18} />
+                      </button>
+                    </div>
+                    <div className="modal-body">
+                      <p style={{ margin: 0, fontSize: 13, color: "var(--ink-soft)", lineHeight: 1.5 }}>
+                        Enter your Google Maps JavaScript API key to activate high-resolution satellite imagery and native Google HeatmapLayers across Maharashtra livestock zones.
+                      </p>
+                      <div className="form-field" style={{ marginTop: 10 }}>
+                        <label className="form-label">Google Maps API Key</label>
+                        <input
+                          type="password"
+                          className="form-input"
+                          placeholder="AIzaSy..."
+                          value={keyInput || googleApiKey}
+                          onChange={(e) => setKeyInput(e.target.value)}
+                        />
+                        <span style={{ fontSize: 11, color: "var(--ink-soft)" }}>
+                          Stored locally in your browser session for security.
+                        </span>
+                      </div>
+                      <div style={{ background: "var(--paper)", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--line)", fontSize: 12 }}>
+                        <strong>Note:</strong> If no key is configured or Google Maps quota is exceeded, PashuSakhi automatically uses <strong>Leaflet + CARTO Voyager</strong> with 100% free uptime.
+                      </div>
+                    </div>
+                    <div className="modal-footer">
+                      <button
+                        type="button"
+                        className="btn-outline btn-sm"
+                        onClick={() => {
+                          setMapEngine("leaflet");
+                          localStorage.setItem("psk_map_engine", "leaflet");
+                          setShowKeyModal(false);
+                          showToast("Switched to Leaflet free basemap.");
+                        }}
+                      >
+                        Use Leaflet (No Key Required)
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-primary btn-sm"
+                        onClick={() => {
+                          const k = (keyInput || googleApiKey).trim();
+                          if (k) {
+                            setGoogleApiKey(k);
+                            localStorage.setItem("psk_google_maps_key", k);
+                            setMapEngine("google");
+                            localStorage.setItem("psk_map_engine", "google");
+                            setShowKeyModal(false);
+                            showToast("Google Maps key saved. Switching to satellite engine...");
+                          } else {
+                            showToast("Please enter an API key or use Leaflet.");
+                          }
+                        }}
+                      >
+                        Save & Activate Google Maps
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Floating Map Legend Overlay */}
               <div className="hm-map-legend">
@@ -2130,6 +2421,860 @@ function DiseaseHeatmapDashboard({ showToast }) {
 /* Root Application Container with Navigation & State                */
 /* ------------------------------------------------------------------ */
 
+const PARA_VET_USERS = [
+  { id: "pv-101", name: "Sunita Gaikwad", serviceArea: "Nashik Rural & Sinnar", status: "Available", phone: "+91 98811 74230", activeTasks: 2 },
+  { id: "pv-102", name: "Santosh More", serviceArea: "Igatpuri & Trimbakeshwar", status: "Available", phone: "+91 97654 12389", activeTasks: 1 },
+  { id: "pv-103", name: "Pooja Jadhav", serviceArea: "Dindori & Niphad", status: "On-Field", phone: "+91 98223 67812", activeTasks: 3 },
+  { id: "pv-104", name: "Ganesh Shinde", serviceArea: "Wagholi & Haveli (Pune)", status: "Available", phone: "+91 94220 54321", activeTasks: 0 },
+];
+
+function ConsultationChatModal({ request, messages, onClose, onSendMessage, onEndChat }) {
+  const [inputText, setInputText] = useState("");
+  const messagesEndRef = useRef(null);
+
+  useEffect(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages]);
+
+  const handleSend = () => {
+    if (!inputText.trim()) return;
+    onSendMessage(request.animalId || request.id, inputText.trim());
+    setInputText("");
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  };
+
+  if (!request) return null;
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-card chat-modal-window" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <button
+              type="button"
+              className="btn-outline btn-sm"
+              onClick={onClose}
+              style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "6px 10px" }}
+              title="Close chat"
+            >
+              <ArrowLeft size={16} /> Back
+            </button>
+            <Avatar label={request.animal} size={40} tone={request.priority === "critical" ? "urgent" : "attention"} />
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, fontFamily: "Fraunces, serif" }}>
+                  {request.animal}
+                </h3>
+                <span style={{ fontSize: 12.5, color: "var(--ink-soft)", fontWeight: 600 }}>
+                  ({request.species}{request.breed ? ` · ${request.breed}` : ""})
+                </span>
+                <SeverityBadge level={request.priority} />
+              </div>
+              <div style={{ fontSize: 12, color: "var(--ink-soft)" }}>
+                Farmer: <strong>{request.farmer}</strong> · Case #{request.id} · {request.location || request.district || "Maharashtra"}
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {request.status !== "resolved" ? (
+              <button
+                type="button"
+                className="btn-outline btn-sm"
+                onClick={() => onEndChat(request)}
+                style={{ color: "var(--urgent)", borderColor: "rgba(179,64,42,0.4)", fontWeight: 700 }}
+                title="Conclude active chat session"
+              >
+                <XCircle size={14} /> End Consultation
+              </button>
+            ) : (
+              <span className="badge badge-healthy">
+                <CheckCircle2 size={13} /> Resolved
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              style={{ background: "transparent", border: "none", color: "var(--ink)", cursor: "pointer", padding: 4 }}
+              title="Close"
+            >
+              <X size={20} />
+            </button>
+          </div>
+        </div>
+
+        <div style={{ padding: "10px 18px", background: "var(--paper)", borderBottom: "1px solid var(--line)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+          <div style={{ fontSize: 12.5, color: "var(--ink)", display: "flex", alignItems: "center", gap: 6 }}>
+            <Activity size={14} style={{ color: "var(--brand)", flexShrink: 0 }} />
+            <span><strong>Reported Symptoms:</strong> {request.symptoms}</span>
+          </div>
+          <span style={{ fontSize: 11, color: "var(--ink-soft)", fontWeight: 600 }}>
+            Submitted: {request.submitted}
+          </span>
+        </div>
+
+        <div className="chat-feed">
+          {messages.map((m, idx) => (
+            <div key={m.id || idx} className={`chat-bubble ${m.sender === "vet" ? "vet" : "farmer"}`}>
+              <div style={{ fontWeight: 700, fontSize: 11, opacity: 0.85, marginBottom: 2 }}>
+                {m.sender === "vet" ? "Dr. Aditi Kulkarni (Veterinarian)" : `${request.farmer} (Farmer)`}
+              </div>
+              <div style={{ whiteSpace: "pre-line" }}>{m.text}</div>
+              <div className="chat-meta">
+                <span>{m.time || "Just now"}</span>
+                {m.sender === "vet" && <Check size={12} />}
+              </div>
+            </div>
+          ))}
+          <div ref={messagesEndRef} />
+        </div>
+
+        <div className="chat-input-bar">
+          <input
+            type="text"
+            className="chat-text-input"
+            placeholder="Type veterinary instructions or advice to farmer..."
+            value={inputText}
+            onChange={(e) => setInputText(e.target.value)}
+            onKeyDown={handleKeyDown}
+            autoFocus
+          />
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={handleSend}
+            disabled={!inputText.trim()}
+            style={{ padding: "0 18px", height: 42, display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 700 }}
+          >
+            <Send size={15} /> Send
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EmergencyChatModal({ emergency, messages, onClose, onSendMessage }) {
+  const [inputText, setInputText] = useState("");
+  const messagesEndRef = useRef(null);
+
+  useEffect(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages]);
+
+  const handleSend = (textToSend) => {
+    const txt = (textToSend || inputText).trim();
+    if (!txt) return;
+    onSendMessage(emergency.animalId || emergency.id, txt);
+    if (!textToSend) setInputText("");
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  };
+
+  const quickAdvices = [
+    "Isolate animal in calm shaded shelter immediately.",
+    "Do not force drench with liquids to prevent aspiration.",
+    "Ensure clean fresh water; withhold solid high-carb fodder.",
+    "Mobile veterinary unit has been notified for on-site visit."
+  ];
+
+  if (!emergency) return null;
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-card emergency-modal-window" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header modal-header-emergency">
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <button
+              type="button"
+              className="btn-outline btn-sm"
+              onClick={onClose}
+              style={{ color: "#fff", borderColor: "rgba(255,255,255,0.4)", display: "inline-flex", alignItems: "center", gap: 5, padding: "6px 10px" }}
+              title="Close emergency chat"
+            >
+              <ArrowLeft size={16} /> Back
+            </button>
+            <div style={{ width: 38, height: 38, borderRadius: 10, background: "rgba(255,255,255,0.2)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <Siren size={22} color="#fff" />
+            </div>
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 11, fontWeight: 800, background: "rgba(255,255,255,0.25)", padding: "2px 7px", borderRadius: 4, letterSpacing: "0.5px" }}>
+                  CRITICAL TELEMEDICINE
+                </span>
+                <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800, fontFamily: "Fraunces, serif" }}>
+                  Emergency Case #{emergency.id}
+                </h3>
+              </div>
+              <div style={{ fontSize: 12, opacity: 0.9 }}>
+                Patient: <strong>{emergency.animal}</strong> · Farmer: <strong>{emergency.farmer}</strong> ({emergency.location})
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <SeverityBadge level={emergency.severity} />
+            <StatusPill status={emergency.status} />
+            <button
+              type="button"
+              onClick={onClose}
+              style={{ background: "transparent", border: "none", color: "#fff", cursor: "pointer", padding: 4 }}
+              title="Close"
+            >
+              <X size={20} />
+            </button>
+          </div>
+        </div>
+
+        <div style={{ padding: "12px 18px", background: "var(--urgent-soft)", borderBottom: "1.5px solid rgba(179,64,42,0.2)", display: "flex", flexDirection: "column", gap: 6 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+            <div style={{ fontSize: 13, color: "var(--ink)", fontWeight: 700 }}>
+              <span style={{ color: "var(--urgent)" }}>Reported Symptoms:</span> {emergency.symptoms}
+            </div>
+            <div style={{ fontSize: 12, color: "var(--ink-soft)" }}>
+              Reported: <strong>{emergency.timeReported}</strong>
+            </div>
+          </div>
+          <div style={{ fontSize: 12, color: "var(--ink-soft)", display: "flex", alignItems: "center", gap: 6 }}>
+            <Info size={13} style={{ color: "var(--urgent)" }} />
+            <span>AI Triage Finding: <strong>{emergency.aiResult}</strong> · Assigned Vet: <strong>{emergency.assignedVet || "Dr. Aditi Kulkarni"}</strong></span>
+          </div>
+        </div>
+
+        <div style={{ padding: "8px 18px", background: "var(--paper)", borderBottom: "1px solid var(--line)", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "var(--ink-soft)" }}>
+            Quick Protocols:
+          </span>
+          {quickAdvices.map((q, idx) => (
+            <button
+              key={idx}
+              type="button"
+              className="quick-chip"
+              onClick={() => handleSend(q)}
+              title="Click to send this urgent advice immediately"
+            >
+              + {q}
+            </button>
+          ))}
+        </div>
+
+        <div className="chat-feed" style={{ background: "#F5ECE9" }}>
+          {messages.map((m, idx) => (
+            <div key={m.id || idx} className={`chat-bubble ${m.sender === "vet" ? "vet urgent" : "farmer"}`}>
+              <div style={{ fontWeight: 700, fontSize: 11, opacity: 0.85, marginBottom: 2 }}>
+                {m.sender === "vet" ? "ðŸš¨ Dr. Aditi Kulkarni (Emergency Response)" : `ðŸš¨ ${emergency.farmer} (Farmer)`}
+              </div>
+              <div style={{ whiteSpace: "pre-line" }}>{m.text}</div>
+              <div className="chat-meta">
+                <span>{m.time || "Just now"}</span>
+                {m.sender === "vet" && <Check size={12} />}
+              </div>
+            </div>
+          ))}
+          <div ref={messagesEndRef} />
+        </div>
+
+        <div className="chat-input-bar">
+          <input
+            type="text"
+            className="chat-text-input"
+            placeholder="Type urgent instructions for farmer..."
+            value={inputText}
+            onChange={(e) => setInputText(e.target.value)}
+            onKeyDown={handleKeyDown}
+            autoFocus
+          />
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={() => handleSend()}
+            disabled={!inputText.trim()}
+            style={{ background: "var(--urgent)", padding: "0 18px", height: 42, display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 700 }}
+          >
+            <Send size={15} /> Send Urgent Advice
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function NotificationsModal({ notifications, isOpen, onClose, onMarkAllRead, onNotificationClick }) {
+  const [filter, setFilter] = useState("all");
+
+  if (!isOpen) return null;
+
+  const filtered = notifications.filter(n => filter === "unread" ? !n.read : true);
+  const unreadCount = notifications.filter(n => !n.read).length;
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-card" style={{ maxWidth: 540 }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <Bell size={20} style={{ color: "var(--brand)" }} />
+            <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800, fontFamily: "Fraunces, serif" }}>
+              Notifications
+            </h3>
+            {unreadCount > 0 && (
+              <span className="badge badge-urgent" style={{ fontSize: 11 }}>
+                {unreadCount} Unread
+              </span>
+            )}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            {unreadCount > 0 && (
+              <button
+                type="button"
+                className="btn-outline btn-sm"
+                onClick={onMarkAllRead}
+                style={{ fontSize: 12, padding: "5px 9px" }}
+              >
+                Mark all as read
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              style={{ background: "transparent", border: "none", color: "var(--ink)", cursor: "pointer", padding: 4 }}
+            >
+              <X size={20} />
+            </button>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", gap: 8, padding: "10px 20px", background: "var(--paper)", borderBottom: "1px solid var(--line)" }}>
+          <button
+            type="button"
+            className={`filter-chip ${filter === "all" ? "active" : ""}`}
+            onClick={() => setFilter("all")}
+          >
+            All ({notifications.length})
+          </button>
+          <button
+            type="button"
+            className={`filter-chip ${filter === "unread" ? "active" : ""}`}
+            onClick={() => setFilter("unread")}
+          >
+            Unread ({unreadCount})
+          </button>
+        </div>
+
+        <div className="modal-body" style={{ maxHeight: 460 }}>
+          {filtered.length > 0 ? (
+            filtered.map((n) => (
+              <div
+                key={n.id}
+                className={`notif-item ${!n.read ? "unread" : ""} ${n.type === "emergency" ? "emergency" : ""}`}
+                onClick={() => onNotificationClick(n)}
+              >
+                <div style={{ width: 36, height: 36, borderRadius: 10, background: n.type === "emergency" ? "var(--urgent-soft)" : "var(--brand-soft)", color: n.type === "emergency" ? "var(--urgent)" : "var(--brand-dark-contrast)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  {n.type === "emergency" ? <Siren size={18} /> : n.type === "consultation" ? <MessageCircle size={18} /> : n.type === "followup" ? <CalendarClock size={18} /> : <AlertCircle size={18} />}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 2 }}>
+                    <h4 style={{ margin: 0, fontSize: 13.5, fontWeight: 700, color: "var(--ink)" }}>{n.title}</h4>
+                    <span style={{ fontSize: 11, color: "var(--ink-soft)" }}>{n.time}</span>
+                  </div>
+                  <p style={{ margin: "0 0 4px", fontSize: 12.5, color: "var(--ink-soft)", lineHeight: 1.4 }}>{n.message}</p>
+                  {n.refId && (
+                    <span style={{ fontSize: 11, color: "var(--brand)", fontWeight: 700 }}>
+                      Click to view case &rarr;
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="empty-state" style={{ padding: "30px 20px" }}>
+              No notifications to display.
+            </div>
+          )}
+        </div>
+
+        <div className="modal-footer">
+          <button type="button" className="btn-outline btn-sm" onClick={onClose}>
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function NewTreatmentModal({ patient, onClose, onSendTreatment }) {
+  const [formData, setFormData] = useState({
+    condition: "",
+    medicine: "",
+    dosage: "",
+    route: "Oral",
+    duration: "3 days",
+    notes: "",
+    followUp: ""
+  });
+
+  if (!patient) return null;
+
+  const quickConditions = ["Clinical Mastitis", "Foot Rot (Infectious)", "Ruminal Bloat & Tympany", "Fungal Dermatitis", "Bovine Respiratory Distress", "Post-Partum Hypocalcemia"];
+  const quickMedicines = ["Amoxicillin 500mg Bolus", "Oxytetracycline 20% L.A.", "Meloxicam Injection (0.5mg/kg)", "Topical Povidone-Iodine + Zinc", "Oral Anti-Bloat Bloatosil"];
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    onSendTreatment(formData);
+  };
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-card" style={{ maxWidth: 620 }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ width: 38, height: 38, borderRadius: 10, background: "var(--brand-soft)", color: "var(--brand)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <Syringe size={20} />
+            </div>
+            <div>
+              <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800, fontFamily: "Fraunces, serif" }}>
+                New Treatment — {patient.name}
+              </h3>
+              <p style={{ margin: 0, fontSize: 12, color: "var(--ink-soft)" }}>
+                {patient.species} ({patient.breed}) · Ear Tag: {patient.earTag} · Owner: <strong>{patient.owner}</strong> ({patient.location})
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{ background: "transparent", border: "none", color: "var(--ink)", cursor: "pointer", padding: 4 }}
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+          <div className="modal-body" style={{ maxHeight: "calc(85vh - 130px)" }}>
+            <div className="form-field">
+              <label className="form-label">Condition / Clinical Diagnosis *</label>
+              <input
+                type="text"
+                className="form-input"
+                placeholder="e.g. Early Stage Mastitis, Bovine Dermatitis..."
+                value={formData.condition}
+                onChange={(e) => setFormData({ ...formData, condition: e.target.value })}
+                required
+              />
+              <div className="quick-chips-row">
+                {quickConditions.map((c, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    className="quick-chip"
+                    onClick={() => setFormData({ ...formData, condition: c })}
+                  >
+                    + {c}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="form-field">
+              <label className="form-label">Prescribed Medicine / Drug *</label>
+              <input
+                type="text"
+                className="form-input"
+                placeholder="e.g. Amoxicillin, Meloxicam, Oxytetracycline..."
+                value={formData.medicine}
+                onChange={(e) => setFormData({ ...formData, medicine: e.target.value })}
+                required
+              />
+              <div className="quick-chips-row">
+                {quickMedicines.map((m, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    className="quick-chip"
+                    onClick={() => setFormData({ ...formData, medicine: m })}
+                  >
+                    + {m}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="form-row-grid">
+              <div className="form-field">
+                <label className="form-label">Dosage</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  placeholder="e.g. 10 ml once daily, 2 bolus twice daily"
+                  value={formData.dosage}
+                  onChange={(e) => setFormData({ ...formData, dosage: e.target.value })}
+                />
+              </div>
+              <div className="form-field">
+                <label className="form-label">Route of Administration</label>
+                <select
+                  className="form-select"
+                  value={formData.route}
+                  onChange={(e) => setFormData({ ...formData, route: e.target.value })}
+                >
+                  <option value="Oral">Oral</option>
+                  <option value="Intramuscular (I.M.)">Intramuscular (I.M.)</option>
+                  <option value="Intravenous (I.V.)">Intravenous (I.V.)</option>
+                  <option value="Subcutaneous (S.C.)">Subcutaneous (S.C.)</option>
+                  <option value="Topical Spray / Ointment">Topical Spray / Ointment</option>
+                  <option value="Intra-mammary Infusion">Intra-mammary Infusion</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="form-row-grid">
+              <div className="form-field">
+                <label className="form-label">Duration</label>
+                <select
+                  className="form-select"
+                  value={formData.duration}
+                  onChange={(e) => setFormData({ ...formData, duration: e.target.value })}
+                >
+                  <option value="Single dose">Single dose</option>
+                  <option value="3 days">3 days</option>
+                  <option value="5 days">5 days</option>
+                  <option value="7 days">7 days</option>
+                  <option value="10 days">10 days</option>
+                  <option value="Continuous until resolution">Continuous until resolution</option>
+                </select>
+              </div>
+              <div className="form-field">
+                <label className="form-label">Follow-up Timing</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  placeholder="e.g. In 3 days, Recheck 15 Sep 2026"
+                  value={formData.followUp}
+                  onChange={(e) => setFormData({ ...formData, followUp: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <div className="form-field">
+              <label className="form-label">Treatment Instructions / Farmer Guidance</label>
+              <textarea
+                className="form-textarea"
+                placeholder="Detail feeding instructions, isolation, clean water, or wound dressing instructions for the farmer..."
+                value={formData.notes}
+                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                rows={3}
+              />
+            </div>
+          </div>
+
+          <div className="modal-footer">
+            <button type="button" className="btn-outline" onClick={onClose}>
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="btn-primary"
+              style={{ padding: "10px 22px", fontWeight: 800, letterSpacing: "0.4px" }}
+            >
+              <Send size={15} /> SEND TREATMENT TO FARMER
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function SampleCollectionModal({ patient, paraVets, onClose, onSendSampleRequest }) {
+  const [formData, setFormData] = useState({
+    sampleType: "Blood (Serum / EDTA)",
+    reason: "",
+    priority: "High",
+    instructions: "Collect 5ml sample under sterile aseptic precautions; store in cold chain container at 2-8°C.",
+    notes: "",
+    paraVetId: (paraVets && paraVets[0] && paraVets[0].id) || "pv-101"
+  });
+
+  if (!patient) return null;
+
+  const sampleTypes = [
+    "Blood (Serum / EDTA)",
+    "Nasal / Mucosal Swab",
+    "Milk Sample (CMT / Microbial Culture)",
+    "Faecal / Dung Sample",
+    "Skin Scraping / Crust Biopsy",
+    "Urine Sample",
+    "Lesion Exudate / Fluid"
+  ];
+
+  const assignedVet = (paraVets || []).find(v => v.id === formData.paraVetId) || (paraVets && paraVets[0]);
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    onSendSampleRequest(formData);
+  };
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-card" style={{ maxWidth: 620 }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ width: 38, height: 38, borderRadius: 10, background: "var(--accent-soft)", color: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <FlaskConical size={20} />
+            </div>
+            <div>
+              <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800, fontFamily: "Fraunces, serif" }}>
+                Send Sample Collection Request
+              </h3>
+              <p style={{ margin: 0, fontSize: 12, color: "var(--ink-soft)" }}>
+                Patient: <strong>{patient.name}</strong> ({patient.species}) · Owner: <strong>{patient.owner}</strong> ({patient.location})
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{ background: "transparent", border: "none", color: "var(--ink)", cursor: "pointer", padding: 4 }}
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+          <div className="modal-body" style={{ maxHeight: "calc(85vh - 130px)" }}>
+            <div className="form-row-grid">
+              <div className="form-field">
+                <label className="form-label">Sample Type *</label>
+                <select
+                  className="form-select"
+                  value={formData.sampleType}
+                  onChange={(e) => setFormData({ ...formData, sampleType: e.target.value })}
+                >
+                  {sampleTypes.map((st, i) => (
+                    <option key={i} value={st}>{st}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="form-field">
+                <label className="form-label">Collection Priority</label>
+                <select
+                  className="form-select"
+                  value={formData.priority}
+                  onChange={(e) => setFormData({ ...formData, priority: e.target.value })}
+                >
+                  <option value="Urgent">Urgent (Within 4 hours)</option>
+                  <option value="High">High (Same-day dispatch)</option>
+                  <option value="Normal">Normal (Within 24 hours)</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="form-field">
+              <label className="form-label">Reason / Suspected Condition *</label>
+              <input
+                type="text"
+                className="form-input"
+                placeholder="e.g. Serological confirmation for LSD / Culture & Sensitivity"
+                value={formData.reason}
+                onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
+                required
+              />
+            </div>
+
+            <div className="form-field">
+              <label className="form-label">Collection Instructions for Field Worker</label>
+              <textarea
+                className="form-textarea"
+                value={formData.instructions}
+                onChange={(e) => setFormData({ ...formData, instructions: e.target.value })}
+                rows={2}
+              />
+            </div>
+
+            <div style={{ background: "var(--paper)", border: "1.5px solid var(--brand)", borderRadius: 12, padding: "14px 16px" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                <label className="form-label" style={{ color: "var(--brand)", fontSize: 12.5 }}>
+                  Choose Para-Vet (Field Execution) *
+                </label>
+                <span className="badge badge-info" style={{ fontSize: 11 }}>
+                  {paraVets ? paraVets.length : 0} Available
+                </span>
+              </div>
+
+              <select
+                className="form-select"
+                style={{ fontWeight: 700 }}
+                value={formData.paraVetId}
+                onChange={(e) => setFormData({ ...formData, paraVetId: e.target.value })}
+              >
+                {(paraVets || []).map((pv) => (
+                  <option key={pv.id} value={pv.id}>
+                    {pv.name} — {pv.serviceArea} ({pv.status})
+                  </option>
+                ))}
+              </select>
+
+              {assignedVet && (
+                <div style={{ marginTop: 10, padding: "8px 12px", background: "var(--paper-soft)", borderRadius: 8, border: "1px solid var(--line)", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 6 }}>
+                  <div>
+                    <span style={{ fontSize: 11, color: "var(--ink-soft)", fontWeight: 700, textTransform: "uppercase" }}>
+                      Assigned Para-Vet:
+                    </span>{" "}
+                    <strong style={{ fontSize: 13.5, color: "var(--brand)" }}>{assignedVet.name}</strong>
+                    <div style={{ fontSize: 11.5, color: "var(--ink-soft)" }}>
+                      Coverage: {assignedVet.serviceArea} · Ph: {assignedVet.phone}
+                    </div>
+                  </div>
+                  <span className={`badge ${assignedVet.status === "Available" ? "badge-healthy" : "badge-attention"}`} style={{ fontSize: 11 }}>
+                    {assignedVet.status}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            <div className="form-field">
+              <label className="form-label">Optional Clinical Notes</label>
+              <input
+                type="text"
+                className="form-input"
+                placeholder="Any special handling, PPE protocol, or farm gate directions..."
+                value={formData.notes}
+                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+              />
+            </div>
+          </div>
+
+          <div className="modal-footer">
+            <button type="button" className="btn-outline" onClick={onClose}>
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="btn-primary"
+              style={{ padding: "10px 22px", fontWeight: 800 }}
+            >
+              <FlaskConical size={15} /> Send Request
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function ReportReviewModal({ report, onClose, onConfirm, onEscalate }) {
+  if (!report) return null;
+  const photo = report.imageUrl || (report.details && (report.details.imageUrl || report.details.photo));
+  const isGemini = Boolean(report.details && (report.details.isLiveGemini || (report.details.reasons && report.details.reasons.length > 0)));
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-card" style={{ maxWidth: 640 }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ width: 38, height: 38, borderRadius: 10, background: "var(--brand-soft)", color: "var(--brand)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <FileText size={20} />
+            </div>
+            <div>
+              <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800, fontFamily: "Fraunces, serif" }}>
+                AI Screening Review — {report.animalName || report.animal}
+              </h3>
+              <p style={{ margin: 0, fontSize: 12, color: "var(--ink-soft)" }}>
+                Report #{report.id} · Farmer: <strong>{report.farmerName || report.farmer}</strong> · {report.date || report.datetime || "Today"}
+              </p>
+            </div>
+          </div>
+          <button type="button" onClick={onClose} style={{ background: "transparent", border: "none", cursor: "pointer" }}>
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="modal-body" style={{ maxHeight: "calc(85vh - 120px)" }}>
+          {isGemini && (
+            <div style={{ padding: "8px 12px", background: "linear-gradient(135deg, #143F36, #1F5D50)", color: "#fff", borderRadius: 8, fontSize: 12, fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}>
+              <span>✨ Powered by Live Google Gemini 2.5 Vision AI</span>
+            </div>
+          )}
+
+          {photo && (
+            <div style={{ background: "#000", borderRadius: 12, overflow: "hidden", textAlign: "center", maxHeight: 260, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <img src={photo} alt="Clinical livestock scan" style={{ maxWidth: "100%", maxHeight: 260, objectFit: "contain" }} />
+            </div>
+          )}
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, padding: "10px 12px", background: "var(--paper)", borderRadius: 10, border: "1px solid var(--line)" }}>
+            <div>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "var(--ink-soft)", textTransform: "uppercase" }}>Condition Flagged</span>
+              <strong style={{ fontSize: 14, display: "block", color: "var(--ink)", marginTop: 2 }}>{report.condition}</strong>
+            </div>
+            <div>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "var(--ink-soft)", textTransform: "uppercase" }}>Confidence & Severity</span>
+              <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 4 }}>
+                <span className="badge badge-info">{report.confidence}% AI Confidence</span>
+                <SeverityBadge level={report.severity} />
+              </div>
+            </div>
+          </div>
+
+          <div style={{ padding: "10px 12px", background: "var(--paper-soft)", borderRadius: 8, border: "1px solid var(--line)" }}>
+            <div style={{ fontSize: 11.5, fontWeight: 800, textTransform: "uppercase", color: "var(--ink-soft)", marginBottom: 4 }}>Reported Symptoms</div>
+            <div style={{ fontSize: 13, color: "var(--ink)" }}>{report.symptoms || "Visual inspection only."}</div>
+          </div>
+
+          {report.details && report.details.reasons && report.details.reasons.length > 0 && (
+            <div style={{ padding: "10px 12px", background: "var(--paper-soft)", borderRadius: 8, border: "1px solid var(--line)" }}>
+              <div style={{ fontSize: 11.5, fontWeight: 800, textTransform: "uppercase", color: "var(--brand)", marginBottom: 6 }}>Gemini Multimodal Observations</div>
+              <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12.5, lineHeight: 1.5 }}>
+                {report.details.reasons.map((r, i) => (
+                  <li key={i}>{r}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+
+        <div className="modal-footer">
+          <button type="button" className="btn-outline btn-sm" onClick={onClose}>
+            Close
+          </button>
+          <button
+            type="button"
+            className="btn-outline btn-sm"
+            onClick={() => onEscalate(report)}
+            style={{ color: "var(--urgent)", borderColor: "rgba(179,64,42,0.4)", fontWeight: 700 }}
+          >
+            <Siren size={14} /> Escalate to Emergency
+          </button>
+          {report.status !== "Resolved" && (
+            <button
+              type="button"
+              className="btn-primary btn-sm"
+              onClick={() => onConfirm(report.id)}
+            >
+              <Check size={14} /> Confirm Assessment
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function VetApp() {
   const [view, setView] = useState("overview");
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -2138,11 +3283,257 @@ function VetApp() {
 
   const [requests, setRequests] = useState(initialRequests);
   const [reports, setReports] = useState(initialReports);
+  const [reviewingReport, setReviewingReport] = useState(null);
   const [emergencies, setEmergencies] = useState(initialEmergencies);
   const [patients, setPatients] = useState(initialPatients);
   const [treatmentHistory, setTreatmentHistory] = useState(treatmentHistoryData);
   const [notifications, setNotifications] = useState(initialNotifications);
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [activeChatRequest, setActiveChatRequest] = useState(null);
+  const [activeEmergencyChat, setActiveEmergencyChat] = useState(null);
+  const [treatmentModalPatient, setTreatmentModalPatient] = useState(null);
+  const [sampleModalPatient, setSampleModalPatient] = useState(null);
+  const [chatMessages, setChatMessages] = useState({});
+  const [sampleRequests, setSampleRequests] = useState(() => {
+    try {
+      const s = localStorage.getItem('psk_sample_requests');
+      return s ? JSON.parse(s) : [
+        {
+          id: "SMP-1042",
+          animalId: "gauri",
+          animalName: "Gauri (Cow)",
+          farmerName: "Ramesh Yadav",
+          location: "Sawantwadi, Nashik",
+          sampleType: "Milk Sample (CMT / Culture)",
+          priority: "High",
+          reason: "Suspected early stage mastitis screening & microbial culture",
+          instructions: "Collect 15ml mid-stream quarter milk sample aseptically; transport in sterile cold vial at 4°C.",
+          notes: "Farmer noticed warm quarter and drop in yield.",
+          assignedParaVet: "Sunita Gaikwad",
+          assignedParaVetId: "pv-101",
+          status: "Assigned",
+          requestedAt: "Today, 08:30 AM"
+        }
+      ];
+    } catch(e) {
+      return [];
+    }
+  });
+
+  const getRequestMessages = (req) => {
+    if (!req) return [];
+    const animalId = req.animalId || req.id;
+    if (chatMessages[animalId] && chatMessages[animalId].length > 0) {
+      return chatMessages[animalId];
+    }
+    const bridgeChats = window.PashuSakhiBridge ? window.PashuSakhiBridge.getChats(animalId) : [];
+    if (bridgeChats && bridgeChats.length > 0) {
+      return bridgeChats;
+    }
+    return [
+      {
+        id: "msg_init_" + req.id,
+        sender: "farmer",
+        text: `Namaste Dr. Aditi. My ${req.species || 'animal'} ${req.animal} is showing signs: ${req.symptoms}. Please advise on what treatment or medicine to administer.`,
+        time: req.submitted || "Just now",
+        timestamp: Date.now() - 600000
+      }
+    ];
+  };
+
+  const handleSendChatMessage = (animalId, text) => {
+    if (!text || !text.trim()) return;
+    const cleanText = text.trim();
+    const newMsg = {
+      id: "msg_" + Date.now(),
+      sender: "vet",
+      text: cleanText,
+      time: "Just now",
+      timestamp: Date.now(),
+      animalId: animalId
+    };
+
+    if (window.PashuSakhiBridge) {
+      window.PashuSakhiBridge.sendChat(animalId, newMsg);
+    }
+
+    setChatMessages(prev => {
+      const current = prev[animalId] || (window.PashuSakhiBridge ? window.PashuSakhiBridge.getChats(animalId) : []) || [];
+      return {
+        ...prev,
+        [animalId]: [...current, newMsg]
+      };
+    });
+
+    setRequests(prev => prev.map(req => (req.animalId === animalId || req.id === animalId) ? { ...req, status: "inConsultation" } : req));
+  };
+
+  const getEmergencyMessages = (emg) => {
+    if (!emg) return [];
+    const animalId = emg.animalId || emg.id;
+    if (chatMessages[animalId] && chatMessages[animalId].length > 0) {
+      return chatMessages[animalId];
+    }
+    const bridgeChats = window.PashuSakhiBridge ? window.PashuSakhiBridge.getChats(animalId) : [];
+    if (bridgeChats && bridgeChats.length > 0) {
+      return bridgeChats;
+    }
+    return [
+      {
+        id: "emg_init_" + emg.id,
+        sender: "farmer",
+        text: `ðŸš¨ URGENT EMERGENCY: ${emg.animal} has severe acute distress! Symptoms: ${emg.symptoms}. Location: ${emg.location}. Please provide immediate veterinary advice!`,
+        time: emg.timeReported || "Just now",
+        timestamp: Date.now() - 300000
+      }
+    ];
+  };
+
+  const handleSendEmergencyMessage = (animalId, text) => {
+    if (!text || !text.trim()) return;
+    const cleanText = text.trim();
+    const newMsg = {
+      id: "emg_msg_" + Date.now(),
+      sender: "vet",
+      text: cleanText,
+      time: "Just now",
+      timestamp: Date.now(),
+      animalId: animalId,
+      isEmergency: true
+    };
+
+    if (window.PashuSakhiBridge) {
+      window.PashuSakhiBridge.sendChat(animalId, newMsg);
+    }
+
+    setChatMessages(prev => {
+      const current = prev[animalId] || (window.PashuSakhiBridge ? window.PashuSakhiBridge.getChats(animalId) : []) || [];
+      return {
+        ...prev,
+        [animalId]: [...current, newMsg]
+      };
+    });
+
+    showToast("Urgent instruction dispatched to farmer.");
+  };
+
+  const handleSendTreatment = (treatmentData) => {
+    if (!treatmentModalPatient) return;
+    if (!treatmentData.condition || !treatmentData.condition.trim()) {
+      showToast("Please enter diagnosis/condition.");
+      return;
+    }
+    if (!treatmentData.medicine || !treatmentData.medicine.trim()) {
+      showToast("Please enter prescribed medicine.");
+      return;
+    }
+    const animalId = treatmentModalPatient.id;
+    const entry = {
+      id: "trt_" + Date.now(),
+      date: new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }),
+      condition: treatmentData.condition.trim(),
+      medicine: treatmentData.medicine.trim(),
+      dosage: treatmentData.dosage ? treatmentData.dosage.trim() : "Standard dose",
+      route: treatmentData.route || "Oral",
+      duration: treatmentData.duration || "3 days",
+      notes: treatmentData.notes ? treatmentData.notes.trim() : "Prescribed by Dr. Aditi Kulkarni",
+      followUp: treatmentData.followUp ? treatmentData.followUp.trim() : "—",
+      vetName: profile.name,
+      attachments: 0
+    };
+
+    if (window.PashuSakhiApi) {
+      window.PashuSakhiApi.createTreatment(animalId, {
+        diagnosis: entry.condition,
+        medication: entry.medicine,
+        dosage: entry.dosage,
+        instructions: entry.notes
+      }).catch(e => console.warn('Backend createTreatment error:', e));
+    }
+
+    if (window.PashuSakhiBridge) {
+      window.PashuSakhiBridge.addTreatment(animalId, entry);
+      window.PashuSakhiBridge.sendChat(animalId, {
+        sender: "vet",
+        text: `Prescribed Treatment for ${treatmentModalPatient.name}:\n- Condition: ${entry.condition}\n- Medicine: ${entry.medicine}\n- Dosage & Route: ${entry.dosage} (${entry.route})\n- Duration: ${entry.duration}\n- Instructions: ${entry.notes}${entry.followUp !== '—' ? '\n- Follow-up: ' + entry.followUp : ''}`,
+        time: "Just now"
+      });
+    }
+
+    setTreatmentHistory(prev => ({
+      ...prev,
+      [animalId]: [entry, ...(prev[animalId] || [])]
+    }));
+
+    showToast("Treatment sent to farmer successfully.");
+    setTreatmentModalPatient(null);
+  };
+
+  const handleSendSampleRequest = (sampleData) => {
+    if (!sampleModalPatient) return;
+    const pv = PARA_VET_USERS.find(u => u.id === sampleData.paraVetId) || PARA_VET_USERS[0];
+    const newReq = {
+      id: "SMP-" + Math.floor(1000 + Math.random() * 9000),
+      animalId: sampleModalPatient.id,
+      animalName: `${sampleModalPatient.name} (${sampleModalPatient.species})`,
+      farmerName: sampleModalPatient.owner,
+      location: sampleModalPatient.location,
+      sampleType: sampleData.sampleType || "Blood (Serum / EDTA)",
+      reason: sampleData.reason ? sampleData.reason.trim() : "Diagnostic Confirmation",
+      priority: sampleData.priority || "High",
+      instructions: sampleData.instructions ? sampleData.instructions.trim() : "Collect sample under sterile precautions and maintain cold chain.",
+      notes: sampleData.notes ? sampleData.notes.trim() : "",
+      assignedParaVet: pv.name,
+      assignedParaVetId: pv.id,
+      assignedParaVetPhone: pv.phone,
+      status: "Assigned",
+      requestedAt: "Just now"
+    };
+
+    const nextList = [newReq, ...sampleRequests];
+    setSampleRequests(nextList);
+    try {
+      localStorage.setItem('psk_sample_requests', JSON.stringify(nextList));
+    } catch (e) {}
+
+    if (window.PashuSakhiBridge && window.PashuSakhiBridge.broadcast) {
+      window.PashuSakhiBridge.broadcast("psk:sample:requested", newReq);
+    }
+
+    showToast(`Sample collection request sent to ${pv.name}.`);
+    setSampleModalPatient(null);
+  };
+
+  const handleMarkAllNotificationsRead = () => {
+    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    showToast("All notifications marked as read.");
+  };
+
+  const handleNotificationClick = (n) => {
+    setNotifications(prev => prev.map(item => item.id === n.id ? { ...item, read: true } : item));
+    setNotificationsOpen(false);
+    if (n.view === "conversation" && n.refId) {
+      const match = requests.find(r => r.id === n.refId);
+      if (match) {
+        setActiveChatRequest(match);
+        setView("requests");
+        return;
+      }
+      setView("requests");
+    } else if (n.view === "emergency" && n.refId) {
+      const match = emergencies.find(e => e.id === n.refId);
+      if (match) {
+        setActiveEmergencyChat(match);
+        setView("emergency");
+        return;
+      }
+      setView("emergency");
+    } else if (n.view === "patientDetail" && n.refId) {
+      setSelectedPatientId(n.refId);
+      setView("patients");
+    }
+  };
 
   const [profile, setProfile] = useState(VET_PROFILE);
   const [appLanguage, setAppLanguage] = useState(localStorage.getItem('psk_language') || "en");
@@ -2753,6 +4144,227 @@ function VetApp() {
         .toggle { border:1px solid var(--line); background:var(--paper); color:var(--ink-soft); border-radius:999px; padding:6px 12px; font-weight:800; cursor:pointer; min-width:52px; }
         .toggle.on { background:var(--brand); color:#fff; border-color:var(--brand); }
         .empty-state { padding:32px; text-align:center; color:var(--ink-soft); }
+        .modal-backdrop {
+          position: fixed;
+          top: 0; left: 0; right: 0; bottom: 0;
+          background: rgba(20, 41, 35, 0.65);
+          backdrop-filter: blur(4px);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 16px;
+          z-index: 1250;
+          animation: fadeIn 0.2s ease;
+        }
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        .modal-card {
+          background: var(--paper-soft);
+          border: 1.5px solid var(--line);
+          border-radius: 18px;
+          box-shadow: 0 12px 40px rgba(0,0,0,0.25);
+          max-width: 580px;
+          width: 100%;
+          max-height: 90vh;
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+          animation: scaleUp 0.2s ease;
+        }
+        @keyframes scaleUp {
+          from { transform: scale(0.96); opacity: 0; }
+          to { transform: scale(1); opacity: 1; }
+        }
+        .chat-modal-window {
+          max-width: 760px;
+          height: 720px;
+          max-height: 92vh;
+        }
+        .emergency-modal-window {
+          max-width: 780px;
+          height: 740px;
+          max-height: 94vh;
+          border: 2px solid var(--urgent);
+        }
+        .modal-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 16px 20px;
+          border-bottom: 1.5px solid var(--line);
+          background: var(--paper-soft);
+        }
+        .modal-header-emergency {
+          background: linear-gradient(135deg, #8B2516 0%, #B3402A 100%);
+          color: #fff;
+          border-bottom: none;
+        }
+        .modal-body {
+          flex: 1;
+          overflow-y: auto;
+          padding: 18px 20px;
+          display: flex;
+          flex-direction: column;
+          gap: 14px;
+        }
+        .modal-footer {
+          display: flex;
+          align-items: center;
+          justify-content: flex-end;
+          gap: 10px;
+          padding: 14px 20px;
+          border-top: 1.5px solid var(--line);
+          background: var(--paper-soft);
+        }
+        .chat-feed {
+          flex: 1;
+          overflow-y: auto;
+          padding: 16px 18px;
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+          background: #EFE8D8;
+        }
+        .chat-bubble {
+          display: flex;
+          flex-direction: column;
+          max-width: 78%;
+          padding: 10px 14px;
+          font-size: 13.5px;
+          line-height: 1.45;
+          position: relative;
+        }
+        .chat-bubble.farmer {
+          align-self: flex-start;
+          background: var(--paper-soft);
+          color: var(--ink);
+          border: 1px solid var(--line);
+          border-radius: 14px 14px 14px 2px;
+          box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+        }
+        .chat-bubble.vet {
+          align-self: flex-end;
+          background: var(--brand);
+          color: #fff;
+          border-radius: 14px 14px 2px 14px;
+          box-shadow: 0 2px 8px rgba(31,93,80,0.25);
+        }
+        .chat-bubble.urgent {
+          border-left: 4px solid #FFE699;
+        }
+        .chat-meta {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-top: 4px;
+          font-size: 11px;
+          opacity: 0.8;
+        }
+        .chat-input-bar {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 12px 18px;
+          border-top: 1.5px solid var(--line);
+          background: var(--paper-soft);
+        }
+        .chat-text-input {
+          flex: 1;
+          min-width: 0;
+          height: 42px;
+          padding: 0 14px;
+          border: 1.5px solid var(--line);
+          border-radius: 10px;
+          background: #fff;
+          color: var(--ink);
+          font-size: 13.5px;
+          font-family: inherit;
+          outline: none;
+        }
+        .chat-text-input:focus {
+          border-color: var(--brand);
+        }
+        .form-row-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 12px;
+        }
+        .form-field {
+          display: flex;
+          flex-direction: column;
+          gap: 5px;
+        }
+        .form-label {
+          font-size: 12px;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.4px;
+          color: var(--ink-soft);
+        }
+        .form-input, .form-select, .form-textarea {
+          border: 1.5px solid var(--line);
+          border-radius: 9px;
+          padding: 9px 12px;
+          font-size: 13.5px;
+          background: #fff;
+          color: var(--ink);
+          font-family: inherit;
+          outline: none;
+          box-sizing: border-box;
+          width: 100%;
+        }
+        .form-input:focus, .form-select:focus, .form-textarea:focus {
+          border-color: var(--brand);
+        }
+        .form-textarea {
+          resize: vertical;
+          min-height: 72px;
+        }
+        .quick-chips-row {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px;
+          margin-top: 4px;
+        }
+        .quick-chip {
+          border: 1px solid var(--line);
+          background: var(--paper);
+          border-radius: 999px;
+          padding: 4px 9px;
+          font-size: 11px;
+          font-weight: 700;
+          cursor: pointer;
+          color: var(--ink);
+          transition: all 0.15s ease;
+        }
+        .quick-chip:hover {
+          background: var(--brand-soft);
+          border-color: var(--brand);
+          color: var(--brand-dark-contrast);
+        }
+        .notif-item {
+          display: flex;
+          gap: 12px;
+          padding: 12px 14px;
+          border-radius: 12px;
+          border: 1px solid var(--line);
+          background: var(--paper);
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+        .notif-item:hover {
+          border-color: var(--brand);
+          background: var(--paper-soft);
+        }
+        .notif-item.unread {
+          border-left: 4px solid var(--brand);
+          background: var(--paper-soft);
+        }
+        .notif-item.unread.emergency {
+          border-left-color: var(--urgent);
+        }
         @media(max-width:900px){ .patient-layout,.settings-grid{grid-template-columns:1fr;} .detail-grid{grid-template-columns:repeat(2,1fr);} .history-card{grid-template-columns:1fr 1fr;} .search-box{min-width:100%;} }
       `}</style>
 
@@ -2835,12 +4447,14 @@ function VetApp() {
         </div>
         <div className="vet-mobile-header-right">
           <button
-            className="btn-outline btn-sm"
-            onClick={() => setView("settings")}
-            style={{ padding: "4px 8px", fontSize: 11, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 4 }}
+            type="button"
+            className="bell-btn"
+            style={{ width: 38, height: 38, borderRadius: 9 }}
+            onClick={() => setNotificationsOpen(true)}
+            aria-label="View notifications"
           >
-            <Settings size={13} />
-            Settings
+            <Bell size={18} />
+            {unreadCount > 0 && <span className="bell-badge">{unreadCount}</span>}
           </button>
         </div>
       </header>
@@ -2913,31 +4527,56 @@ function VetApp() {
       <main className="main">
         {/* Top Header Bar */}
         <div className="topbar">
-          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-            <img
-              src={PASHU_SAKHI_LOGO}
-              alt="Pashu Sakhi Logo"
-              style={{ height: 44, width: "auto", objectFit: "contain", borderRadius: 8, flexShrink: 0, boxShadow: "0 2px 8px rgba(0,0,0,0.12)" }}
-            />
-            <div>
-              <h1 className="greeting">Namaste, {profile.name}</h1>
-              <p className="greeting-sub">
-                {view === "heatmap"
-                  ? "Active Disease Surveillance & Spatial Monitoring Console"
-                  : "Here's what needs your attention today."}
-              </p>
-            </div>
+          <div>
+            <h1 className="greeting">Namaste, {profile.name}</h1>
+            <p className="greeting-sub">
+              {view === "heatmap"
+                ? "Active Disease Surveillance & Spatial Monitoring Console"
+                : "Here's what needs your attention today."}
+            </p>
           </div>
           <div className="topbar-actions" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div className="avail-select" style={{ display: "inline-flex", alignItems: "center", gap: 8, border: "1.5px solid var(--line)", background: "var(--paper-soft)", borderRadius: 11, padding: "8px 12px", fontWeight: 700, fontSize: 13, color: "var(--ink)" }}>
+              <span
+                className="avail-dot"
+                style={{
+                  width: 9,
+                  height: 9,
+                  borderRadius: "50%",
+                  background: (AVAILABILITY_OPTIONS.find((a) => a.value === availability) || AVAILABILITY_OPTIONS[0]).color,
+                  flexShrink: 0
+                }}
+                aria-hidden="true"
+              />
+              <span style={{ fontSize: 12, color: "var(--ink-soft)", fontWeight: 600 }}>Status:</span>
+              <select
+                value={availability}
+                onChange={(e) => {
+                  setAvailability(e.target.value);
+                  if (window.PashuSakhiBridge) {
+                    window.PashuSakhiBridge.updateUserStatus("vet", e.target.value);
+                  }
+                  showToast(`Availability status updated to ${e.target.options[e.target.selectedIndex].text}.`);
+                }}
+                aria-label="Veterinarian availability status"
+                style={{ border: "none", background: "transparent", fontWeight: 700, fontSize: 13, color: "var(--ink)", outline: "none", cursor: "pointer" }}
+              >
+                {AVAILABILITY_OPTIONS.map((a) => (
+                  <option key={a.value} value={a.value}>
+                    {t("avail_" + a.value, a.label)}
+                  </option>
+                ))}
+              </select>
+            </div>
             <button
               type="button"
-              className="btn-outline btn-sm"
-              onClick={() => setView("settings")}
-              style={{ display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 700 }}
-              title="Settings"
+              className="bell-btn"
+              onClick={() => setNotificationsOpen(true)}
+              aria-label="View notifications"
+              title="Notifications"
             >
-              <Settings size={15} />
-              <span>{t("nav_settings", "Settings")}</span>
+              <Bell size={20} />
+              {unreadCount > 0 && <span className="bell-badge">{unreadCount}</span>}
             </button>
           </div>
         </div>
@@ -2962,22 +4601,40 @@ function VetApp() {
               <div className="stat-card"><p className="stat-value">{reports.filter(r=>r.status==="Resolved").length}</p><p className="stat-label">{t("auto_resolved", "Resolved")}</p></div>
             </div>
             <Card>
-              {filteredReports.map(r => (
-                <div className="record-row" key={r.id}>
-                  <Avatar label={r.animal} size={46} tone={r.severity === "high" ? "urgent" : "attention"} />
-                  <div className="record-main">
-                    <div className="record-title">{r.animal} <span>· {r.farmer}</span></div>
-                    <div className="record-sub">{r.condition} · {r.datetime}</div>
-                    <div className="record-sub">{r.symptoms}</div>
-                    <div className="record-badges"><SeverityBadge level={r.severity}/><span className="badge badge-info">{r.confidence}% AI confidence</span><StatusPill status={r.status === "Under Review" ? "underReview" : r.status === "New" ? "new" : "resolved"}/></div>
+              {filteredReports.map(r => {
+                const photo = r.imageUrl || (r.details && (r.details.imageUrl || r.details.photo));
+                return (
+                  <div className="record-row" key={r.id}>
+                    {photo ? (
+                      <img
+                        src={photo}
+                        alt="Scan Photo"
+                        style={{ width: 46, height: 46, borderRadius: 10, objectFit: "cover", border: "1.5px solid var(--brand)", flexShrink: 0, cursor: "pointer" }}
+                        onClick={() => setReviewingReport(r)}
+                        title="Click to inspect AI scan photo"
+                      />
+                    ) : (
+                      <Avatar label={r.animal} size={46} tone={r.severity === "high" ? "urgent" : "attention"} />
+                    )}
+                    <div className="record-main">
+                      <div className="record-title">{r.animal} <span>· {r.farmer}</span></div>
+                      <div className="record-sub">{r.condition} · {r.datetime || r.date}</div>
+                      <div className="record-sub">{r.symptoms}</div>
+                      <div className="record-badges">
+                        <SeverityBadge level={r.severity}/>
+                        <span className="badge badge-info">{r.confidence}% AI confidence</span>
+                        {photo && <span className="badge badge-vaccination"><Camera size={11}/> Photo Attached</span>}
+                        <StatusPill status={r.status === "Under Review" ? "underReview" : r.status === "New" ? "new" : "resolved"}/>
+                      </div>
+                    </div>
+                    <div className="record-actions">
+                      <button className="btn-outline btn-sm" onClick={() => setReviewingReport(r)}><Eye size={14}/> Review</button>
+                      {r.status !== "Resolved" && <button className="btn-primary btn-sm" onClick={() => updateReport(r.id, "Resolved")}><Check size={14}/> Confirm</button>}
+                      {r.status === "New" && <button className="btn-outline btn-sm" onClick={() => updateReport(r.id, "Under Review")}>Under Review</button>}
+                    </div>
                   </div>
-                  <div className="record-actions">
-                    <button className="btn-outline btn-sm" onClick={() => showToast(`Reviewing ${r.id} for ${r.animal}.`)}><Eye size={14}/> Review</button>
-                    {r.status !== "Resolved" && <button className="btn-primary btn-sm" onClick={() => updateReport(r.id, "Resolved")}><Check size={14}/> Confirm</button>}
-                    {r.status === "New" && <button className="btn-outline btn-sm" onClick={() => updateReport(r.id, "Under Review")}>Under Review</button>}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
               {!filteredReports.length && <div className="empty-state">{t("auto_no_ai_reports_m", "No AI reports match this filter.")}</div>}
             </Card>
           </div>
@@ -3005,7 +4662,7 @@ function VetApp() {
                     {e.status === "new" && <button className="btn-primary btn-sm" onClick={() => updateEmergency(e.id, "accepted")}><UserCheck size={14}/> Accept Case</button>}
                     {e.status === "accepted" && <button className="btn-primary btn-sm" onClick={() => updateEmergency(e.id, "inTreatment")}><Syringe size={14}/> Start Treatment</button>}
                     {e.status === "inTreatment" && <button className="btn-primary btn-sm" onClick={() => updateEmergency(e.id, "resolved")}><CheckCircle2 size={14}/> Mark Resolved</button>}
-                    <button className="btn-outline btn-sm" onClick={() => showToast(`Opening emergency chat for ${e.animal}.`)}><MessageCircle size={14}/> Open Chat</button>
+                    <button className="btn-outline btn-sm" onClick={() => setActiveEmergencyChat(e)} style={{ borderColor: "var(--urgent)", color: "var(--urgent)", fontWeight: 700 }}><MessageCircle size={14}/> Open Chat</button>
                   </div>
                 </div>
               ))}
@@ -3053,11 +4710,44 @@ function VetApp() {
                   <div>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
                       <SectionTitle style={{ margin: 0 }}>Treatment History</SectionTitle>
-                      <button className="btn-primary btn-sm" onClick={()=>addTreatment(p.id)}><PlusCircle size={14}/> New Treatment</button>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+  <button className="btn-outline btn-sm" onClick={() => setSampleModalPatient(p)} style={{ fontWeight: 700 }}><FlaskConical size={14}/> Send Sample Collection Request</button>
+  <button className="btn-primary btn-sm" onClick={()=>setTreatmentModalPatient(p)}><PlusCircle size={14}/> New Treatment</button>
+</div>
                     </div>
                     {history.length ? <div className="history-table">
                       {history.map((h,i)=><div className="history-card" key={i}><div className="history-date">{h.date}</div><div><strong>{h.condition}</strong><div className="record-sub">{h.notes}</div></div><div><span>{t("auto_medicine", "Medicine")}</span><strong>{h.medicine}</strong></div><div><span>{t("auto_dosage___route", "Dosage / Route")}</span><strong>{h.dosage} · {h.route}</strong></div><div><span>{t("auto_duration", "Duration")}</span><strong>{h.duration}</strong></div><div><span>{t("auto_follow_up", "Follow-up")}</span><strong>{h.followUp}</strong></div></div>)}
                     </div> : <div className="empty-state">No treatment history recorded yet for {p.name}. Use “New Treatment” to add an entry.</div>}
+                  </div>
+
+                  <div>
+                    <SectionTitle>Assigned Sample Collection Requests</SectionTitle>
+                    {(() => {
+                      const patientSamples = sampleRequests.filter(s => s.animalId === p.id);
+                      return patientSamples.length ? (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                          {patientSamples.map((s, idx) => (
+                            <div key={idx} style={{ padding: "10px 14px", background: "var(--paper)", border: "1px solid var(--line)", borderRadius: 10, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+                              <div>
+                                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                  <strong style={{ fontSize: 13.5 }}>{s.sampleType}</strong>
+                                  <span className="badge badge-info" style={{ fontSize: 11 }}>{s.priority} Priority</span>
+                                  <span className="badge badge-attention" style={{ fontSize: 11 }}>{s.status}</span>
+                                </div>
+                                <div style={{ fontSize: 12, color: "var(--ink-soft)", marginTop: 2 }}>
+                                  Assigned Para-Vet: <strong style={{ color: "var(--brand)" }}>{s.assignedParaVet}</strong> · Reason: {s.reason}
+                                </div>
+                              </div>
+                              <span style={{ fontSize: 11, color: "var(--ink-soft)" }}>{s.requestedAt}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div style={{ padding: "12px 14px", background: "var(--paper)", border: "1px solid var(--line)", borderRadius: 10, fontSize: 13, color: "var(--ink-soft)" }}>
+                          No pending sample collection requests for {p.name}. Use "Send Sample Collection Request" to assign a field task.
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   <div className="detail-actions" style={{ marginTop: "auto", paddingTop: "16px", borderTop: "1px solid var(--line)" }}>
@@ -3114,13 +4804,23 @@ function VetApp() {
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                       <button
                         type="button"
+                        className="btn-primary btn-sm"
+                        onClick={() => setActiveChatRequest(r)}
+                        style={{ display: "inline-flex", alignItems: "center", gap: 5, fontWeight: 700 }}
+                        title="Open dedicated consultation chat window"
+                      >
+                        <MessageCircle size={14} />
+                        Open Chat
+                      </button>
+                      <button
+                        type="button"
                         className="btn-outline btn-sm"
                         onClick={() => setReviewModalRequest(r)}
                         style={{ display: "inline-flex", alignItems: "center", gap: 5, fontWeight: 700 }}
                         title="Review case details and triage"
                       >
                         <Eye size={14} />
-                        {t("auto_review_chat_req", "Review Chat Request")}
+                        {t("auto_review_chat_req", "Review Details")}
                       </button>
                       {r.status !== "resolved" ? (
                         <button
@@ -3131,10 +4831,10 @@ function VetApp() {
                           title="Conclude active farmer consultation"
                         >
                           <XCircle size={14} />
-                          {t("auto_end_chat_farmer", "End Chat with Farmer")}
+                          {t("auto_end_chat_farmer", "End Chat")}
                         </button>
                       ) : (
-                        <span className="badge badge-success" style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "5px 10px", fontSize: 12 }}>
+                        <span className="badge badge-healthy" style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "5px 10px", fontSize: 12 }}>
                           <CheckCircle2 size={13} /> {t("auto_chat_concluded", "Consultation Concluded")}
                         </span>
                       )}
@@ -3261,7 +4961,17 @@ function VetApp() {
                     <p className="list-row-symptoms">{r.symptoms}</p>
                     <div className="list-row-badges"><SeverityBadge level={r.priority} /><StatusPill status={r.status} /><span className="list-row-meta" style={{ margin: 0 }}>{r.submitted}</span></div>
                   </div>
-                  <button className="btn-outline btn-sm" onClick={() => setView("requests")}>Open Case</button>
+                  <button
+  className="btn-primary btn-sm"
+  onClick={() => {
+    const match = patients.find(p => p.id === r.animalId || p.name.toLowerCase() === r.animal.toLowerCase()) || patients[0];
+    setSelectedPatientId(match.id);
+    setView("patients");
+    showToast(`Opened patient record for ${match.name}.`);
+  }}
+>
+  Open Case
+</button>
                 </div>
               ))}
             </Card>
@@ -3333,10 +5043,9 @@ function VetApp() {
                 type="button"
                 className="btn-primary"
                 onClick={() => {
+                  const reqToOpen = reviewModalRequest;
                   setReviewModalRequest(null);
-                  const el = document.getElementById("reply_input_" + reviewModalRequest.id);
-                  if (el) el.focus();
-                  showToast("Consultation request accepted for " + reviewModalRequest.animal + ".");
+                  setActiveChatRequest(reqToOpen);
                 }}
               >
                 <MessageCircle size={15} style={{ verticalAlign: -2, marginRight: 4 }} />
@@ -3345,6 +5054,73 @@ function VetApp() {
             </div>
           </div>
         </div>
+      )}
+
+            {/* Real Consultation Chat Modal */}
+      {activeChatRequest && (
+        <ConsultationChatModal
+          request={activeChatRequest}
+          messages={getRequestMessages(activeChatRequest)}
+          onClose={() => setActiveChatRequest(null)}
+          onSendMessage={handleSendChatMessage}
+          onEndChat={handleEndChatWithFarmer}
+        />
+      )}
+
+      {/* Real Emergency Chat Modal */}
+      {activeEmergencyChat && (
+        <EmergencyChatModal
+          emergency={activeEmergencyChat}
+          messages={getEmergencyMessages(activeEmergencyChat)}
+          onClose={() => setActiveEmergencyChat(null)}
+          onSendMessage={handleSendEmergencyMessage}
+        />
+      )}
+
+      {/* Functional Notifications Modal */}
+      <NotificationsModal
+        notifications={notifications}
+        isOpen={notificationsOpen}
+        onClose={() => setNotificationsOpen(false)}
+        onMarkAllRead={handleMarkAllNotificationsRead}
+        onNotificationClick={handleNotificationClick}
+      />
+
+      {/* New Treatment Form Modal */}
+      {treatmentModalPatient && (
+        <NewTreatmentModal
+          patient={treatmentModalPatient}
+          onClose={() => setTreatmentModalPatient(null)}
+          onSendTreatment={handleSendTreatment}
+        />
+      )}
+
+      {/* Sample Collection Request Modal with Para-Vet Selection */}
+      {sampleModalPatient && (
+        <SampleCollectionModal
+          patient={sampleModalPatient}
+          paraVets={PARA_VET_USERS}
+          onClose={() => setSampleModalPatient(null)}
+          onSendSampleRequest={handleSendSampleRequest}
+        />
+      )}
+
+      {/* Report Review Modal */}
+      {reviewingReport && (
+        <ReportReviewModal
+          report={reviewingReport}
+          onClose={() => setReviewingReport(null)}
+          onConfirm={(id) => {
+            updateReport(id, "Resolved");
+            setReviewingReport(null);
+          }}
+          onEscalate={(rep) => {
+            updateEmergency(rep.id, "new");
+            showToast(`Report ${rep.id} escalated to Emergency Case.`);
+            setReviewingReport(null);
+            setView("emergency");
+          }}
+        />
       )}
 
       {toast && <div className="toast">{toast}</div>}

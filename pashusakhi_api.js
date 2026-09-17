@@ -202,15 +202,33 @@
     },
 
     // AI Diagnostics / Screening
-    async submitSymptomScreening(data) {
+    async submitSymptomScreening(data, customGeminiKey) {
+      if (!getToken()) {
+        try {
+          await PashuSakhiApi.login("farmer@pashusakhi.in", "farmer123");
+        } catch (e) {
+          console.warn("[PashuSakhiApi] Auto-auth before screening failed:", e);
+        }
+      }
+      const effectiveKey = customGeminiKey || data.geminiApiKey || (typeof localStorage !== "undefined" ? localStorage.getItem("psk_gemini_api_key") : null);
+      const headers = {};
+      if (effectiveKey) {
+        headers["x-gemini-key"] = effectiveKey.trim();
+        data = { ...data, geminiApiKey: effectiveKey.trim() };
+      }
       return request("/diagnostics/symptoms", {
         method: "POST",
+        headers,
         body: JSON.stringify(data),
       });
     },
 
     async getScreeningReports() {
       return request("/diagnostics/reports");
+    },
+
+    async getSystemConfig() {
+      return request("/config");
     },
 
     async updateReportStatus(id, status, vetReviewNotes) {

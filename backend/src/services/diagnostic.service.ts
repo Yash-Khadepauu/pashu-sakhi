@@ -1,6 +1,40 @@
 import prisma from "../config/database";
 import { AppError } from "../utils/apiError";
 import { HealthStatus, ScreeningStatus, ScreeningType } from "@prisma/client";
+import { GeminiVeterinaryService } from "./gemini.service";
+
+function mapGeminiConditionName(condition: string): string {
+  switch (condition) {
+    case "lumpy_skin_disease":
+      return "Suspected Lumpy Skin Disease (LSD)";
+    case "mouth_or_hoof_lesion_concern":
+      return "Mouth / Hoof Lesions Concern";
+    case "possible_contagious_skin_disease":
+      return "Contagious Bovine Dermatitis / Lesions";
+    case "mastitis_concern":
+      return "Suspected Clinical Mastitis";
+    case "bloat_or_digestive_distress":
+      return "Ruminal Bloat & Digestive Distress";
+    case "no_visible_disease":
+      return "No Visible Disease Markers";
+    case "unable_to_assess":
+    default:
+      return "Inconclusive / Needs Clinical Examination";
+  }
+}
+
+function mapGeminiSeverityToHealthStatus(severity: string): HealthStatus {
+  switch (severity) {
+    case "emergency":
+      return HealthStatus.urgent;
+    case "moderate":
+      return HealthStatus.attention;
+    case "routine":
+    case "no_visible_disease":
+    default:
+      return HealthStatus.healthy;
+  }
+}
 
 interface SymptomInput {
   reportedSymptoms: string[];
@@ -142,15 +176,59 @@ export class DiagnosticService {
       notes?: string;
       screeningType?: "symptom_triage" | "image_detection";
       imageUrl?: string;
-    }
+      image?: string;
+      geminiApiKey?: string;
+    },
+    customKey?: string
   ) {
+    const effectiveKey = customKey || data.geminiApiKey;
     const animal = await prisma.animal.findUnique({ where: { id: data.animalId } });
     if (!animal || animal.deletedAt || animal.ownerId !== farmerId) {
       throw new AppError("Invalid animal ID or you do not own this animal.", 400);
     }
 
-    const evaluation = this.evaluateSymptoms(data);
+    const rawImage = data.image || data.imageUrl;
+    let evaluation: DiagnosticResult;
+    let geminiOutput: any = null;
+
+    if (GeminiVeterinaryService.isConfigured(effectiveKey) && (rawImage || (data.reportedSymptoms && data.reportedSymptoms.length > 0))) {
+      try {
+        console.log(`[DiagnosticService] Invoking live Google Gemini model for screening...`);
+        const geminiRes = await GeminiVeterinaryService.screenLivestock({
+          image: rawImage,
+          symptomsSummary: data.reportedSymptoms?.join(", "),
+          temperature: data.temperatureSelected,
+          appetite: data.appetiteSelected,
+          activity: data.activitySelected,
+          notes: data.notes,
+        }, effectiveKey);
+
+        geminiOutput = geminiRes;
+        evaluation = {
+          condition: mapGeminiConditionName(geminiRes.condition),
+          confidence: geminiRes.confidence,
+          riskLevel: mapGeminiSeverityToHealthStatus(geminiRes.severity),
+          recommendations: [
+            geminiRes.recommended_action,
+            geminiRes.reasoning,
+            geminiRes.visual_findings ? `Visual Assessment: ${geminiRes.visual_findings}` : "",
+            geminiRes.symptom_findings ? `Symptom Findings: ${geminiRes.symptom_findings}` : "",
+            geminiRes.escalate_to_1962 ? "URGENT: Escalate immediately to emergency veterinary helpline (1962)." : ""
+          ].filter(Boolean),
+        };
+      } catch (err: any) {
+        console.warn(`[DiagnosticService] Gemini model invocation failed, falling back to calibrated rule-based triage:`, err?.message || err);
+        evaluation = this.evaluateSymptoms(data);
+      }
+    } else {
+      evaluation = this.evaluateSymptoms(data);
+    }
+
     const id = `AR-${Math.floor(1000 + Math.random() * 9000)}`;
+
+    const effectiveNotes = geminiOutput
+      ? `${data.notes || ""}\n[AI Model: ${geminiOutput.model_tier_used}] ${geminiOutput.visual_findings || ""}`.trim()
+      : data.notes;
 
     const log = await prisma.screeningLog.create({
       data: {
@@ -158,15 +236,15 @@ export class DiagnosticService {
         animalId: data.animalId,
         farmerId,
         screeningType:
-          data.screeningType === "image_detection"
+          rawImage || data.screeningType === "image_detection"
             ? ScreeningType.image_detection
             : ScreeningType.symptom_triage,
-        imageUrl: data.imageUrl,
+        imageUrl: rawImage,
         reportedSymptoms: JSON.stringify(data.reportedSymptoms),
         temperatureSelected: data.temperatureSelected,
         appetiteSelected: data.appetiteSelected,
         activitySelected: data.activitySelected,
-        notes: data.notes,
+        notes: effectiveNotes,
         aiPredictedCondition: evaluation.condition,
         confidenceScore: evaluation.confidence,
         riskLevel: evaluation.riskLevel,
@@ -188,6 +266,17 @@ export class DiagnosticService {
     return {
       log,
       recommendations: evaluation.recommendations,
+      aiTriage: geminiOutput ? {
+        condition: geminiOutput.condition,
+        confidence: geminiOutput.confidence,
+        severity: geminiOutput.severity,
+        visualFindings: geminiOutput.visual_findings,
+        symptomFindings: geminiOutput.symptom_findings,
+        reasoning: geminiOutput.reasoning,
+        recommendedAction: geminiOutput.recommended_action,
+        escalateTo1962: geminiOutput.escalate_to_1962,
+        modelTier: geminiOutput.model_tier_used
+      } : null
     };
   }
 

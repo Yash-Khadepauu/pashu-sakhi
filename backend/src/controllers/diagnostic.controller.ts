@@ -9,7 +9,8 @@ export class DiagnosticController {
     next: NextFunction
   ): Promise<void> {
     try {
-      const result = await DiagnosticService.submitSymptomScreening(req.user!.id, req.body);
+      const customKey = (req.headers["x-gemini-key"] as string) || req.body.geminiApiKey;
+      const result = await DiagnosticService.submitSymptomScreening(req.user!.id, req.body, customKey);
       sendSuccess(res, result, "Symptom screening evaluated.", 201);
     } catch (error) {
       next(error);

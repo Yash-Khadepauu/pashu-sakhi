@@ -53,6 +53,18 @@ v1Router.use("/complaints", complaintRoutes);
 // Direct admin complaint aliases matching specification (/api/v1/admin/complaints)
 v1Router.use("/admin/complaints", complaintRoutes);
 
+// Public client-safe feature configuration (Maps & Gemini AI status)
+v1Router.get("/config", (req: Request, res: Response) => {
+  const { env } = require("../config/env");
+  const { GeminiVeterinaryService } = require("../services/gemini.service");
+  return sendSuccess(res, {
+    mapsApiKey: env.GOOGLE_MAPS_API_KEY || "",
+    hasGoogleMapsKey: Boolean(env.GOOGLE_MAPS_API_KEY && env.GOOGLE_MAPS_API_KEY.length > 5),
+    geminiConfigured: GeminiVeterinaryService.isConfigured(),
+    geminiPrimaryModel: env.GEMINI_PRIMARY_MODEL || "gemini-2.5-flash",
+  }, "Feature configuration loaded");
+});
+
 rootRouter.use("/v1", v1Router);
 
 export default rootRouter;
