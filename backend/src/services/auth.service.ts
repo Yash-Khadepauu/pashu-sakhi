@@ -43,16 +43,16 @@ export class AuthService {
         vetProfile:
           assignedRole === Role.veterinarian
             ? {
-                create: {
-                  registrationNumber:
-                    data.registrationNumber || `MH-VET-${Math.floor(10000 + Math.random() * 90000)}`,
-                  qualification: data.qualification || "BVSc & AH",
-                  specialization: data.specialization || "General Veterinary Practice",
-                  clinicAffiliation: data.clinicAffiliation || "Local Veterinary Clinic",
-                  serviceArea: data.serviceArea || "District Wide",
-                  verifiedLicense: false, // Must be verified by admin
-                },
-              }
+              create: {
+                registrationNumber:
+                  data.registrationNumber || `MH-VET-${Math.floor(10000 + Math.random() * 90000)}`,
+                qualification: data.qualification || "BVSc & AH",
+                specialization: data.specialization || "General Veterinary Practice",
+                clinicAffiliation: data.clinicAffiliation || "Local Veterinary Clinic",
+                serviceArea: data.serviceArea || "District Wide",
+                verifiedLicense: false, // Must be verified by admin
+              },
+            }
             : undefined,
       },
       select: {
@@ -103,11 +103,11 @@ export class AuthService {
           { mobile: cleanId },
           ...(digitsOnly.length >= 10
             ? [
-                { mobile: digitsOnly },
-                { mobile: `+91 ${digitsOnly}` },
-                { mobile: `+91 ${digitsOnly.slice(-10, -5)} ${digitsOnly.slice(-5)}` },
-                { mobile: { contains: digitsOnly.slice(-8) } },
-              ]
+              { mobile: digitsOnly },
+              { mobile: `+91 ${digitsOnly}` },
+              { mobile: `+91 ${digitsOnly.slice(-10, -5)} ${digitsOnly.slice(-5)}` },
+              { mobile: { contains: digitsOnly.slice(-8) } },
+            ]
             : []),
         ],
       },

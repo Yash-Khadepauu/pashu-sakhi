@@ -293,6 +293,7 @@ model ScreeningLog {
   appetiteSelected     String?
   activitySelected     String?
   notes                String?
+  voiceTranscript      String? // Transcription of farmer voice input
   aiPredictedCondition String
   confidenceScore      Int
   riskLevel            HealthStatus

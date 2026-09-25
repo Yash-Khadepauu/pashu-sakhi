@@ -35,3 +35,27 @@ scratch_*
 .DS_Store
 Thumbs.db
 
+
+# Archives
+*.zip
+
+# Backup files
+*.backup*
+
+# Test/temp HTML variants
+test*.html
+test*.jsx
+temp_*
+
+# One-off scripts
+extract.js
+extracted_line.txt
+cleaned_css.css
+
+# IDE
+.vscode/
+.idea/
+
+# Generated scratch files
+scratch.txt
+

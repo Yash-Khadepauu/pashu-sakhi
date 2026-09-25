@@ -4,19 +4,14 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>PashuSakhi Veterinarian Dashboard</title>
-<script type="importmap">
-{
-  "imports": {
-    "react": "https://esm.sh/react@18.3.1",
-    "react-dom/client": "https://esm.sh/react-dom@18.3.1/client",
-    "lucide-react": "https://esm.sh/lucide-react@0.468.0?external=react"
-  }
-}
-</script>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<!-- UMD builds -->
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.development.js"></script>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.development.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.468.0/dist/umd/lucide.min.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
 <script src="https://cdn.jsdelivr.net/npm/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
-<script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.24.7/babel.min.js"></script>
 <style>
   *, *::before, *::after { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; width: 100%; max-width: 100vw; overflow-x: hidden; -webkit-text-size-adjust: 100%; }
@@ -249,7 +244,10 @@
         severity: report.severity || 'attention',
         confidence: report.confidence || 85,
         status: report.status || 'New',
-        details: report.details || {}
+        details: report.details || {},
+        farmerNotes: report.farmerNotes || null,
+        voiceTranscript: report.voiceTranscript || null,
+        symptoms: report.symptoms || null
       };
       reports.unshift(newRep);
       _set('psk_shared_reports', reports);
@@ -416,22 +414,108 @@
 })();
 </script>
 
-<script type="text/babel" data-type="module" data-presets="react">
-import React, { useState, useMemo, useRef, useEffect } from "react";
-import { createRoot } from "react-dom/client";
-import {
-  Home, MessageCircle, FileText, AlertTriangle, ClipboardList, HeartPulse,
-  Bell, User, Settings, PawPrint, Stethoscope, Phone, ChevronRight, ChevronDown,
-  ArrowLeft, Send, Check, X, Calendar, Clock, ShieldCheck, MapPin, Syringe,
-  Activity, CheckCircle2, AlertCircle, Info, Save, PlusCircle, Search,
-  Camera, Mic, LogOut, Menu, Image as ImageIcon, Edit3, Star, Lock, Trash2,
-  Sun, Moon, Monitor, Type, Eye, HelpCircle, MessageSquare, LifeBuoy,
-  Navigation, Globe, TimerReset, UserCheck, ClipboardCheck, XCircle,
-  CalendarClock, FlaskConical, Siren, MapPinned, NotebookPen, RefreshCcw,
-  Flame, TrendingUp, TrendingDown, Layers, Building2, ShieldAlert,
-  SlidersHorizontal, ArrowUpDown, Filter, ChevronUp, Radio, Crosshair,
-  Truck, Award, Users, AlertOctagon, Share2, Download, Zap
-} from "lucide-react";
+<script type="text/babel" data-presets="react">
+const { useState, useMemo, useRef, useEffect } = React;
+const { createRoot } = ReactDOM;
+function makeLucide(name) {
+  const pascalName = name.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join('');
+  return function LucideIcon({ size = 24, color = 'currentColor', strokeWidth = 2, style, className, ...rest }) {
+    const iconData = window.lucide && window.lucide[pascalName];
+    if (!iconData) return null;
+    const el = window.lucide.createElement(iconData);
+    const attrs = {};
+    for (const a of el.attributes) attrs[a.name] = a.value;
+    if (style) attrs.style = style;
+    if (className) attrs.className = className;
+    attrs.width = size; attrs.height = size;
+    attrs.stroke = color;
+    attrs.strokeWidth = strokeWidth;
+    return React.createElement('svg', { ...attrs, ...rest },
+      ...Array.from(el.children).map((c, i) => {
+        const ca = {}; for (const a of c.attributes) ca[a.name] = a.value;
+        return React.createElement(c.tagName, { key: i, ...ca });
+      })
+    );
+  };
+}
+const Home = makeLucide('home');
+const MessageCircle = makeLucide('message-circle');
+const FileText = makeLucide('file-text');
+const AlertTriangle = makeLucide('alert-triangle');
+const ClipboardList = makeLucide('clipboard-list');
+const HeartPulse = makeLucide('heart-pulse');
+const Bell = makeLucide('bell');
+const User = makeLucide('user');
+const Settings = makeLucide('settings');
+const PawPrint = makeLucide('paw-print');
+const Stethoscope = makeLucide('stethoscope');
+const Phone = makeLucide('phone');
+const ChevronRight = makeLucide('chevron-right');
+const ChevronDown = makeLucide('chevron-down');
+const ArrowLeft = makeLucide('arrow-left');
+const Send = makeLucide('send');
+const Check = makeLucide('check');
+const X = makeLucide('x');
+const Calendar = makeLucide('calendar');
+const Clock = makeLucide('clock');
+const ShieldCheck = makeLucide('shield-check');
+const MapPin = makeLucide('map-pin');
+const Syringe = makeLucide('syringe');
+const Activity = makeLucide('activity');
+const CheckCircle2 = makeLucide('check-circle-2');
+const AlertCircle = makeLucide('alert-circle');
+const Info = makeLucide('info');
+const Save = makeLucide('save');
+const PlusCircle = makeLucide('plus-circle');
+const Search = makeLucide('search');
+const Camera = makeLucide('camera');
+const Mic = makeLucide('mic');
+const LogOut = makeLucide('log-out');
+const Menu = makeLucide('menu');
+const ImageIcon = makeLucide('image');
+const Edit3 = makeLucide('edit-3');
+const Star = makeLucide('star');
+const Lock = makeLucide('lock');
+const Trash2 = makeLucide('trash-2');
+const Sun = makeLucide('sun');
+const Moon = makeLucide('moon');
+const Monitor = makeLucide('monitor');
+const Type = makeLucide('type');
+const Eye = makeLucide('eye');
+const HelpCircle = makeLucide('help-circle');
+const MessageSquare = makeLucide('message-square');
+const LifeBuoy = makeLucide('life-buoy');
+const Navigation = makeLucide('navigation');
+const Globe = makeLucide('globe');
+const TimerReset = makeLucide('timer-reset');
+const UserCheck = makeLucide('user-check');
+const ClipboardCheck = makeLucide('clipboard-check');
+const XCircle = makeLucide('x-circle');
+const CalendarClock = makeLucide('calendar-clock');
+const FlaskConical = makeLucide('flask-conical');
+const Siren = makeLucide('siren');
+const MapPinned = makeLucide('map-pinned');
+const NotebookPen = makeLucide('notebook-pen');
+const RefreshCcw = makeLucide('refresh-ccw');
+const Flame = makeLucide('flame');
+const TrendingUp = makeLucide('trending-up');
+const TrendingDown = makeLucide('trending-down');
+const Layers = makeLucide('layers');
+const Building2 = makeLucide('building-2');
+const ShieldAlert = makeLucide('shield-alert');
+const SlidersHorizontal = makeLucide('sliders-horizontal');
+const ArrowUpDown = makeLucide('arrow-up-down');
+const Filter = makeLucide('filter');
+const ChevronUp = makeLucide('chevron-up');
+const Radio = makeLucide('radio');
+const Crosshair = makeLucide('crosshair');
+const Truck = makeLucide('truck');
+const Award = makeLucide('award');
+const Users = makeLucide('users');
+const AlertOctagon = makeLucide('alert-octagon');
+const Share2 = makeLucide('share-2');
+const Download = makeLucide('download');
+const Zap = makeLucide('zap');
 
 const PASHU_SAKHI_LOGO = "pashu_sakhi_logo.jpg";
 
@@ -1103,6 +1187,41 @@ const initialReports = [
   { id: "AR-3260", animalId: "chandni", animal: "Chandni", farmer: "Vikram Singh", condition: "No Significant Concern",
     confidence: 92, severity: "low", symptoms: "Routine screening, no abnormal symptoms reported.", datetime: "01 Sep 2026, 9:15 AM", status: "Resolved" },
 ];
+
+function mapBackendReport(r) {
+  let symptomsText = "Visual inspection only.";
+  try {
+    if (r.reportedSymptoms) {
+      let arr = typeof r.reportedSymptoms === 'string' ? JSON.parse(r.reportedSymptoms) : r.reportedSymptoms;
+      if (Array.isArray(arr) && arr.length > 0) symptomsText = arr.join(', ');
+    }
+  } catch(e) {}
+  
+  return {
+    id: r.id,
+    type: r.screeningType === 'image_detection' ? 'detection' : 'screening',
+    animalId: r.animalId || 'a1',
+    animal: (r.animal && r.animal.name) || 'Livestock',
+    animalName: (r.animal && r.animal.name) || 'Livestock',
+    farmer: (r.farmer && r.farmer.name) || 'Farmer',
+    farmerName: (r.farmer && r.farmer.name) || 'Farmer',
+    datetime: r.createdAt ? new Date(r.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'Just now',
+    condition: r.aiPredictedCondition || 'Suspected condition',
+    severity: (r.riskLevel || 'attention').toLowerCase(),
+    confidence: r.confidenceScore || 85,
+    status: r.status === 'Under_Review' ? 'Under Review' : (r.status || 'New'),
+    imageUrl: r.imageUrl || null,
+    farmerNotes: r.notes || null,
+    voiceTranscript: r.voiceTranscript || null,
+    symptoms: symptomsText,
+    details: {
+      title: r.aiPredictedCondition,
+      level: (r.riskLevel || 'attention').toLowerCase(),
+      confidence: r.confidenceScore || 85,
+      photo: r.imageUrl
+    }
+  };
+}
 
 function mapBackendEmergency(e) {
   return {
@@ -3235,6 +3354,20 @@ function ReportReviewModal({ report, onClose, onConfirm, onEscalate }) {
             <div style={{ fontSize: 11.5, fontWeight: 800, textTransform: "uppercase", color: "var(--ink-soft)", marginBottom: 4 }}>Reported Symptoms</div>
             <div style={{ fontSize: 13, color: "var(--ink)" }}>{report.symptoms || "Visual inspection only."}</div>
           </div>
+          {report.farmerNotes && (
+            <div style={{ padding: "10px 12px", background: "var(--paper-soft)", borderRadius: 8, border: "1px solid var(--line)" }}>
+              <div style={{ fontSize: 11.5, fontWeight: 800, textTransform: "uppercase", color: "var(--ink-soft)", marginBottom: 4 }}>Farmer Notes</div>
+              <div style={{ fontSize: 13, color: "var(--ink)" }}>{report.farmerNotes}</div>
+            </div>
+          )}
+
+          {report.voiceTranscript && (
+            <div style={{ padding: "10px 12px", background: "#f0fdf4", borderRadius: 8, border: "1px solid #bbf7d0" }}>
+              <div style={{ fontSize: 11.5, fontWeight: 800, textTransform: "uppercase", color: "#166534", marginBottom: 4 }}>🎤 Voice Transcript</div>
+              <div style={{ fontSize: 13, color: "#14532d", fontStyle: "italic" }}>&ldquo;{report.voiceTranscript}&rdquo;</div>
+            </div>
+          )}
+
 
           {report.details && report.details.reasons && report.details.reasons.length > 0 && (
             <div style={{ padding: "10px 12px", background: "var(--paper-soft)", borderRadius: 8, border: "1px solid var(--line)" }}>
@@ -3589,6 +3722,22 @@ function VetApp() {
       });
     }
 
+
+    // Load live backend screening reports
+    if (window.PashuSakhiApi && window.PashuSakhiApi.getScreeningReports) {
+      window.PashuSakhiApi.getScreeningReports()
+        .then(res => {
+          if (res && res.success && Array.isArray(res.data)) {
+            const mapped = res.data.map(mapBackendReport);
+            setReports(prev => {
+              const ids = new Set(prev.map(p => p.id));
+              const fresh = mapped.filter(m => !ids.has(m.id));
+              return [...fresh, ...prev];
+            });
+          }
+        })
+        .catch(err => console.warn('Backend getScreeningReports fallback:', err));
+    }
     // Load live backend emergencies
     if (window.PashuSakhiApi) {
       window.PashuSakhiApi.getEmergencies()

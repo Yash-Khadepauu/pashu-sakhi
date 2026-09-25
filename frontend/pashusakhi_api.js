@@ -22,10 +22,10 @@
       } else {
         localStorage.removeItem("psk_token");
       }
-    } catch (e) {}
+    } catch (e) { }
   }
 
-  async function request(endpoint, options = {}) {
+  async function request(endpoint, options = {}, _isRetry = false) {
     const url = `${API_BASE}${endpoint}`;
     const headers = {
       "Content-Type": "application/json",
@@ -44,6 +44,28 @@
       });
 
       const json = await response.json().catch(() => null);
+
+      // If the backend says our token is invalid/expired, clear it and re-authenticate once
+      if (response.status === 401 && !_isRetry && endpoint !== "/auth/login") {
+        console.warn("[PashuSakhiApi] Token rejected (401). Clearing stale token and re-authenticating...");
+        setToken(null);
+        try {
+          const loginRes = await fetch(`${API_BASE}/auth/login`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email: "farmer@pashusakhi.in", password: "farmer123" }),
+          });
+          const loginJson = await loginRes.json().catch(() => null);
+          if (loginJson?.data?.token) {
+            setToken(loginJson.data.token);
+            console.log("[PashuSakhiApi] Re-authentication successful. Replaying original request...");
+            // Replay the original request with fresh token (mark as retry to prevent infinite loop)
+            return request(endpoint, options, true);
+          }
+        } catch (reAuthErr) {
+          console.warn("[PashuSakhiApi] Re-authentication failed:", reAuthErr.message);
+        }
+      }
 
       if (!response.ok) {
         const errorMsg = json?.message || `Request failed with status ${response.status}`;

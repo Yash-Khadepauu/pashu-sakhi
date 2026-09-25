@@ -8,6 +8,7 @@ export const symptomScreeningSchema = z.object({
     appetiteSelected: z.string().optional(),
     activitySelected: z.string().optional(),
     notes: z.string().optional(),
+    voiceTranscript: z.string().optional(),
     screeningType: z.enum(["symptom_triage", "image_detection"]).optional().default("symptom_triage"),
     imageUrl: z.string().optional(),
     image: z.string().optional(),
